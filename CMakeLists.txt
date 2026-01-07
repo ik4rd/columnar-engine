@@ -8,6 +8,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/dependencies_package.cmake)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wpedantic")
+add_compile_options(-Wall -Wextra -Werror -Wpedantic)
 
 add_subdirectory(src)
+
+option(ENABLE_TESTS "Build tests" ON)
+if (ENABLE_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
