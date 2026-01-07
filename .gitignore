@@ -48,3 +48,6 @@ Makefile
 
 # Build
 build
+
+# IDE
+.vscode

@@ -28,4 +28,6 @@ jobs:
         ninja
 
     - name: Test
-      run:
+      run: |
+        cd build
+      ./tests/test_foo
