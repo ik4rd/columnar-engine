@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(cmake/dependencies_package.cmake)
+include_directories(${PROJECT_SOURCE_DIR}/include)
 
 add_compile_options(-Wall -Wextra -Werror -Wpedantic)
 
