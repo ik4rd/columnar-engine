@@ -30,4 +30,4 @@ jobs:
     - name: Test
       run: |
         cd build
-        ./src/tests/test_foo
+        ./tests/test_foo
