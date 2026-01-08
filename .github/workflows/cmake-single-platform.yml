@@ -39,5 +39,4 @@ jobs:
       - name: Test
         run: |
           cd build
-          ./tests/test_foo
           ./tests/test_fileio

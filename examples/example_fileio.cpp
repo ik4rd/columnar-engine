@@ -8,9 +8,9 @@ int main() {
     try {
         const std::filesystem::path path = std::filesystem::temp_directory_path() / "fileio_example.bin";
 
-        const std::vector<std::uint8_t> payload = {1, 2, 3, 4};
+        const std::vector<uint8_t> payload = {1, 2, 3, 4};
         WriteFileBytes(path, payload);
-        AppendFileBytes(path, std::vector<std::uint8_t>{5, 6});
+        AppendFileBytes(path, std::vector<uint8_t>{5, 6});
 
         const auto bytes = ReadFileBytes(path);
         std::cout << "read bytes: " << bytes.size() << std::endl;

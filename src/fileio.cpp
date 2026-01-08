@@ -51,7 +51,7 @@ bool FileExists(const std::filesystem::path& path) {
     return exists;
 }
 
-std::vector<std::uint8_t> ReadFileBytes(const std::filesystem::path& path) {
+std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         throw MakeError(path, "open for read");
@@ -62,7 +62,7 @@ std::vector<std::uint8_t> ReadFileBytes(const std::filesystem::path& path) {
         throw MakeError(path, "read file size");
     }
 
-    std::vector<std::uint8_t> data(end_pos);
+    std::vector<uint8_t> data(end_pos);
     if (end_pos == 0) {
         return data;
     }
@@ -76,7 +76,7 @@ std::vector<std::uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     return data;
 }
 
-void WriteFileBytes(const std::filesystem::path& path, const std::span<const std::uint8_t> bytes) {
+void WriteFileBytes(const std::filesystem::path& path, const std::span<const uint8_t> bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
         throw MakeError(path, "open for write");
@@ -90,11 +90,11 @@ void WriteFileBytes(const std::filesystem::path& path, const std::span<const std
     }
 }
 
-void WriteFileBytes(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
+void WriteFileBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
     WriteFileBytes(path, std::span(bytes.data(), bytes.size()));
 }
 
-void AppendFileBytes(const std::filesystem::path& path, const std::span<const std::uint8_t> bytes) {
+void AppendFileBytes(const std::filesystem::path& path, const std::span<const uint8_t> bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::app);
     if (!file.is_open()) {
         throw MakeError(path, "open for append");
