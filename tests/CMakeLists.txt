@@ -7,4 +7,4 @@ function(add_component_test name)
 endfunction()
 
 # components
-add_component_test(test_foo test_foo.cpp)
+add_component_test(test_fileio test_fileio.cpp)

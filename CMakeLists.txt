@@ -12,9 +12,10 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 add_compile_options(-Wall -Wextra -Werror -Wpedantic)
 
 add_subdirectory(src)
+add_subdirectory(examples)
 
 option(ENABLE_TESTS "Build tests" ON)
 if (ENABLE_TESTS)
-  enable_testing()
-  add_subdirectory(tests)
-endif()
+    enable_testing()
+    add_subdirectory(tests)
+endif ()

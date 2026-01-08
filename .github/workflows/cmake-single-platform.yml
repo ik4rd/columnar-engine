@@ -11,23 +11,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Fetch dependencies
-      run: sudo apt-get install libgtest-dev clang-format clang-tidy
+      - name: Cache APT downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
 
-    - name: Configure CMake
-      run: |
-        mkdir build
-        cd build
-        cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
+      - name: Fetch dependencies
+        shell: bash
+        run: scripts/install_dependencies.sh
 
-    - name: Build
-      run: |
-        cd build
-        ninja
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake -GNinja -DCMAKE_BUILD_TYPE=Debug ..
 
-    - name: Test
-      run: |
-        cd build
-        ./tests/test_foo
+      - name: Build
+        run: |
+          cd build
+          ninja
+
+      - name: Test
+        run: |
+          cd build
+          ./tests/test_foo
+          ./tests/test_fileio
