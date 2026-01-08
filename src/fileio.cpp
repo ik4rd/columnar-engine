@@ -107,3 +107,62 @@ void AppendFileBytes(const std::filesystem::path& path, const std::span<const ui
         }
     }
 }
+
+FileReader::FileReader(const std::filesystem::path& path) : path_(path), in_(path, std::ios::binary) {
+    if (!in_.is_open()) {
+        throw MakeError(path_, "open for read");
+    }
+}
+
+FileReader::~FileReader() {
+    if (in_.is_open()) {
+        in_.close();
+    }
+}
+
+void FileReader::Seek(const std::streampos& pos) {
+    in_.seekg(pos);
+    if (!in_) {
+        throw MakeError(path_, "seek file");
+    }
+}
+
+std::streampos FileReader::Tell() {
+    const std::streampos pos = in_.tellg();
+    if (pos == std::streampos(-1)) {
+        throw MakeError(path_, "tell file");
+    }
+    return pos;
+}
+
+void FileReader::Close() {
+    if (in_.is_open()) {
+        in_.close();
+    }
+}
+
+FileWriter::FileWriter(const std::filesystem::path& path, FileOpenMode mode)
+    : path_(path), out_(path, std::ios::binary | (mode == FileOpenMode::Append ? std::ios::app : std::ios::trunc)) {
+    if (!out_.is_open()) {
+        throw MakeError(path_, "open for write");
+    }
+}
+
+FileWriter::~FileWriter() {
+    if (out_.is_open()) {
+        out_.close();
+    }
+}
+
+void FileWriter::Flush() {
+    out_.flush();
+    if (!out_) {
+        throw MakeError(path_, "write file");
+    }
+}
+
+void FileWriter::Close() {
+    if (out_.is_open()) {
+        out_.close();
+    }
+}
