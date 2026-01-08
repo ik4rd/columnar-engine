@@ -20,6 +20,11 @@ int main() {
             std::cout << "is regular: " << std::boolalpha << metadata->is_regular << std::endl;
         }
 
+        for (uint8_t byte : bytes) {
+            std::cout << static_cast<int>(byte) << " ";
+        }
+        std::cout << std::endl;
+
         std::error_code ec;
         std::filesystem::remove(path, ec);
     } catch (const std::exception& ex) {

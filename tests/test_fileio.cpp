@@ -34,7 +34,7 @@ class TempFile {
 
 TEST(fileio, write_and_read_roundtrip) {
     const TempFile temp("fileio_roundtrip");
-    const std::vector<std::uint8_t> payload = {0, 1, 2, 3, 255};
+    const std::vector<uint8_t> payload = {0, 1, 2, 3, 255};
 
     WriteFileBytes(temp.Path(), payload);
     const auto read_back = ReadFileBytes(temp.Path());
@@ -44,20 +44,20 @@ TEST(fileio, write_and_read_roundtrip) {
 
 TEST(fileio, append_bytes) {
     const TempFile temp("fileio_append");
-    const std::vector<std::uint8_t> initial = {10, 11};
-    std::vector<std::uint8_t> extra = {12, 13};
+    const std::vector<uint8_t> initial = {10, 11};
+    std::vector<uint8_t> extra = {12, 13};
 
     WriteFileBytes(temp.Path(), initial);
     AppendFileBytes(temp.Path(), extra);
 
     const auto read_back = ReadFileBytes(temp.Path());
-    const std::vector<std::uint8_t> expected = {10, 11, 12, 13};
+    const std::vector<uint8_t> expected = {10, 11, 12, 13};
     EXPECT_EQ(read_back, expected);
 }
 
 TEST(fileio, metadata_for_file) {
     const TempFile temp("fileio_meta");
-    const std::vector<std::uint8_t> payload = {42, 43, 44};
+    const std::vector<uint8_t> payload = {42, 43, 44};
 
     WriteFileBytes(temp.Path(), payload);
 
@@ -85,7 +85,7 @@ TEST(fileio, file_exists_checks) {
     const TempFile temp("fileio_exists");
     EXPECT_FALSE(FileExists(temp.Path()));
 
-    WriteFileBytes(temp.Path(), std::vector<std::uint8_t>{1});
+    WriteFileBytes(temp.Path(), std::vector<uint8_t>{1});
 
     EXPECT_TRUE(FileExists(temp.Path()));
 }
