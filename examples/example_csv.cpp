@@ -35,25 +35,25 @@ int main() {
             read_back.push_back(row);
         }
 
-        std::cout << "rows written: " << rows.size() << "\n";
-        std::cout << "rows read: " << read_back.size() << "\n";
+        std::cout << "rows written: " << rows.size() << std::endl;
+        std::cout << "rows read: " << read_back.size() << std::endl;
         for (size_t i = 0; i < read_back.size(); ++i) {
             std::cout << "row " << i << ":";
             for (const auto& value : read_back[i]) {
                 std::cout << " " << std::quoted(value);
             }
-            std::cout << "\n";
+            std::cout << std::endl;
         }
 
         if (read_back != rows) {
-            std::cerr << "csv roundtrip mismatch\n";
+            std::cerr << "csv roundtrip mismatch" << std::endl;
             return 2;
         }
 
         std::error_code ec;
         std::filesystem::remove(path, ec);
     } catch (const std::exception& ex) {
-        std::cerr << "csv example failed: " << ex.what() << "\n";
+        std::cerr << "csv example failed: " << ex.what() << std::endl;
         return 1;
     }
 
