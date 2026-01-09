@@ -40,3 +40,4 @@ jobs:
         run: |
           cd build
           ./tests/test_fileio
+          ./tests/test_csv
