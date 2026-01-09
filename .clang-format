@@ -2,3 +2,9 @@ BasedOnStyle: Google
 IndentWidth: 4
 AccessModifierOffset: -1
 ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+SortIncludes: true

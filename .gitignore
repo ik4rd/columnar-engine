@@ -59,10 +59,18 @@ build.ninja
 build
 compile_commands.json
 src/*.cmake
-src/**/*[!.]*
+src/columnar_engine
+
+# Tests
 tests/*.cmake
-tests/**/*[!.]*
+tests/test_fileio
+tests/test_foo
+
+# Examples
+examples/*.cmake
+examples/example_fileio
 
 # IDE
 .vscode
 .idea
+.venv

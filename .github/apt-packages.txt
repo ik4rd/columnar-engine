@@ -1,0 +1,5 @@
+ninja-build
+cmake
+libgtest-dev
+clang-format
+clang-tidy
