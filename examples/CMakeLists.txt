@@ -5,3 +5,4 @@ function(add_component_example name)
 endfunction()
 
 add_component_example(example_fileio example_fileio.cpp)
+add_component_example(example_csv example_csv.cpp)

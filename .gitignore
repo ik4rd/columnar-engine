@@ -65,10 +65,14 @@ src/columnar_engine
 tests/*.cmake
 tests/test_fileio
 tests/test_foo
+tests/test_columnar
+tests/test_csv
 
 # Examples
 examples/*.cmake
 examples/example_fileio
+examples/example_columnar
+examples/example_csv
 
 # IDE
 .vscode

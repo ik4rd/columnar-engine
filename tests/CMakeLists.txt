@@ -8,3 +8,5 @@ endfunction()
 
 # components
 add_component_test(test_fileio test_fileio.cpp)
+add_component_test(test_columnar test_columnar.cpp)
+add_component_test(test_csv test_csv.cpp)

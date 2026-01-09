@@ -1,6 +1,8 @@
 add_library(columnar_engine_lib
         # .cpp files
         fileio.cpp
+        columnar.cpp
+        csv.cpp
 )
 
 target_include_directories(columnar_engine_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
