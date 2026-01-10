@@ -1,5 +1,6 @@
 add_library(columnar_engine_lib
         # .cpp files
+        error.cpp
         fileio.cpp
         columnar.cpp
         csv.cpp
