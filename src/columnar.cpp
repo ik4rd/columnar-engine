@@ -1,6 +1,37 @@
 #include "columnar.h"
 
+#include "error.h"
 #include "fileio.h"
+
+namespace {
+std::string ToLower(const std::string_view input) {
+    std::string output;
+    output.reserve(input.size());
+    for (const unsigned char ch : input) {
+        output.push_back(static_cast<char>(std::tolower(ch)));
+    }
+    return output;
+}
+[[maybe_unused]] ColumnType ParseColumnType(const std::string_view input) {
+    const std::string lowered = ToLower(input);
+    if (lowered == "int64") {
+        return ColumnType::Int64;
+    }
+    if (lowered == "string") {
+        return ColumnType::String;
+    }
+    throw error::MakeError("columnar", "unknown column type");
+}
+[[maybe_unused]] std::string ColumnTypeToString(const ColumnType type) {
+    switch (type) {
+        case ColumnType::Int64:
+            return "int64";
+        case ColumnType::String:
+            return "string";
+    }
+    return "string";
+}
+}  // namespace
 
 Schema ReadSchemaCsv(const std::filesystem::path& path) {
     (void)path;
