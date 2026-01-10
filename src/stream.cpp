@@ -1,7 +1,5 @@
 #include "stream.h"
 
-#include <ios>
-
 #include "error.h"
 
 void ReadBytes(std::istream& in, char* dst, const size_t size) {
