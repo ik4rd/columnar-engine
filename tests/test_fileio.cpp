@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "../include/temp_file.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
+#include "temp_file.h"
 
 TEST(fileio, write_and_read_roundtrip) {
     const TempFile temp("fileio_roundtrip");

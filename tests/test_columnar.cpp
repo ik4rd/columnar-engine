@@ -3,12 +3,12 @@
 #include <string>
 #include <vector>
 
-#include "../include/temp_file.h"
 #include "columnar.h"
 #include "csv.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
 #include "metadata.h"
+#include "temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
     const TempFile schema_in("schema_in");

@@ -98,17 +98,6 @@ void WriteCsvRow(std::ostream& out, const std::vector<std::string>& row) {
     out << '\n';
 }
 
-void WriteRows(const std::filesystem::path& path, const std::vector<std::vector<std::string>>& rows) {
-    FileWriter writer(path);
-    auto& out = writer.Stream();
-
-    for (const auto& row : rows) {
-        WriteCsvRow(out, row);
-    }
-
-    writer.Flush();
-}
-
 std::vector<std::vector<std::string>> ReadRows(const std::filesystem::path& path) {
     FileReader reader(path);
     auto& in = reader.Stream();
@@ -121,4 +110,15 @@ std::vector<std::vector<std::string>> ReadRows(const std::filesystem::path& path
     }
 
     return rows;
+}
+
+void WriteRows(const std::filesystem::path& path, const std::vector<std::vector<std::string>>& rows) {
+    FileWriter writer(path);
+    auto& out = writer.Stream();
+
+    for (const auto& row : rows) {
+        WriteCsvRow(out, row);
+    }
+
+    writer.Flush();
 }
