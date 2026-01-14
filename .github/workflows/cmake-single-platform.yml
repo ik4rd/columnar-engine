@@ -13,14 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache APT downloads
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/apt
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/apt-packages.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-
-
       - name: Fetch dependencies
         shell: bash
         run: scripts/install_dependencies.sh
@@ -41,3 +33,4 @@ jobs:
           cd build
           ./tests/test_fileio
           ./tests/test_csv
+          ./tests/test_columnar
