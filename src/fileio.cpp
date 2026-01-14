@@ -1,20 +1,12 @@
 #include "fileio.h"
 
-#include <fstream>
-#include <stdexcept>
-#include <string>
-
-namespace {
-std::runtime_error MakeError(const std::filesystem::path& path, const std::string& action) {
-    return std::runtime_error("fileio: failed to " + action + " '" + path.string() + "'");
-}
-}  // namespace
+#include "error.h"
 
 std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
         if (ec) {
-            throw MakeError(path, "check existence");
+            throw error::MakePathError("fileio", path, "check existence");
         }
         return std::nullopt;
     }
@@ -22,7 +14,7 @@ std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     FileMetadata metadata;
     const auto status = std::filesystem::status(path, ec);
     if (ec) {
-        throw MakeError(path, "read status");
+        throw error::MakePathError("fileio", path, "read status");
     }
 
     metadata.is_regular = std::filesystem::is_regular_file(status);
@@ -30,13 +22,13 @@ std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     if (metadata.is_regular) {
         metadata.size = std::filesystem::file_size(path, ec);
         if (ec) {
-            throw MakeError(path, "read file size");
+            throw error::MakePathError("fileio", path, "read file size");
         }
     }
 
     metadata.last_write_time = std::filesystem::last_write_time(path, ec);
     if (ec) {
-        throw MakeError(path, "read last write time");
+        throw error::MakePathError("fileio", path, "read last write time");
     }
 
     return metadata;
@@ -46,7 +38,7 @@ bool FileExists(const std::filesystem::path& path) {
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
     if (ec) {
-        throw MakeError(path, "check existence");
+        throw error::MakePathError("fileio", path, "check existence");
     }
     return exists;
 }
@@ -54,12 +46,12 @@ bool FileExists(const std::filesystem::path& path) {
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        throw MakeError(path, "open for read");
+        throw error::MakePathError("fileio", path, "open for read");
     }
 
     const std::ifstream::pos_type end_pos = file.tellg();
     if (end_pos < 0) {
-        throw MakeError(path, "read file size");
+        throw error::MakePathError("fileio", path, "read file size");
     }
 
     std::vector<uint8_t> data(end_pos);
@@ -70,7 +62,7 @@ std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     file.seekg(0, std::ios::beg);
     file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
     if (!file) {
-        throw MakeError(path, "read file");
+        throw error::MakePathError("fileio", path, "read file");
     }
 
     return data;
@@ -79,13 +71,13 @@ std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
 void WriteFileBytes(const std::filesystem::path& path, const std::span<const uint8_t> bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file.is_open()) {
-        throw MakeError(path, "open for write");
+        throw error::MakePathError("fileio", path, "open for write");
     }
 
     if (!bytes.empty()) {
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!file) {
-            throw MakeError(path, "write file");
+            throw error::MakePathError("fileio", path, "write file");
         }
     }
 }
@@ -97,20 +89,20 @@ void WriteFileBytes(const std::filesystem::path& path, const std::vector<uint8_t
 void AppendFileBytes(const std::filesystem::path& path, const std::span<const uint8_t> bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::app);
     if (!file.is_open()) {
-        throw MakeError(path, "open for append");
+        throw error::MakePathError("fileio", path, "open for append");
     }
 
     if (!bytes.empty()) {
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!file) {
-            throw MakeError(path, "append file");
+            throw error::MakePathError("fileio", path, "append file");
         }
     }
 }
 
 FileReader::FileReader(const std::filesystem::path& path) : path_(path), in_(path, std::ios::binary) {
     if (!in_.is_open()) {
-        throw MakeError(path_, "open for read");
+        throw error::MakePathError("fileio", path_, "open for read");
     }
 }
 
@@ -123,14 +115,14 @@ FileReader::~FileReader() {
 void FileReader::Seek(const std::streampos& pos) {
     in_.seekg(pos);
     if (!in_) {
-        throw MakeError(path_, "seek file");
+        throw error::MakePathError("fileio", path_, "seek file");
     }
 }
 
 std::streampos FileReader::Tell() {
     const std::streampos pos = in_.tellg();
     if (pos == std::streampos(-1)) {
-        throw MakeError(path_, "tell file");
+        throw error::MakePathError("fileio", path_, "tell file");
     }
     return pos;
 }
@@ -144,7 +136,7 @@ void FileReader::Close() {
 FileWriter::FileWriter(const std::filesystem::path& path, FileOpenMode mode)
     : path_(path), out_(path, std::ios::binary | (mode == FileOpenMode::Append ? std::ios::app : std::ios::trunc)) {
     if (!out_.is_open()) {
-        throw MakeError(path_, "open for write");
+        throw error::MakePathError("fileio", path_, "open for write");
     }
 }
 
@@ -157,8 +149,16 @@ FileWriter::~FileWriter() {
 void FileWriter::Flush() {
     out_.flush();
     if (!out_) {
-        throw MakeError(path_, "write file");
+        throw error::MakePathError("fileio", path_, "write file");
     }
+}
+
+std::streampos FileWriter::Tell() {
+    const std::streampos pos = out_.tellp();
+    if (pos == std::streampos(-1)) {
+        throw error::MakePathError("fileio", path_, "tell file");
+    }
+    return pos;
 }
 
 void FileWriter::Close() {

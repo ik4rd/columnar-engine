@@ -18,9 +18,7 @@ std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path);
 bool FileExists(const std::filesystem::path& path);
 
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path);
-
 void WriteFileBytes(const std::filesystem::path& path, std::span<const uint8_t> bytes);
-
 void WriteFileBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes);
 
 void AppendFileBytes(const std::filesystem::path& path, std::span<const uint8_t> bytes);
@@ -55,6 +53,7 @@ class FileWriter {
     const std::filesystem::path& Path() const { return path_; }
     std::ostream& Stream() { return out_; }
 
+    std::streampos Tell();
     void Flush();
     void Close();
 
