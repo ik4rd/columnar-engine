@@ -1,10 +1,15 @@
 add_library(columnar_engine_lib
         # .cpp files
-        error.cpp
-        fileio.cpp
         columnar.cpp
         csv.cpp
+        error.cpp
+        fileio.cpp
+        magic.cpp
+        metadata.cpp
+        parsing.cpp
+        row_group.cpp
         stream.cpp
+        utils.cpp
 )
 
 target_include_directories(columnar_engine_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

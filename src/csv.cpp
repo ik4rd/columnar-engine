@@ -1,8 +1,7 @@
 #include "csv.h"
 
-namespace {
-bool NeedsQuotes(const std::string_view value) { return value.find_first_of(",\"\n\r") != std::string_view::npos; }
-}  // namespace
+#include "fileio.h"
+#include "utils.h"
 
 bool ReadCsvRow(std::istream& in, std::vector<std::string>& row) {
     row.clear();
@@ -97,4 +96,29 @@ void WriteCsvRow(std::ostream& out, const std::vector<std::string>& row) {
         out << '"';
     }
     out << '\n';
+}
+
+void WriteRows(const std::filesystem::path& path, const std::vector<std::vector<std::string>>& rows) {
+    FileWriter writer(path);
+    auto& out = writer.Stream();
+
+    for (const auto& row : rows) {
+        WriteCsvRow(out, row);
+    }
+
+    writer.Flush();
+}
+
+std::vector<std::vector<std::string>> ReadRows(const std::filesystem::path& path) {
+    FileReader reader(path);
+    auto& in = reader.Stream();
+
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> row;
+
+    while (ReadCsvRow(in, row)) {
+        rows.push_back(row);
+    }
+
+    return rows;
 }

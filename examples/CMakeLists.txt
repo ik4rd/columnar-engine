@@ -6,3 +6,4 @@ endfunction()
 
 add_component_example(example_fileio example_fileio.cpp)
 add_component_example(example_csv example_csv.cpp)
+add_component_example(example_columnar example_columnar.cpp)

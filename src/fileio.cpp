@@ -1,7 +1,5 @@
 #include "fileio.h"
 
-#include <fstream>
-
 #include "error.h"
 
 std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
@@ -153,6 +151,14 @@ void FileWriter::Flush() {
     if (!out_) {
         throw error::MakePathError("fileio", path_, "write file");
     }
+}
+
+std::streampos FileWriter::Tell() {
+    const std::streampos pos = out_.tellp();
+    if (pos == std::streampos(-1)) {
+        throw error::MakePathError("fileio", path_, "tell file");
+    }
+    return pos;
 }
 
 void FileWriter::Close() {
