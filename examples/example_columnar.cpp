@@ -5,8 +5,6 @@
 
 #include "columnar.h"
 #include "csv.h"
-#include "fileio.h"
-#include "temp_file.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     for (const auto& row : rows) {
@@ -18,38 +16,59 @@ void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     }
 }
 
+bool SchemasEqual(const Schema& left, const Schema& right) {
+    if (left.columns.size() != right.columns.size()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < left.columns.size(); ++i) {
+        if (left.columns[i].name != right.columns[i].name) {
+            return false;
+        }
+        if (left.columns[i].type != right.columns[i].type) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 int main() {
     try {
-        const TempFile schema_in("schema_in");
-        const TempFile data_in("data_in");
-        const TempFile columnar_file("data_columnar");
-        const TempFile schema_out("schema_out");
-        const TempFile data_out("data_out");
+        const std::filesystem::path base_dir = std::filesystem::path(__FILE__).parent_path();
+        const std::filesystem::path schema_in = base_dir / "schema.csv";
+        const std::filesystem::path data_in = base_dir / "data.csv";
+        const std::filesystem::path out_dir = base_dir / "out";
+        std::filesystem::create_directories(out_dir);
 
-        const std::vector<std::vector<std::string>> schema_rows = {
-            {"id", "int64"},
-            {"name", "string"},
-            {"score", "int64"},
-        };
-        const std::vector<std::vector<std::string>> data_rows = {
-            {"1", "alpha", "10"},
-            {"2", "be,ta", "20"},
-            {"3", "ga\"mma", "30"},
-        };
+        const std::filesystem::path columnar_file = out_dir / "output.columnar";
+        const std::filesystem::path schema_out = out_dir / "schema_out.csv";
+        const std::filesystem::path data_out = out_dir / "data_out.csv";
 
-        WriteRows(schema_in.Path(), schema_rows);
-        WriteRows(data_in.Path(), data_rows);
+        std::cout << "input schema: " << schema_in << std::endl;
+        std::cout << "input data: " << data_in << std::endl;
+        std::cout << "output columnar: " << columnar_file << std::endl;
+        std::cout << "output schema: " << schema_out << std::endl;
+        std::cout << "output data: " << data_out << std::endl;
 
         constexpr size_t kRowGroupSize = 2;
-        ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), kRowGroupSize);
-        ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
+        ConvertCsvToColumnar(schema_in, data_in, columnar_file, kRowGroupSize);
+        ConvertColumnarToCsv(columnar_file, schema_out, data_out);
 
-        const auto roundtrip = ReadRows(data_out.Path());
+        const Schema schema_before = ReadSchemaCsv(schema_in);
+        const Schema schema_after = ReadSchemaCsv(schema_out);
+        if (!SchemasEqual(schema_before, schema_after)) {
+            std::cerr << "schema roundtrip mismatch" << std::endl;
+            return 1;
+        }
+
+        const auto data_rows = ReadRows(data_in);
+        const auto roundtrip = ReadRows(data_out);
         std::cout << "roundtrip rows: " << roundtrip.size() << std::endl;
         PrintRows(roundtrip);
 
         if (roundtrip != data_rows) {
-            std::cerr << "roundtrip mismatch" << std::endl;
+            std::cerr << "data roundtrip mismatch" << std::endl;
             return 1;
         }
     } catch (const std::exception& ex) {
