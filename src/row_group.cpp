@@ -1,4 +1,4 @@
-#include "../include/row_group.h"
+#include "row_group.h"
 
 #include <limits>
 

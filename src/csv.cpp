@@ -1,5 +1,6 @@
 #include "csv.h"
 
+#include "error.h"
 #include "fileio.h"
 #include "utils.h"
 
@@ -17,7 +18,7 @@ bool ReadCsvRow(std::istream& in, std::vector<std::string>& row) {
                 return false;
             }
             if (in_quotes) {
-                throw std::runtime_error("csv: unexpected EOF inside quoted field");
+                throw error::MakeError("csv", "unexpected EOF inside quoted field");
             }
             row.push_back(field);
             return true;
