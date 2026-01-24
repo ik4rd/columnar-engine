@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <filesystem>
 #include <iosfwd>
+#include <vector>
 
-#include "columnar.h"
+#include "schema.h"
 
 struct ColumnChunkMetadata {
     uint64_t offset = 0;

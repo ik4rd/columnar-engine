@@ -5,6 +5,8 @@
 
 #include "columnar.h"
 #include "csv.h"
+#include "schema.h"
+#include "utils.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     for (const auto& row : rows) {
@@ -16,29 +18,12 @@ void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     }
 }
 
-bool SchemasEqual(const Schema& left, const Schema& right) {
-    if (left.columns.size() != right.columns.size()) {
-        return false;
-    }
-
-    for (size_t i = 0; i < left.columns.size(); ++i) {
-        if (left.columns[i].name != right.columns[i].name) {
-            return false;
-        }
-        if (left.columns[i].type != right.columns[i].type) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 int main() {
     try {
         const std::filesystem::path base_dir = std::filesystem::path(__FILE__).parent_path();
         const std::filesystem::path schema_in = base_dir / "schema.csv";
         const std::filesystem::path data_in = base_dir / "data.csv";
-        const std::filesystem::path out_dir = base_dir / "out";
+        const std::filesystem::path out_dir = base_dir / "out_columnar";
         std::filesystem::create_directories(out_dir);
 
         const std::filesystem::path columnar_file = out_dir / "output.columnar";

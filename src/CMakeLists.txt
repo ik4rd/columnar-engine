@@ -1,5 +1,10 @@
 add_library(columnar_engine_lib
         # .cpp files
+        batch.cpp
+        batch_io.cpp
+        column.cpp
+        column_int64.cpp
+        column_string.cpp
         columnar.cpp
         csv.cpp
         error.cpp
@@ -8,6 +13,7 @@ add_library(columnar_engine_lib
         metadata.cpp
         parsing.cpp
         row_group.cpp
+        schema.cpp
         stream.cpp
         utils.cpp
 )

@@ -34,3 +34,4 @@ jobs:
           ./tests/test_fileio
           ./tests/test_csv
           ./tests/test_columnar
+          ./tests/test_batch

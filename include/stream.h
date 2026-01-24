@@ -1,8 +1,12 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <istream>
 #include <ostream>
 #include <string_view>
+#include <type_traits>
 
 #include "error.h"
 

@@ -8,6 +8,7 @@
 #include "fileio.h"
 #include "gtest/gtest.h"
 #include "metadata.h"
+#include "schema.h"
 #include "temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
