@@ -1,24 +1,30 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "ru-RU"
+early_access: false
+
 reviews:
   auto_review:
     enabled: true
+    drafts: false
 
-path_filters:
-  include:
+  path_filters:
     - "src/**"
     - "include/**"
     - "CMakeLists.txt"
     - "**/*.cmake"
     - ".github/workflows/**"
-  exclude:
-    - "build/**"
+    - "!build/**"
 
-review_instructions:
-  - path: "**/*.{h,hpp,cpp,cc,cxx}"
-    instructions: |
-      Проверь: UB/границы/инициализация, обработку ошибок, утечки ресурсов (RAII),
-      корректность исключений, const-correctness, сложность, читаемость.
-      Если меняется логика — проси тесты.
-  - path: "**/*CMakeLists.txt"
-    instructions: |
-      Проверь: корректность target_* команд, видимость include dirs, предупреждения компилятора,
-      работу на чистой машине (без “случайных” зависимостей).
+  path_instructions:
+    - path: "**/*.{h,hpp,cpp,cc,cxx}"
+      instructions: |
+        Проверь: UB/границы/инициализация, RAII, обработку ошибок,
+        исключения, const-correctness, сложность, читаемость.
+        Если меняется логика — попроси тесты.
+    - path: "**/*CMakeLists.txt"
+      instructions: |
+        Проверь корректность target_* команд, include dirs, линковку,
+        и что сборка проходит на чистой машине.
+
+chat:
+  auto_reply: true
