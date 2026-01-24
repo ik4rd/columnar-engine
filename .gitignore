@@ -67,12 +67,19 @@ tests/test_fileio
 tests/test_foo
 tests/test_columnar
 tests/test_csv
+tests/test_batch
+tests/test_columns
 
 # Examples
 examples/*.cmake
 examples/example_fileio
 examples/example_columnar
 examples/example_csv
+examples/example_batch
+examples/example_columns
+
+examples/out_batch
+examples/out_columnar
 
 # IDE
 .vscode
