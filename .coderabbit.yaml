@@ -1,0 +1,24 @@
+reviews:
+  auto_review:
+    enabled: true
+
+path_filters:
+  include:
+    - "src/**"
+    - "include/**"
+    - "CMakeLists.txt"
+    - "**/*.cmake"
+    - ".github/workflows/**"
+  exclude:
+    - "build/**"
+
+review_instructions:
+  - path: "**/*.{h,hpp,cpp,cc,cxx}"
+    instructions: |
+      Проверь: UB/границы/инициализация, обработку ошибок, утечки ресурсов (RAII),
+      корректность исключений, const-correctness, сложность, читаемость.
+      Если меняется логика — проси тесты.
+  - path: "**/*CMakeLists.txt"
+    instructions: |
+      Проверь: корректность target_* команд, видимость include dirs, предупреждения компилятора,
+      работу на чистой машине (без “случайных” зависимостей).
