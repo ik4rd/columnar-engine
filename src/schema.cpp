@@ -5,6 +5,18 @@
 #include "fileio.h"
 #include "parsing.h"
 
+/**
+ * @brief Reads a schema definition from a CSV file and constructs a Schema.
+ *
+ * The CSV must contain one column definition per row with exactly two columns:
+ * the column name and the column type (as parsed by ParseColumnType).
+ * Rows consisting of a single empty string are ignored.
+ *
+ * @param path Filesystem path to the CSV file containing the schema.
+ * @return Schema The parsed Schema with populated columns.
+ * @throws error::Error if any CSV row does not have exactly two columns (message: "schema csv must have 2 columns").
+ * @throws error::Error if the CSV contains no column definitions (message: "schema csv is empty").
+ */
 Schema ReadSchemaCsv(const std::filesystem::path& path) {
     FileReader reader(path);
     auto& in = reader.Stream();
