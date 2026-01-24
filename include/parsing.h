@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <string_view>
 
-#include "columnar.h"
+#include "schema.h"
 
 int64_t ParseInt64(const std::string& value);
 

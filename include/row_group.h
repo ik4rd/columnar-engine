@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "columnar.h"
+#include "schema.h"
 #include "fileio.h"
 #include "metadata.h"
 

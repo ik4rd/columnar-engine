@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "column.h"
+#include "schema.h"
 
 class Batch {
    public:

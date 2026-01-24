@@ -5,6 +5,7 @@
 
 #include "columnar.h"
 #include "csv.h"
+#include "schema.h"
 #include "utils.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {

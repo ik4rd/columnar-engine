@@ -13,6 +13,7 @@ add_library(columnar_engine_lib
         metadata.cpp
         parsing.cpp
         row_group.cpp
+        schema.cpp
         stream.cpp
         utils.cpp
 )

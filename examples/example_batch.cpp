@@ -4,8 +4,8 @@
 #include <vector>
 
 #include "batch_io.h"
-#include "columnar.h"
 #include "csv.h"
+#include "schema.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     for (const auto& row : rows) {

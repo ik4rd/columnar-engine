@@ -2,7 +2,7 @@
 
 #include <limits>
 
-#include "columnar.h"
+#include "schema.h"
 #include "error.h"
 
 std::string ToLower(const std::string_view input) {

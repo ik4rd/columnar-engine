@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "columnar.h"
+#include "schema.h"
 
 class Column {
    public:
