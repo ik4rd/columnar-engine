@@ -16,12 +16,22 @@ struct BatchSizing {
 
 class BatchReader {
    public:
+    BatchReader() = default;
+    BatchReader(const BatchReader&) = default;
+    BatchReader(BatchReader&&) noexcept = default;
+    BatchReader& operator=(const BatchReader&) = default;
+    BatchReader& operator=(BatchReader&&) noexcept = default;
     virtual ~BatchReader() = default;
     virtual std::optional<Batch> ReadNext() = 0;
 };
 
 class BatchWriter {
    public:
+    BatchWriter() = default;
+    BatchWriter(const BatchWriter&) = default;
+    BatchWriter(BatchWriter&&) noexcept = default;
+    BatchWriter& operator=(const BatchWriter&) = default;
+    BatchWriter& operator=(BatchWriter&&) noexcept = default;
     virtual ~BatchWriter() = default;
     virtual void Write(const Batch& batch) = 0;
     virtual void Flush() = 0;

@@ -1,5 +1,7 @@
 #include "csv.h"
 
+#include <utility>
+
 #include "error.h"
 #include "fileio.h"
 
@@ -10,6 +12,28 @@ static bool NeedsCsvQuotes(const std::string_view value) {
 CsvReader::CsvReader(std::istream& in) : in_(&in) {}
 
 CsvReader::CsvReader(const std::filesystem::path& path) : owned_in_(OpenInputFile(path)), in_(&owned_in_) {}
+
+CsvReader::CsvReader(CsvReader&& other) noexcept : owned_in_(std::move(other.owned_in_)) {
+    RebindAfterMove(other.in_ == &other.owned_in_, other.in_);
+    other.in_ = nullptr;
+}
+
+CsvReader& CsvReader::operator=(CsvReader&& other) noexcept {
+    if (this != &other) {
+        owned_in_ = std::move(other.owned_in_);
+        RebindAfterMove(other.in_ == &other.owned_in_, other.in_);
+        other.in_ = nullptr;
+    }
+    return *this;
+}
+
+void CsvReader::RebindAfterMove(const bool uses_owned_stream, std::istream* source_stream) noexcept {
+    if (uses_owned_stream) {
+        in_ = &owned_in_;
+        return;
+    }
+    in_ = source_stream;
+}
 
 bool CsvReader::ReadRow(std::vector<std::string>& row) const {
     row.clear();
@@ -84,6 +108,28 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
 CsvWriter::CsvWriter(std::ostream& out) : out_(&out) {}
 
 CsvWriter::CsvWriter(const std::filesystem::path& path) : owned_out_(OpenOutputFile(path)), out_(&owned_out_) {}
+
+CsvWriter::CsvWriter(CsvWriter&& other) noexcept : owned_out_(std::move(other.owned_out_)) {
+    RebindAfterMove(other.out_ == &other.owned_out_, other.out_);
+    other.out_ = nullptr;
+}
+
+CsvWriter& CsvWriter::operator=(CsvWriter&& other) noexcept {
+    if (this != &other) {
+        owned_out_ = std::move(other.owned_out_);
+        RebindAfterMove(other.out_ == &other.owned_out_, other.out_);
+        other.out_ = nullptr;
+    }
+    return *this;
+}
+
+void CsvWriter::RebindAfterMove(const bool uses_owned_stream, std::ostream* source_stream) noexcept {
+    if (uses_owned_stream) {
+        out_ = &owned_out_;
+        return;
+    }
+    out_ = source_stream;
+}
 
 void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
     for (size_t i = 0; i < row.size(); ++i) {

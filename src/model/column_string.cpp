@@ -22,6 +22,8 @@ std::string StringColumn::ValueAsString(const size_t row) const {
     return values_[row];
 }
 
+std::unique_ptr<Column> StringColumn::Clone() const { return std::make_unique<StringColumn>(*this); }
+
 void StringColumn::WriteTo(std::ostream& out) const {
     for (const std::string& value : values_) {
         if (value.size() > std::numeric_limits<uint32_t>::max()) {
