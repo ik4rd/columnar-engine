@@ -1,10 +1,10 @@
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "columnar_batch_io.h"
 #include "csv.h"
 #include "csv_batch_io.h"
+#include "error.h"
 #include "gtest/gtest.h"
 #include "temp_file.h"
 
@@ -108,7 +108,7 @@ TEST(batch, validate_detects_row_count_mismatch) {
     batch.ColumnAt(0).AppendFromString("2");
     batch.ColumnAt(1).AppendFromString("alpha");
 
-    EXPECT_THROW(batch.Validate(), std::runtime_error);
+    EXPECT_THROW(batch.Validate(), Error);
 }
 
 TEST(batch, csv_reader_respects_max_values) {
@@ -187,7 +187,7 @@ TEST(batch, csv_reader_throws_on_column_mismatch) {
     sizing.max_rows = 2;
     CsvBatchReader reader(data_in.Path(), schema, sizing);
 
-    EXPECT_THROW(reader.ReadNext(), std::runtime_error);
+    EXPECT_THROW(reader.ReadNext(), Error);
 }
 
 TEST(batch, columnar_writer_rejects_after_finalize) {
@@ -202,6 +202,6 @@ TEST(batch, columnar_writer_rejects_after_finalize) {
     writer.Finalize();
 
     Batch batch(schema);
-    EXPECT_THROW(writer.Write(batch), std::runtime_error);
-    EXPECT_THROW(writer.Finalize(), std::runtime_error);
+    EXPECT_THROW(writer.Write(batch), Error);
+    EXPECT_THROW(writer.Finalize(), Error);
 }

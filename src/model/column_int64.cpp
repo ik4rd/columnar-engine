@@ -32,7 +32,7 @@ void Int64Column::WriteTo(std::ostream& out) const {
 void Int64Column::ReadFrom(std::istream& in, const uint32_t row_count, const uint64_t size) {
     const uint64_t expected = static_cast<uint64_t>(row_count) * sizeof(int64_t);
     if (size != expected) {
-        throw error::MakeError("column_int64", "int64 column chunk size mismatch");
+        throw Error::Mismatch("column_int64", "int64 column chunk size mismatch");
     }
 
     values_.assign(row_count, 0);

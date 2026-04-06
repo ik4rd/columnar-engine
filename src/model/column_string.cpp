@@ -25,7 +25,7 @@ std::string StringColumn::ValueAsString(const size_t row) const {
 void StringColumn::WriteTo(std::ostream& out) const {
     for (const std::string& value : values_) {
         if (value.size() > std::numeric_limits<uint32_t>::max()) {
-            throw error::MakeError("column_string", "string value exceeds supported size");
+            throw Error::Overflow("column_string", "string value exceeds supported size");
         }
         WriteStream<uint32_t>(out, value.size());
         WriteBytes(out, value);
@@ -43,11 +43,12 @@ void StringColumn::ReadFrom(std::istream& in, const uint32_t row_count, const ui
 
         std::string value(length, '\0');
         ReadBytes(in, value.data(), value.size());
+
         consumed += length;
         values_.push_back(std::move(value));
     }
 
     if (consumed != size) {
-        throw error::MakeError("column_string", "string column chunk size mismatch");
+        throw Error::Mismatch("column_string", "string column chunk size mismatch");
     }
 }

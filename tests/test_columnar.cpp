@@ -1,11 +1,11 @@
 #include <filesystem>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "columnar_batch_io.h"
 #include "csv_columnar.h"
 #include "csv.h"
+#include "error.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
 #include "schema.h"
@@ -121,5 +121,5 @@ TEST(columnar, invalid_int64_throws) {
     WriteRows(schema_in.Path(), {{"value", "int64"}});
     WriteRows(data_in.Path(), {{"not_a_number"}});
 
-    EXPECT_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 4), std::runtime_error);
+    EXPECT_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 4), Error);
 }

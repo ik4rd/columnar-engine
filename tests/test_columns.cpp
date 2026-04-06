@@ -1,9 +1,9 @@
 #include <sstream>
-#include <stdexcept>
 #include <string>
 
 #include "column_int64.h"
 #include "column_string.h"
+#include "error.h"
 #include "gtest/gtest.h"
 
 TEST(columns, int64_roundtrip) {
@@ -46,11 +46,11 @@ TEST(columns, string_roundtrip) {
 
 TEST(columns, int64_invalid_value_throws) {
     Int64Column values;
-    EXPECT_THROW(values.AppendFromString("not_a_number"), std::runtime_error);
+    EXPECT_THROW(values.AppendFromString("not_a_number"), Error);
 }
 
 TEST(columns, string_out_of_range_throws) {
     StringColumn values;
     values.AppendFromString("alpha");
-    EXPECT_THROW(values.ValueAsString(1), std::runtime_error);
+    EXPECT_THROW(values.ValueAsString(1), Error);
 }

@@ -1,9 +1,9 @@
 #include <filesystem>
 #include <ios>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "error.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
 #include "temp_file.h"
@@ -58,7 +58,7 @@ TEST(fileio, metadata_for_missing_file) {
 TEST(fileio, read_missing_file_throws) {
     const auto missing = UniqueTempPath("fileio_missing_read");
 
-    EXPECT_THROW(ReadFileBytes(missing), std::runtime_error);
+    EXPECT_THROW(ReadFileBytes(missing), Error);
 }
 
 TEST(fileio, file_exists_checks) {
@@ -126,5 +126,5 @@ TEST(fileio, stream_seek_and_tell) {
 TEST(fileio, stream_open_missing_throws) {
     const auto missing = UniqueTempPath("fileio_stream_missing");
 
-    EXPECT_THROW({ std::ifstream in = OpenInputFile(missing); }, std::runtime_error);
+    EXPECT_THROW({ std::ifstream in = OpenInputFile(missing); }, Error);
 }
