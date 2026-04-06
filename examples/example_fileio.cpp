@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <vector>
 
@@ -10,27 +11,24 @@ int main() {
 
         const std::vector<uint8_t> payload = {1, 2, 3, 4};
         {
-            FileWriter writer(path);
-            auto& out = writer.Stream();
+            std::ofstream out = OpenOutputFile(path);
             out.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
-            writer.Flush();
+            out.flush();
         }
 
         const std::vector<uint8_t> extra = {5, 6};
         {
-            FileWriter writer(path, FileOpenMode::Append);
-            auto& out = writer.Stream();
+            std::ofstream out = OpenOutputFile(path, FileOpenMode::Append);
             out.write(reinterpret_cast<const char*>(extra.data()), static_cast<std::streamsize>(extra.size()));
-            writer.Flush();
+            out.flush();
         }
 
-        FileReader reader(path);
-        auto& in = reader.Stream();
+        std::ifstream in = OpenInputFile(path);
         std::vector<uint8_t> bytes(payload.size() + extra.size());
         in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 
         std::cout << "read bytes: " << bytes.size() << std::endl;
-        if (const auto metadata = GetFileMetadata(path)) {
+        if (const auto metadata = TryGetFileMetadata(path)) {
             std::cout << "size on disk: " << metadata->size << std::endl;
             std::cout << "is regular: " << std::boolalpha << metadata->is_regular << std::endl;
         }

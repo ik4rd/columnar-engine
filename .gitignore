@@ -57,11 +57,13 @@ build.ninja
 
 # Build
 build
+build-sanitizers
 compile_commands.json
 src/*.cmake
 src/columnar_engine
 
 # Tests
+scripts/__pycache__
 tests/*.cmake
 tests/test_fileio
 tests/test_foo
@@ -69,6 +71,7 @@ tests/test_columnar
 tests/test_csv
 tests/test_batch
 tests/test_columns
+tests/test_stream
 
 # Examples
 examples/*.cmake

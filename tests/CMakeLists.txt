@@ -6,9 +6,9 @@ function(add_component_test name)
     gtest_discover_tests(${name})
 endfunction()
 
-# components
 add_component_test(test_fileio test_fileio.cpp)
 add_component_test(test_columnar test_columnar.cpp)
 add_component_test(test_csv test_csv.cpp)
 add_component_test(test_batch test_batch.cpp)
 add_component_test(test_columns test_columns.cpp)
+add_component_test(test_stream test_stream.cpp)

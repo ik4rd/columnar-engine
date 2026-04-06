@@ -24,7 +24,11 @@ TEST(fileio, append_bytes) {
     const std::vector<uint8_t> extra = {12, 13};
 
     WriteFileBytes(temp.Path(), initial);
-    AppendFileBytes(temp.Path(), extra);
+    std::ofstream out = OpenOutputFile(temp.Path(), FileOpenMode::Append);
+    out.write(reinterpret_cast<const char*>(extra.data()), extra.size());
+    ASSERT_TRUE(out.good());
+    out.flush();
+    ASSERT_TRUE(out.good());
 
     const auto read_back = ReadFileBytes(temp.Path());
     const std::vector<uint8_t> expected = {10, 11, 12, 13};
@@ -37,7 +41,7 @@ TEST(fileio, metadata_for_file) {
 
     WriteFileBytes(temp.Path(), payload);
 
-    const auto metadata = GetFileMetadata(temp.Path());
+    const auto metadata = TryGetFileMetadata(temp.Path());
     ASSERT_TRUE(metadata.has_value());
     EXPECT_TRUE(metadata->is_regular);
     EXPECT_FALSE(metadata->is_directory);
@@ -46,7 +50,7 @@ TEST(fileio, metadata_for_file) {
 
 TEST(fileio, metadata_for_missing_file) {
     const auto missing = UniqueTempPath("fileio_missing");
-    const auto metadata = GetFileMetadata(missing);
+    const auto metadata = TryGetFileMetadata(missing);
 
     EXPECT_FALSE(metadata.has_value());
 }
@@ -70,17 +74,15 @@ TEST(fileio, stream_roundtrip) {
     const TempFile temp("fileio_stream_roundtrip");
     const std::vector<uint8_t> payload = {7, 8, 9, 10, 11};
 
-    FileWriter writer(temp.Path());
-    auto& out = writer.Stream();
-    out.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+    std::ofstream out = OpenOutputFile(temp.Path());
+    out.write(reinterpret_cast<const char*>(payload.data()), payload.size());
     ASSERT_TRUE(out.good());
-    writer.Flush();
-    writer.Close();
+    out.flush();
+    ASSERT_TRUE(out.good());
 
-    FileReader reader(temp.Path());
-    auto& in = reader.Stream();
+    std::ifstream in = OpenInputFile(temp.Path());
     std::vector<uint8_t> read_back(payload.size());
-    in.read(reinterpret_cast<char*>(read_back.data()), static_cast<std::streamsize>(read_back.size()));
+    in.read(reinterpret_cast<char*>(read_back.data()), read_back.size());
     ASSERT_EQ(static_cast<size_t>(in.gcount()), read_back.size());
     EXPECT_EQ(read_back, payload);
 }
@@ -92,12 +94,11 @@ TEST(fileio, stream_append) {
 
     WriteFileBytes(temp.Path(), initial);
 
-    FileWriter writer(temp.Path(), FileOpenMode::Append);
-    auto& out = writer.Stream();
-    out.write(reinterpret_cast<const char*>(extra.data()), static_cast<std::streamsize>(extra.size()));
+    std::ofstream out = OpenOutputFile(temp.Path(), FileOpenMode::Append);
+    out.write(reinterpret_cast<const char*>(extra.data()), extra.size());
     ASSERT_TRUE(out.good());
-    writer.Flush();
-    writer.Close();
+    out.flush();
+    ASSERT_TRUE(out.good());
 
     const auto read_back = ReadFileBytes(temp.Path());
     const std::vector<uint8_t> expected = {1, 2, 3, 4, 5};
@@ -110,12 +111,12 @@ TEST(fileio, stream_seek_and_tell) {
 
     WriteFileBytes(temp.Path(), payload);
 
-    FileReader reader(temp.Path());
-    EXPECT_EQ(reader.Tell(), std::streampos(0));
-    reader.Seek(std::streampos(2));
-    EXPECT_EQ(reader.Tell(), std::streampos(2));
+    std::ifstream in = OpenInputFile(temp.Path());
+    EXPECT_EQ(in.tellg(), std::streampos(0));
+    in.seekg(std::streampos(2));
+    ASSERT_TRUE(in.good());
+    EXPECT_EQ(in.tellg(), std::streampos(2));
 
-    auto& in = reader.Stream();
     uint8_t value = 0;
     in.read(reinterpret_cast<char*>(&value), 1);
     ASSERT_EQ(in.gcount(), 1);
@@ -125,5 +126,5 @@ TEST(fileio, stream_seek_and_tell) {
 TEST(fileio, stream_open_missing_throws) {
     const auto missing = UniqueTempPath("fileio_stream_missing");
 
-    EXPECT_THROW({ FileReader reader(missing); }, std::runtime_error);
+    EXPECT_THROW({ std::ifstream in = OpenInputFile(missing); }, std::runtime_error);
 }

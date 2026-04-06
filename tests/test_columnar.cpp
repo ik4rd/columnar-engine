@@ -3,11 +3,11 @@
 #include <string>
 #include <vector>
 
-#include "columnar.h"
+#include "columnar_batch_io.h"
+#include "csv_columnar.h"
 #include "csv.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
-#include "metadata.h"
 #include "schema.h"
 #include "temp_file.h"
 
@@ -70,7 +70,8 @@ TEST(columnar, metadata_offsets_and_sizes) {
 
     ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 2);
 
-    const auto [schema, row_groups] = ReadColumnarMetadata(columnar_file.Path());
+    ColumnarBatchReader reader(columnar_file.Path());
+    const auto& [schema, row_groups] = reader.GetMetadata();
     ASSERT_EQ(schema.columns.size(), 2u);
     EXPECT_EQ(schema.columns[0].name, "id");
     EXPECT_EQ(schema.columns[0].type, ColumnType::Int64);
@@ -106,7 +107,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
         }
     }
 
-    const auto file_info = GetFileMetadata(columnar_file.Path());
+    const auto file_info = TryGetFileMetadata(columnar_file.Path());
     ASSERT_TRUE(file_info.has_value());
     EXPECT_TRUE(file_info->is_regular);
     EXPECT_LT(expected_offset, file_info->size);

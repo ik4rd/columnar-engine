@@ -2,13 +2,13 @@
 #include <string>
 #include <vector>
 
-#include "batch_io.h"
+#include "columnar_batch_io.h"
 #include "csv.h"
+#include "csv_batch_io.h"
 #include "gtest/gtest.h"
 #include "temp_file.h"
 
-namespace {
-void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows) {
+static void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows) {
     const size_t row_count = batch.RowsCount();
     const size_t column_count = batch.ColumnsCount();
 
@@ -21,7 +21,6 @@ void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& 
         rows.push_back(std::move(values));
     }
 }
-}  // namespace
 
 TEST(batch, csv_reader_respects_max_rows) {
     Schema schema;
