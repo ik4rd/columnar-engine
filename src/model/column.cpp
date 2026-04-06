@@ -13,13 +13,13 @@ std::unique_ptr<Column> CreateColumn(const ColumnType type) {
         case ColumnType::String:
             return std::make_unique<StringColumn>();
     }
-    throw error::MakeError("column", "unsupported column type");
+    throw Error::Unsupported("column", "unsupported column type");
 }
 
 Column::Column(const ColumnType type) : type_(type) {}
 
 void Column::CheckRowIndex(const char* module, const size_t row, const size_t size) {
     if (row >= size) {
-        throw error::MakeError(module, "row index out of range");
+        throw Error::OutOfRange(module, "row index out of range");
     }
 }

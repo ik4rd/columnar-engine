@@ -16,7 +16,7 @@ static std::string ToLower(const std::string_view input) {
 
 int64_t ParseInt64(const std::string& value) {
     if (value.empty()) {
-        throw error::MakeError("columnar", "empty value for int64");
+        throw Error::InvalidData("columnar", "empty value for int64");
     }
 
     int64_t result = 0;
@@ -24,7 +24,7 @@ int64_t ParseInt64(const std::string& value) {
     const char* end = begin + value.size();
 
     if (const auto [ptr, ec] = std::from_chars(begin, end, result); ec != std::errc() || ptr != end) {
-        throw error::MakeError("columnar", "invalid int64 value");
+        throw Error::InvalidData("columnar", "invalid int64 value");
     }
 
     return result;
@@ -38,7 +38,7 @@ ColumnType ParseColumnType(const std::string_view input) {
     if (lowered == "string") {
         return ColumnType::String;
     }
-    throw error::MakeError("columnar", "unknown column type");
+    throw Error::Unsupported("columnar", "unknown column type");
 }
 
 std::string ColumnTypeToString(const ColumnType type) {

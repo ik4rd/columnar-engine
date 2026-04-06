@@ -25,7 +25,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
                 return false;
             }
             if (in_quotes) {
-                throw error::MakeError("csv", "unexpected EOF inside quoted field");
+                throw Error::InvalidData("csv", "unexpected EOF inside quoted field");
             }
             row.push_back(field);
             return true;
@@ -109,14 +109,14 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
     }
     *out_ << '\n';
     if (!*out_) {
-        throw error::MakeError("csv", "failed to write csv row");
+        throw Error::Io("csv", "failed to write csv row");
     }
 }
 
 void CsvWriter::Flush() const {
     out_->flush();
     if (!*out_) {
-        throw error::MakeError("csv", "failed to write csv");
+        throw Error::Io("csv", "failed to write csv");
     }
 }
 
