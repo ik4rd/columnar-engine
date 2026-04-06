@@ -30,21 +30,21 @@ void Batch::Reserve(const size_t n) const {
 
 const Column& Batch::ColumnAt(const size_t i) const {
     if (i >= columns_.size()) {
-        throw error::MakeError("batch", "column index out of range");
+        throw Error::OutOfRange("batch", "column index out of range");
     }
     return *columns_[i];
 }
 
 Column& Batch::ColumnAt(const size_t i) {
     if (i >= columns_.size()) {
-        throw error::MakeError("batch", "column index out of range");
+        throw Error::OutOfRange("batch", "column index out of range");
     }
     return *columns_[i];
 }
 
 void Batch::Validate() const {
     if (schema_.columns.size() != columns_.size()) {
-        throw error::MakeError("batch", "column count mismatch");
+        throw Error::Mismatch("batch", "column count mismatch");
     }
 
     if (columns_.empty()) {
@@ -54,10 +54,10 @@ void Batch::Validate() const {
     const size_t rows = columns_.front()->Size();
     for (size_t i = 0; i < columns_.size(); ++i) {
         if (columns_[i]->Type() != schema_.columns[i].type) {
-            throw error::MakeError("batch", "column type mismatch");
+            throw Error::Mismatch("batch", "column type mismatch");
         }
         if (columns_[i]->Size() != rows) {
-            throw error::MakeError("batch", "column row count mismatch");
+            throw Error::Mismatch("batch", "column row count mismatch");
         }
     }
 }

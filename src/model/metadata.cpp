@@ -25,7 +25,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
         } else if (type_byte == static_cast<uint8_t>(ColumnType::String)) {
             type = ColumnType::String;
         } else {
-            throw error::MakeError("columnar", "unknown column type in metadata");
+            throw Error::InvalidData("columnar", "unknown column type in metadata");
         }
 
         metadata.schema.columns.push_back(ColumnSchema{std::move(name), type});
@@ -40,7 +40,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
         const uint32_t columns_in_group = ReadStream<uint32_t>(in);
         if (columns_in_group != column_count) {
-            throw error::MakeError("columnar", "row group column count mismatch");
+            throw Error::Mismatch("columnar", "row group column count mismatch");
         }
 
         group.columns.reserve(columns_in_group);
@@ -60,13 +60,13 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
 void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     if (metadata.schema.columns.size() > std::numeric_limits<uint32_t>::max()) {
-        throw error::MakeError("columnar", "too many columns for metadata");
+        throw Error::Overflow("columnar", "too many columns for metadata");
     }
 
     WriteStream<uint32_t>(out, metadata.schema.columns.size());
     for (const auto& [name, type] : metadata.schema.columns) {
         if (name.size() > std::numeric_limits<uint32_t>::max()) {
-            throw error::MakeError("columnar", "column name too long");
+            throw Error::Overflow("columnar", "column name too long");
         }
         WriteStream<uint32_t>(out, name.size());
         WriteBytes(out, name);
@@ -74,7 +74,7 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     }
 
     if (metadata.row_groups.size() > std::numeric_limits<uint32_t>::max()) {
-        throw error::MakeError("columnar", "too many row groups for metadata");
+        throw Error::Overflow("columnar", "too many row groups for metadata");
     }
 
     WriteStream<uint32_t>(out, metadata.row_groups.size());
