@@ -13,6 +13,11 @@
 class ColumnarBatchReader final : public BatchReader {
    public:
     explicit ColumnarBatchReader(const std::filesystem::path& path);
+    ColumnarBatchReader(const ColumnarBatchReader&) = delete;
+    ColumnarBatchReader(ColumnarBatchReader&&) noexcept = default;
+    ColumnarBatchReader& operator=(const ColumnarBatchReader&) = delete;
+    ColumnarBatchReader& operator=(ColumnarBatchReader&&) noexcept = default;
+    ~ColumnarBatchReader() override = default;
 
     std::optional<Batch> ReadNext() override;
 
@@ -31,6 +36,11 @@ class ColumnarBatchReader final : public BatchReader {
 class ColumnarBatchWriter final : public BatchWriter {
    public:
     ColumnarBatchWriter(const std::filesystem::path& path, Schema schema);
+    ColumnarBatchWriter(const ColumnarBatchWriter&) = delete;
+    ColumnarBatchWriter(ColumnarBatchWriter&&) noexcept = default;
+    ColumnarBatchWriter& operator=(const ColumnarBatchWriter&) = delete;
+    ColumnarBatchWriter& operator=(ColumnarBatchWriter&&) noexcept = default;
+    ~ColumnarBatchWriter() override = default;
 
     void Write(const Batch& batch) override;
     void Flush() override;

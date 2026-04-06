@@ -4,6 +4,15 @@
 
 #include "error.h"
 
+static std::vector<std::unique_ptr<Column>> CloneColumns(const std::vector<std::unique_ptr<Column>>& columns) {
+    std::vector<std::unique_ptr<Column>> clones;
+    clones.reserve(columns.size());
+    for (const auto& column : columns) {
+        clones.push_back(column->Clone());
+    }
+    return clones;
+}
+
 Batch::Batch(Schema schema) : schema_(std::move(schema)) {
     columns_.reserve(schema_.columns.size());
     for (const auto& [name, type] : schema_.columns) {
@@ -12,6 +21,20 @@ Batch::Batch(Schema schema) : schema_(std::move(schema)) {
 }
 
 Batch::Batch(Schema schema, const size_t reserve_rows) : Batch(std::move(schema)) { Reserve(reserve_rows); }
+
+Batch::Batch(const Batch& other) : schema_(other.schema_), columns_(CloneColumns(other.columns_)) {}
+
+Batch& Batch::operator=(const Batch& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    auto columns = CloneColumns(other.columns_);
+    schema_ = other.schema_;
+    columns_ = std::move(columns);
+
+    return *this;
+}
 
 size_t Batch::ColumnsCount() const { return columns_.size(); }
 

@@ -23,6 +23,8 @@ std::string Int64Column::ValueAsString(const size_t row) const {
     return std::to_string(values_[row]);
 }
 
+std::unique_ptr<Column> Int64Column::Clone() const { return std::make_unique<Int64Column>(*this); }
+
 void Int64Column::WriteTo(std::ostream& out) const {
     for (const int64_t value : values_) {
         WriteStream<int64_t>(out, value);
