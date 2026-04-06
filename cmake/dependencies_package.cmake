@@ -1,1 +1,41 @@
-find_package(GTest REQUIRED)
+include(FetchContent)
+
+find_package(absl CONFIG QUIET)
+if (NOT absl_FOUND)
+    set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
+    set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(ABSL_BUILD_TEST_HELPERS OFF CACHE BOOL "" FORCE)
+    set(ABSL_USE_SYSTEM_INCLUDES ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            absl
+            GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+            GIT_TAG 20240116.2
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_GetProperties(absl)
+    set(absl_SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/absl-src")
+    set(absl_BINARY_DIR "${FETCHCONTENT_BASE_DIR}/absl-build")
+    if (NOT absl_POPULATED)
+        if (NOT EXISTS "${absl_SOURCE_DIR}/CMakeLists.txt")
+            if (POLICY CMP0169)
+                cmake_policy(PUSH)
+                cmake_policy(SET CMP0169 OLD)
+            endif ()
+            FetchContent_Populate(absl)
+            if (POLICY CMP0169)
+                cmake_policy(POP)
+            endif ()
+        endif ()
+    endif ()
+    if (NOT TARGET absl::flags)
+        add_subdirectory(${absl_SOURCE_DIR} ${absl_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif ()
+endif ()
+
+if (ENABLE_TESTS)
+    find_package(GTest QUIET)
+    if (NOT GTest_FOUND)
+        message(WARNING "GTest not found; tests will be disabled for this configure run.")
+        set(ENABLE_TESTS OFF CACHE BOOL "Build tests" FORCE)
+    endif ()
+endif ()
