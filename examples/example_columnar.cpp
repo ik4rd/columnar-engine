@@ -3,10 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "columnar.h"
+#include "csv_columnar.h"
 #include "csv.h"
 #include "schema.h"
-#include "utils.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {
     for (const auto& row : rows) {
@@ -42,7 +41,7 @@ int main() {
 
         const Schema schema_before = ReadSchemaCsv(schema_in);
         const Schema schema_after = ReadSchemaCsv(schema_out);
-        if (!SchemasEqual(schema_before, schema_after)) {
+        if (schema_before != schema_after) {
             std::cerr << "schema roundtrip mismatch" << std::endl;
             return 1;
         }

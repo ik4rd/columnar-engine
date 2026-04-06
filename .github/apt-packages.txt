@@ -1,5 +1,7 @@
 ninja-build
 cmake
 libgtest-dev
+clang-18
+libclang-rt-18-dev
 clang-format
 clang-tidy

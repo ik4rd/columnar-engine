@@ -3,8 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "batch_io.h"
+#include "columnar_batch_io.h"
 #include "csv.h"
+#include "csv_batch_io.h"
 #include "schema.h"
 
 void PrintRows(const std::vector<std::vector<std::string>>& rows) {
