@@ -13,6 +13,10 @@
 class Column {
    public:
     explicit Column(ColumnType type);
+    Column(const Column&) = default;
+    Column(Column&&) noexcept = default;
+    Column& operator=(const Column&) = default;
+    Column& operator=(Column&&) noexcept = default;
     virtual ~Column() = default;
 
     ColumnType Type() const { return type_; }
@@ -24,6 +28,7 @@ class Column {
     virtual void AppendFromString(const std::string& value) = 0;
     virtual uint64_t EstimateSizeFromString(std::string_view value) const = 0;
     virtual std::string ValueAsString(size_t row) const = 0;
+    virtual std::unique_ptr<Column> Clone() const = 0;
 
     virtual void WriteTo(std::ostream& out) const = 0;
     virtual void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) = 0;

@@ -1,12 +1,4 @@
-/* (What is this? — Модуль ошибок)
- * * TODO: сделать класс кастомных ошибок (наследоваться от exception)
- *       который будет содержать:
- *          - код ошибки
- *          - модуль, в котором произошла ошибка
- *          - инстанс модуля
- *          - тип ошибки
- *          - сообщение
- */
+/* (What is this? — Модуль ошибок) */
 
 #pragma once
 
@@ -38,6 +30,11 @@ class Error final : public std::exception {
     };
 
     Error(Code code, std::string module, std::string module_instance, Type type, std::string message);
+    Error(const Error&) = default;
+    Error(Error&&) noexcept = default;
+    Error& operator=(const Error&) = default;
+    Error& operator=(Error&&) noexcept = default;
+    ~Error() override = default;
 
     static Error InvalidArgument(std::string module, std::string message, std::string module_instance = {});
     static Error InvalidData(std::string module, std::string message, std::string module_instance = {});

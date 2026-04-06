@@ -1,4 +1,5 @@
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "columnar_batch_io.h"
@@ -7,6 +8,11 @@
 #include "error.h"
 #include "gtest/gtest.h"
 #include "temp_file.h"
+
+static_assert(std::is_copy_constructible_v<Batch>);
+static_assert(std::is_copy_assignable_v<Batch>);
+static_assert(std::is_move_constructible_v<Batch>);
+static_assert(std::is_move_assignable_v<Batch>);
 
 static void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows) {
     const size_t row_count = batch.RowsCount();
@@ -109,6 +115,30 @@ TEST(batch, validate_detects_row_count_mismatch) {
     batch.ColumnAt(1).AppendFromString("alpha");
 
     EXPECT_THROW(batch.Validate(), Error);
+}
+
+TEST(batch, copy_is_deep) {
+    Schema schema;
+    schema.columns = {
+        {"id", ColumnType::Int64},
+        {"name", ColumnType::String},
+    };
+
+    Batch original(schema);
+    original.ColumnAt(0).AppendFromString("1");
+    original.ColumnAt(1).AppendFromString("alpha");
+
+    Batch copied = original;
+    copied.ColumnAt(0).AppendFromString("2");
+    copied.ColumnAt(1).AppendFromString("beta");
+
+    EXPECT_EQ(original.RowsCount(), 1u);
+    EXPECT_EQ(original.ColumnAt(0).ValueAsString(0), "1");
+    EXPECT_EQ(original.ColumnAt(1).ValueAsString(0), "alpha");
+
+    EXPECT_EQ(copied.RowsCount(), 2u);
+    EXPECT_EQ(copied.ColumnAt(0).ValueAsString(1), "2");
+    EXPECT_EQ(copied.ColumnAt(1).ValueAsString(1), "beta");
 }
 
 TEST(batch, csv_reader_respects_max_values) {
