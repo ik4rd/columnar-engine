@@ -1,1 +1,7 @@
-find_package(GTest REQUIRED)
+if (ENABLE_TESTS)
+    find_package(GTest QUIET)
+    if (NOT GTest_FOUND)
+        message(WARNING "GTest not found; tests will be disabled for this configure run.")
+        set(ENABLE_TESTS OFF CACHE BOOL "Build tests" FORCE)
+    endif ()
+endif ()

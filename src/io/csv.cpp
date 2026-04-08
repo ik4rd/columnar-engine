@@ -1,5 +1,7 @@
 #include "csv.h"
 
+#include <utility>
+
 #include "error.h"
 #include "fileio.h"
 
@@ -11,79 +13,129 @@ CsvReader::CsvReader(std::istream& in) : in_(&in) {}
 
 CsvReader::CsvReader(const std::filesystem::path& path) : owned_in_(OpenInputFile(path)), in_(&owned_in_) {}
 
+CsvReader::CsvReader(CsvReader&& other) noexcept : owned_in_(std::move(other.owned_in_)) {
+    RebindAfterMove(other.in_ == &other.owned_in_, other.in_);
+    other.in_ = nullptr;
+}
+
+CsvReader& CsvReader::operator=(CsvReader&& other) noexcept {
+    if (this != &other) {
+        owned_in_ = std::move(other.owned_in_);
+        RebindAfterMove(other.in_ == &other.owned_in_, other.in_);
+        other.in_ = nullptr;
+    }
+    return *this;
+}
+
+void CsvReader::RebindAfterMove(const bool uses_owned_stream, std::istream* source_stream) noexcept {
+    if (uses_owned_stream) {
+        in_ = &owned_in_;
+        return;
+    }
+    in_ = source_stream;
+}
+
 bool CsvReader::ReadRow(std::vector<std::string>& row) const {
     row.clear();
+    row.emplace_back();
 
-    std::string field;
+    auto* buffer = in_->rdbuf();
+    using Traits = std::streambuf::traits_type;
+    /* До этого чтение происходило через istream::get() и peek()
+     * Traits требуется только как вспомогательный тип для:
+     *      - eof()
+     *      - to_chat_type()
+     *      - eq_int_type()
+     */
+
     bool in_quotes = false;
     bool saw_data = false;
 
     while (true) {
-        const int next = in_->get();
-        if (next == EOF) {
+        const Traits::int_type next = buffer->sbumpc();
+
+        if (Traits::eq_int_type(next, Traits::eof())) {
             if (!saw_data) {
                 return false;
             }
             if (in_quotes) {
-                throw error::MakeError("csv", "unexpected EOF inside quoted field");
+                throw Error::InvalidData("csv", "unexpected EOF inside quoted field");
             }
-            row.push_back(field);
             return true;
         }
 
         saw_data = true;
-        const char ch = next;
+        const char ch = Traits::to_char_type(next);
 
         if (in_quotes) {
             if (ch == '"') {
-                const int peek = in_->peek();
-                if (peek == '"') {
-                    in_->get();
-                    field.push_back('"');
+                const Traits::int_type peek = buffer->sgetc();
+                if (Traits::to_char_type(peek) == '"') {
+                    buffer->sbumpc();
+                    row.back().push_back('"');
                 } else {
                     in_quotes = false;
                 }
             } else {
-                field.push_back(ch);
+                row.back().push_back(ch);
             }
             continue;
         }
 
         if (ch == '"') {
-            if (field.empty()) {
+            if (row.back().empty()) {
                 in_quotes = true;
             } else {
-                field.push_back('"');
+                row.back().push_back('"');
             }
             continue;
         }
 
         if (ch == ',') {
-            row.push_back(field);
-            field.clear();
+            row.emplace_back();
             continue;
         }
 
         if (ch == '\n') {
-            row.push_back(field);
             return true;
         }
 
         if (ch == '\r') {
-            if (in_->peek() == '\n') {
-                in_->get();
+            if (Traits::to_char_type(buffer->sgetc()) == '\n') {
+                buffer->sbumpc();
             }
-            row.push_back(field);
             return true;
         }
 
-        field.push_back(ch);
+        row.back().push_back(ch);
     }
 }
 
 CsvWriter::CsvWriter(std::ostream& out) : out_(&out) {}
 
 CsvWriter::CsvWriter(const std::filesystem::path& path) : owned_out_(OpenOutputFile(path)), out_(&owned_out_) {}
+
+CsvWriter::CsvWriter(CsvWriter&& other) noexcept : owned_out_(std::move(other.owned_out_)) {
+    RebindAfterMove(other.out_ == &other.owned_out_, other.out_);
+    other.out_ = nullptr;
+}
+
+CsvWriter& CsvWriter::operator=(CsvWriter&& other) noexcept {
+    if (this != &other) {
+        owned_out_ = std::move(other.owned_out_);
+        RebindAfterMove(other.out_ == &other.owned_out_, other.out_);
+        other.out_ = nullptr;
+    }
+    return *this;
+}
+
+void CsvWriter::RebindAfterMove(const bool uses_owned_stream, std::ostream* source_stream) noexcept {
+    if (uses_owned_stream) {
+        out_ = &owned_out_;
+        return;
+    }
+    out_ = source_stream;
+}
 
 void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
     for (size_t i = 0; i < row.size(); ++i) {
@@ -109,14 +161,14 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
     }
     *out_ << '\n';
     if (!*out_) {
-        throw error::MakeError("csv", "failed to write csv row");
+        throw Error::Io("csv", "failed to write csv row");
     }
 }
 
 void CsvWriter::Flush() const {
     out_->flush();
     if (!*out_) {
-        throw error::MakeError("csv", "failed to write csv");
+        throw Error::Io("csv", "failed to write csv");
     }
 }
 

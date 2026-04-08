@@ -2,25 +2,14 @@
 
 #pragma once
 
-#include <vector>
+#include "variant_column.h"
 
-#include "column.h"
-
-class StringColumn final : public Column {
+class StringColumn final : public VariantColumn<StringColumn, ColumnType::String> {
    public:
-    StringColumn();
+    using VariantColumn::VariantColumn;
 
-    size_t Size() const override;
-    void Reserve(size_t n) override;
-    void Clear() override;
+    static const char* ModuleName() { return "column_string"; }
 
     void AppendFromString(const std::string& value) override;
-    uint64_t EstimateSizeFromString(std::string_view value) const override;
     std::string ValueAsString(size_t row) const override;
-
-    void WriteTo(std::ostream& out) const override;
-    void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) override;
-
-   private:
-    std::vector<std::string> values_;
 };

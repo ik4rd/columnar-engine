@@ -12,8 +12,17 @@ class CsvReader {
    public:
     explicit CsvReader(std::istream& in);
     explicit CsvReader(const std::filesystem::path& path);
+    CsvReader(const CsvReader&) = delete;
+    CsvReader(CsvReader&& other) noexcept;
+    CsvReader& operator=(const CsvReader&) = delete;
+    CsvReader& operator=(CsvReader&& other) noexcept;
+    ~CsvReader() = default;
 
+   public:
     bool ReadRow(std::vector<std::string>& row) const;
+
+   private:
+    void RebindAfterMove(bool uses_owned_stream, std::istream* source_stream) noexcept;
 
    private:
     std::ifstream owned_in_;
@@ -24,9 +33,18 @@ class CsvWriter {
    public:
     explicit CsvWriter(std::ostream& out);
     explicit CsvWriter(const std::filesystem::path& path);
+    CsvWriter(const CsvWriter&) = delete;
+    CsvWriter(CsvWriter&& other) noexcept;
+    CsvWriter& operator=(const CsvWriter&) = delete;
+    CsvWriter& operator=(CsvWriter&& other) noexcept;
+    ~CsvWriter() = default;
 
+   public:
     void WriteRow(const std::vector<std::string>& row) const;
     void Flush() const;
+
+   private:
+    void RebindAfterMove(bool uses_owned_stream, std::ostream* source_stream) noexcept;
 
    private:
     std::ofstream owned_out_;

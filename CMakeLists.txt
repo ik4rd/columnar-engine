@@ -5,6 +5,10 @@ project(columnar-engine)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+option(ENABLE_TESTS "Build tests" ON)
+option(ENABLE_BENCHMARKS "Build benchmarks" ON)
 
 include(cmake/dependencies_package.cmake)
 include(cmake/sanitizers.cmake)
@@ -19,7 +23,7 @@ set(COLUMNAR_INCLUDE_DIRS
 
 include_directories(${COLUMNAR_INCLUDE_DIRS})
 
-add_compile_options(-Wall -Wextra -Werror -Wpedantic)
+add_compile_options(-Wall -Wextra -Werror -Wpedantic -O2)
 
 set(COLUMNAR_SANITIZERS "" CACHE STRING "Comma or semicolon separated list of sanitizers: address,undefined,leak,thread,memory")
 columnar_enable_sanitizers("${COLUMNAR_SANITIZERS}")
@@ -30,9 +34,11 @@ set(COLUMNAR_SANITIZER_TARGET_SANITIZERS "address,undefined" CACHE STRING
         "Sanitizers used by the test_sanitizers target")
 
 add_subdirectory(src)
-add_subdirectory(examples)
 
-option(ENABLE_TESTS "Build tests" ON)
+if (ENABLE_BENCHMARKS)
+    add_subdirectory(benchmarks)
+endif ()
+
 if (ENABLE_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -50,11 +56,11 @@ set(columnar_sanitizer_configure_args
 
 if (CMAKE_GENERATOR_PLATFORM)
     list(APPEND columnar_sanitizer_configure_args -A ${CMAKE_GENERATOR_PLATFORM})
-endif()
+endif ()
 
 if (CMAKE_GENERATOR_TOOLSET)
     list(APPEND columnar_sanitizer_configure_args -T ${CMAKE_GENERATOR_TOOLSET})
-endif()
+endif ()
 
 if (CMAKE_CONFIGURATION_TYPES)
     add_custom_target(test_sanitizers
@@ -64,7 +70,7 @@ if (CMAKE_CONFIGURATION_TYPES)
             USES_TERMINAL
             COMMENT "Configure, build and run tests with sanitizers"
     )
-else()
+else ()
     add_custom_target(test_sanitizers
             COMMAND ${CMAKE_COMMAND} ${columnar_sanitizer_configure_args} -DCMAKE_BUILD_TYPE=Debug
             COMMAND ${CMAKE_COMMAND} --build ${COLUMNAR_SANITIZER_TARGET_BUILD_DIR}
@@ -72,4 +78,4 @@ else()
             USES_TERMINAL
             COMMENT "Configure, build and run tests with sanitizers"
     )
-endif()
+endif ()

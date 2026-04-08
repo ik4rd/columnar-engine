@@ -2,8 +2,15 @@
 
 #include <memory>
 
+#include "column_boolean.h"
+#include "column_character.h"
+#include "column_date.h"
+#include "column_int128.h"
+#include "column_int16.h"
+#include "column_int32.h"
 #include "column_int64.h"
 #include "column_string.h"
+#include "column_timestamp.h"
 #include "error.h"
 
 std::unique_ptr<Column> CreateColumn(const ColumnType type) {
@@ -12,14 +19,28 @@ std::unique_ptr<Column> CreateColumn(const ColumnType type) {
             return std::make_unique<Int64Column>();
         case ColumnType::String:
             return std::make_unique<StringColumn>();
+        case ColumnType::Boolean:
+            return std::make_unique<BooleanColumn>();
+        case ColumnType::Int16:
+            return std::make_unique<Int16Column>();
+        case ColumnType::Int32:
+            return std::make_unique<Int32Column>();
+        case ColumnType::Int128:
+            return std::make_unique<Int128Column>();
+        case ColumnType::Date:
+            return std::make_unique<DateColumn>();
+        case ColumnType::Timestamp:
+            return std::make_unique<TimestampColumn>();
+        case ColumnType::Character:
+            return std::make_unique<CharacterColumn>();
     }
-    throw error::MakeError("column", "unsupported column type");
+    throw Error::Unsupported("column", "unsupported column type");
 }
 
 Column::Column(const ColumnType type) : type_(type) {}
 
 void Column::CheckRowIndex(const char* module, const size_t row, const size_t size) {
     if (row >= size) {
-        throw error::MakeError(module, "row index out of range");
+        throw Error::OutOfRange(module, "row index out of range");
     }
 }

@@ -1,13 +1,4 @@
-/* (What is this? — Класс батча)
- *
- * Батч — in-memory представление row группы в виде вектора колонок
- *
- * Содержит:
- *     - схему
- *     - вектор указателей на колонки
- *
- * TODO: реализовать полностью rule-of-5
- */
+/* (What is this? — Класс батча) */
 
 #pragma once
 
@@ -22,7 +13,13 @@ class Batch {
     Batch() = default;
     explicit Batch(Schema schema);
     Batch(Schema schema, size_t reserve_rows);
+    Batch(const Batch& other);
+    Batch(Batch&& other) noexcept = default;
+    Batch& operator=(const Batch& other);
+    Batch& operator=(Batch&& other) noexcept = default;
+    ~Batch() = default;
 
+   public:
     const Schema& GetSchema() const { return schema_; }
 
     size_t ColumnsCount() const;

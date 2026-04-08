@@ -16,7 +16,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
             continue;
         }
         if (row.size() != 2) {
-            throw error::MakeError("columnar", "schema csv must have 2 columns");
+            throw Error::InvalidData("columnar", "schema csv must have 2 columns", path.string());
         }
         schema.columns.push_back(ColumnSchema{
             row[0],
@@ -25,7 +25,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (schema.columns.empty()) {
-        throw error::MakeError("columnar", "schema csv is empty");
+        throw Error::InvalidData("columnar", "schema csv is empty", path.string());
     }
 
     return schema;

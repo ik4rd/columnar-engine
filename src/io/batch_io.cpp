@@ -14,14 +14,14 @@ static constexpr std::string_view kColumnarMagic = "CLMN";
 static void SeekRead(const std::filesystem::path& path, std::ifstream& in, const uint64_t pos) {
     in.seekg(pos);
     if (!in) {
-        throw error::MakePathError("batch_io", path, "seek file");
+        throw Error::PathIo("batch_io", path, "seek file");
     }
 }
 
 static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out) {
     const auto pos = out.tellp();
     if (pos == -1) {
-        throw error::MakePathError("batch_io", path, "tell file");
+        throw Error::PathIo("batch_io", path, "tell file");
     }
     return pos;
 }
@@ -29,35 +29,35 @@ static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out)
 static void FlushWrite(const std::filesystem::path& path, std::ofstream& out) {
     out.flush();
     if (!out) {
-        throw error::MakePathError("batch_io", path, "write file");
+        throw Error::PathIo("batch_io", path, "write file");
     }
 }
 
 static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     if (add > std::numeric_limits<uint64_t>::max() - current) {
-        throw error::MakeError("batch_io", "batch byte size overflow");
+        throw Error::Overflow("batch_io", "batch byte size overflow");
     }
     return current + add;
 }
 
-static uint64_t EstimateRowBytes(const Batch& batch, const std::vector<std::string>& row) {
+static uint64_t EstimateRowBytes(const std::vector<std::unique_ptr<Column>>& columns,
+                                 const std::vector<std::string>& row) {
     uint64_t bytes = 0;
-    const size_t column_count = batch.ColumnsCount();
-    for (size_t i = 0; i < column_count; ++i) {
-        bytes = AddChecked(bytes, batch.ColumnAt(i).EstimateSizeFromString(row[i]));
+    for (size_t i = 0; i < columns.size(); ++i) {
+        bytes = AddChecked(bytes, columns[i]->EstimateSizeFromString(row[i]));
     }
     return bytes;
 }
 
 static void ValidateSizing(const BatchSizing& sizing) {
     if (sizing.max_rows && *sizing.max_rows == 0) {
-        throw error::MakeError("batch_io", "max rows must be > 0");
+        throw Error::InvalidArgument("batch_io", "max rows must be > 0");
     }
     if (sizing.max_values && *sizing.max_values == 0) {
-        throw error::MakeError("batch_io", "max values must be > 0");
+        throw Error::InvalidArgument("batch_io", "max values must be > 0");
     }
     if (sizing.max_bytes && *sizing.max_bytes == 0) {
-        throw error::MakeError("batch_io", "max bytes must be > 0");
+        throw Error::InvalidArgument("batch_io", "max bytes must be > 0");
     }
 }
 
@@ -89,7 +89,7 @@ bool BatchSizing::WouldExceed(const size_t next_rows, const size_t column_count,
 CsvBatchReader::CsvBatchReader(const std::filesystem::path& path, Schema schema, BatchSizing sizing)
     : csv_reader_(path), schema_(std::move(schema)), sizing_(std::move(sizing)) {
     if (schema_.columns.empty()) {
-        throw error::MakeError("batch_io", "schema has no columns");
+        throw Error::InvalidArgument("batch_io", "schema has no columns");
     }
     ValidateSizing(sizing_);
 }
@@ -103,8 +103,11 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 
     const size_t column_count = schema_.columns.size();
     ReserveForSizing(batch, sizing_, column_count);
+    const auto& columns = batch.GetColumns();
 
     std::vector<std::string> row;
+    row.reserve(column_count);
+
     size_t rows = 0;
     uint64_t bytes = 0;
 
@@ -120,12 +123,15 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         if (row.size() != column_count) {
-            throw error::MakeError("batch_io", "data csv column count mismatch");
+            throw Error::Mismatch("batch_io", "data csv column count mismatch");
         }
 
-        const uint64_t row_bytes = EstimateRowBytes(batch, row);
         const size_t next_rows = rows + 1;
-        const uint64_t next_bytes = AddChecked(bytes, row_bytes);
+        uint64_t next_bytes = bytes;
+
+        if (sizing_.max_bytes) {
+            next_bytes = AddChecked(bytes, EstimateRowBytes(columns, row));
+        }
 
         if (rows > 0 && sizing_.WouldExceed(next_rows, column_count, next_bytes)) {
             pending_row_ = std::move(row);
@@ -133,7 +139,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         for (size_t col = 0; col < column_count; ++col) {
-            batch.ColumnAt(col).AppendFromString(row[col]);
+            columns[col]->AppendFromString(row[col]);
         }
 
         rows = next_rows;
@@ -150,14 +156,14 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 CsvBatchWriter::CsvBatchWriter(const std::filesystem::path& path, Schema schema)
     : csv_writer_(path), schema_(std::move(schema)) {
     if (schema_.columns.empty()) {
-        throw error::MakeError("batch_io", "schema has no columns");
+        throw Error::InvalidArgument("batch_io", "schema has no columns");
     }
 }
 
 void CsvBatchWriter::Write(const Batch& batch) {
     batch.Validate();
     if (batch.GetSchema() != schema_) {
-        throw error::MakeError("batch_io", "batch schema mismatch");
+        throw Error::Mismatch("batch_io", "batch schema mismatch");
     }
 
     const size_t column_count = schema_.columns.size();
@@ -176,31 +182,34 @@ void CsvBatchWriter::Flush() { csv_writer_.Flush(); }
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
     const auto file_metadata = TryGetFileMetadata(path);
+
     if (!file_metadata || !file_metadata->is_regular) {
-        throw error::MakeError("batch_io", "columnar file not found");
+        throw Error::NotFound("batch_io", "columnar file not found", path.string());
     }
 
     const uint64_t file_size = file_metadata->size;
-    constexpr uint64_t footer_size = sizeof(uint64_t) + kColumnarMagic.size();
-    if (file_size < footer_size) {
-        throw error::MakeError("batch_io", "columnar file is too small");
+    constexpr uint64_t kFooterSize = sizeof(uint64_t) + kColumnarMagic.size();
+
+    if (file_size < kFooterSize) {
+        throw Error::InvalidData("batch_io", "columnar file is too small", path.string());
     }
 
     std::ifstream in = OpenInputFile(path);
-    SeekRead(path, in, file_size - footer_size);
+    SeekRead(path, in, file_size - kFooterSize);
 
     const uint64_t metadata_size = ReadStream<uint64_t>(in);
     std::string magic_read(kColumnarMagic.size(), '\0');
     ReadBytes(in, magic_read.data(), magic_read.size());
+
     if (magic_read != kColumnarMagic) {
-        throw error::MakeError("batch_io", "invalid columnar magic");
+        throw Error::InvalidData("batch_io", "invalid columnar magic", path.string());
     }
 
-    if (metadata_size > file_size - footer_size) {
-        throw error::MakeError("batch_io", "metadata size exceeds file size");
+    if (metadata_size > file_size - kFooterSize) {
+        throw Error::InvalidData("batch_io", "metadata size exceeds file size", path.string());
     }
 
-    SeekRead(path, in, file_size - footer_size - metadata_size);
+    SeekRead(path, in, file_size - kFooterSize - metadata_size);
 
     return ReadMetadata(in);
 }
@@ -208,7 +217,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
 ColumnarBatchReader::ColumnarBatchReader(const std::filesystem::path& path)
     : path_(path), in_(OpenInputFile(path)), metadata_(ReadFileMetadata(path)) {
     if (metadata_.schema.columns.empty()) {
-        throw error::MakeError("batch_io", "columnar schema is empty");
+        throw Error::InvalidData("batch_io", "columnar schema is empty", path.string());
     }
 }
 
@@ -221,8 +230,9 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
     Batch batch(metadata_.schema, row_count);
 
     const auto& columns = batch.GetColumns();
+
     if (row_group_columns.size() != columns.size()) {
-        throw error::MakeError("batch_io", "row group column count mismatch");
+        throw Error::Mismatch("batch_io", "row group column count mismatch", path_.string());
     }
 
     for (size_t col = 0; col < columns.size(); ++col) {
@@ -237,27 +247,28 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
 ColumnarBatchWriter::ColumnarBatchWriter(const std::filesystem::path& path, Schema schema)
     : path_(path), out_(OpenOutputFile(path)) {
     if (schema.columns.empty()) {
-        throw error::MakeError("batch_io", "schema has no columns");
+        throw Error::InvalidArgument("batch_io", "schema has no columns", path.string());
     }
     metadata_.schema = std::move(schema);
 }
 
 void ColumnarBatchWriter::Write(const Batch& batch) {
     if (finalized_) {
-        throw error::MakeError("batch_io", "writer already finalized");
+        throw Error::InvalidState("batch_io", "writer already finalized", path_.string());
     }
 
     batch.Validate();
     if (batch.GetSchema() != metadata_.schema) {
-        throw error::MakeError("batch_io", "batch schema mismatch");
+        throw Error::Mismatch("batch_io", "batch schema mismatch", path_.string());
     }
 
     const size_t row_count = batch.RowsCount();
+
     if (row_count == 0) {
         return;
     }
     if (row_count > std::numeric_limits<uint32_t>::max()) {
-        throw error::MakeError("batch_io", "row group exceeds supported size");
+        throw Error::Overflow("batch_io", "row group exceeds supported size", path_.string());
     }
 
     RowGroupMetadata group;
@@ -278,7 +289,7 @@ void ColumnarBatchWriter::Flush() { FlushWrite(path_, out_); }
 
 void ColumnarBatchWriter::Finalize() {
     if (finalized_) {
-        throw error::MakeError("batch_io", "writer already finalized");
+        throw Error::InvalidState("batch_io", "writer already finalized", path_.string());
     }
 
     const uint64_t metadata_start = TellWrite(path_, out_);

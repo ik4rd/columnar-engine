@@ -1,13 +1,14 @@
 #include <filesystem>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "columnar_batch_io.h"
 #include "csv_columnar.h"
 #include "csv.h"
+#include "error.h"
 #include "fileio.h"
 #include "gtest/gtest.h"
+#include "parsing.h"
 #include "schema.h"
 #include "temp_file.h"
 
@@ -42,7 +43,7 @@ TEST(columnar, csv_to_columnar_and_back) {
     ASSERT_EQ(columns.size(), schema_rows.size());
     for (size_t i = 0; i < schema_rows.size(); ++i) {
         EXPECT_EQ(columns[i].name, schema_rows[i][0]);
-        EXPECT_EQ((columns[i].type == ColumnType::Int64 ? "int64" : "string"), schema_rows[i][1]);
+        EXPECT_EQ(ColumnTypeToString(columns[i].type), schema_rows[i][1]);
     }
 
     const auto data_roundtrip = ReadRows(data_out.Path());
@@ -121,5 +122,41 @@ TEST(columnar, invalid_int64_throws) {
     WriteRows(schema_in.Path(), {{"value", "int64"}});
     WriteRows(data_in.Path(), {{"not_a_number"}});
 
-    EXPECT_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 4), std::runtime_error);
+    EXPECT_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 4), Error);
+}
+
+TEST(columnar, mixed_supported_types_roundtrip) {
+    const TempFile schema_in("schema_mixed_in");
+    const TempFile data_in("data_mixed_in");
+    const TempFile columnar_file("columnar_mixed");
+    const TempFile schema_out("schema_mixed_out");
+    const TempFile data_out("data_mixed_out");
+
+    const std::vector<std::vector<std::string>> schema_rows = {
+        {"flag", "bool"},
+        {"small", "int16"},
+        {"medium", "int32"},
+        {"big", "int64"},
+        {"huge", "int128"},
+        {"name", "string"},
+        {"birth_date", "date"},
+        {"created_at", "timestamp"},
+        {"grade", "char"},
+    };
+
+    const std::vector<std::vector<std::string>> data_rows = {
+        {"true", "-7", "12345", "9999999999", "170141183460469231731687303715884105727", "alpha", "2024-02-29",
+         "2024-02-29 12:34:56.123456", "A"},
+        {"false", "8", "-54321", "-42", "-170141183460469231731687303715884105728", "be,ta", "1970-01-01",
+         "1970-01-01 00:00:00", "Z"},
+    };
+
+    WriteRows(schema_in.Path(), schema_rows);
+    WriteRows(data_in.Path(), data_rows);
+
+    ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 1);
+    ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
+
+    EXPECT_EQ(ReadRows(schema_out.Path()), schema_rows);
+    EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
 }
