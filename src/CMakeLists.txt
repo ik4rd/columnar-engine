@@ -23,9 +23,4 @@ add_library(columnar_engine_lib
 
 target_include_directories(columnar_engine_lib PUBLIC ${COLUMNAR_INCLUDE_DIRS})
 add_executable(columnar_engine app/main.cpp)
-
-target_link_libraries(columnar_engine PRIVATE
-        columnar_engine_lib
-        absl::flags
-        absl::flags_parse
-)
+target_link_libraries(columnar_engine PRIVATE columnar_engine_lib)

@@ -96,12 +96,10 @@ int32_t ParseInt32(const std::string& value) { return ParseInteger<int32_t>(valu
 
 int64_t ParseInt64(const std::string& value) { return ParseInteger<int64_t>(value, "int64"); }
 
-__int128_t ParseInt128(const std::string& value) {
+Int128 ParseInt128(const std::string& value) {
     if (value.empty()) {
         throw Error::InvalidData("parsing", "empty value for int128");
     }
-
-    using UnsignedInt128 = unsigned __int128;
 
     size_t pos = 0;
     bool negative = false;
@@ -115,18 +113,18 @@ __int128_t ParseInt128(const std::string& value) {
         throw Error::InvalidData("parsing", "invalid int128 value");
     }
 
-    const UnsignedInt128 positive_limit = ~UnsignedInt128{static_cast<unsigned __int128>(0)} >> 1;
-    const UnsignedInt128 negative_limit = positive_limit + 1;
-    const UnsignedInt128 limit = negative ? negative_limit : positive_limit;
+    const UInt128 positive_limit = ~UInt128{0} >> 1;
+    const UInt128 negative_limit = positive_limit + 1;
+    const UInt128 limit = negative ? negative_limit : positive_limit;
 
-    UnsignedInt128 magnitude = 0;
+    UInt128 magnitude = 0;
     for (; pos < value.size(); ++pos) {
         const char ch = value[pos];
         if (ch < '0' || ch > '9') {
             throw Error::InvalidData("parsing", "invalid int128 value");
         }
 
-        const auto digit = static_cast<UnsignedInt128>(ch - '0');
+        const auto digit = static_cast<UInt128>(ch - '0');
         if (magnitude > (limit - digit) / 10) {
             throw Error::InvalidData("parsing", "invalid int128 value");
         }
@@ -134,13 +132,13 @@ __int128_t ParseInt128(const std::string& value) {
     }
 
     if (!negative) {
-        return static_cast<__int128_t>(magnitude);
+        return static_cast<Int128>(magnitude);
     }
     if (magnitude == negative_limit) {
-        return -static_cast<__int128_t>(positive_limit) - 1;
+        return -static_cast<Int128>(positive_limit) - 1;
     }
 
-    return -static_cast<__int128_t>(magnitude);
+    return -static_cast<Int128>(magnitude);
 }
 
 int32_t ParseDate(const std::string& value) {
@@ -210,21 +208,19 @@ char ParseCharacter(const std::string& value) {
 
 std::string BooleanToString(const bool value) { return value ? "true" : "false"; }
 
-std::string Int128ToString(const __int128_t value) {
+std::string Int128ToString(const Int128 value) {
     if (value == 0) {
         return "0";
     }
 
-    using UnsignedInt128 = unsigned __int128;
-
     const bool negative = value < 0;
-    UnsignedInt128 magnitude = 0;
+    UInt128 magnitude = 0;
 
     if (negative) {
-        magnitude = static_cast<UnsignedInt128>(-(value + 1));
+        magnitude = static_cast<UInt128>(-(value + 1));
         ++magnitude;
     } else {
-        magnitude = static_cast<UnsignedInt128>(value);
+        magnitude = static_cast<UInt128>(value);
     }
 
     std::string out;
@@ -248,9 +244,9 @@ std::string DateToString(const int32_t value) {
 }
 
 std::string TimestampToString(const int64_t value) {
-    const std::chrono::sys_time timestamp{std::chrono::microseconds{value}};
+    const std::chrono::sys_time<std::chrono::microseconds> timestamp{std::chrono::microseconds{value}};
     const auto day_point = std::chrono::floor<std::chrono::days>(timestamp);
-    const std::chrono::hh_mm_ss tod{timestamp - day_point};
+    const std::chrono::hh_mm_ss<std::chrono::microseconds> tod{timestamp - day_point};
 
     std::ostringstream out;
     out << FormatDateParts(std::chrono::year_month_day{day_point}) << ' ' << std::setfill('0') << std::setw(2)
