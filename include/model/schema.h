@@ -10,6 +10,13 @@
 enum class ColumnType : uint8_t {
     Int64 = 1,
     String = 2,
+    Boolean = 3,
+    Int16 = 4,
+    Int32 = 5,
+    Int128 = 6,
+    Date = 7,
+    Timestamp = 8,
+    Character = 9,
 };
 
 struct ColumnSchema {

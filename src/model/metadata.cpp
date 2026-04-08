@@ -6,6 +6,23 @@
 #include "error.h"
 #include "stream.h"
 
+static ColumnType ColumnTypeFromByte(const uint8_t type_byte) {
+    switch (static_cast<ColumnType>(type_byte)) {
+        case ColumnType::Int64:
+        case ColumnType::String:
+        case ColumnType::Boolean:
+        case ColumnType::Int16:
+        case ColumnType::Int32:
+        case ColumnType::Int128:
+        case ColumnType::Date:
+        case ColumnType::Timestamp:
+        case ColumnType::Character:
+            return static_cast<ColumnType>(type_byte);
+    }
+
+    throw Error::InvalidData("columnar", "unknown column type in metadata");
+}
+
 ColumnarMetadata ReadMetadata(std::istream& in) {
     ColumnarMetadata metadata;
 
@@ -18,15 +35,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
         ReadBytes(in, name.data(), name.size());
         const uint8_t type_byte = ReadStream<uint8_t>(in);
-
-        auto type = ColumnType::String;
-        if (type_byte == static_cast<uint8_t>(ColumnType::Int64)) {
-            type = ColumnType::Int64;
-        } else if (type_byte == static_cast<uint8_t>(ColumnType::String)) {
-            type = ColumnType::String;
-        } else {
-            throw Error::InvalidData("columnar", "unknown column type in metadata");
-        }
+        const ColumnType type = ColumnTypeFromByte(type_byte);
 
         metadata.schema.columns.push_back(ColumnSchema{std::move(name), type});
     }

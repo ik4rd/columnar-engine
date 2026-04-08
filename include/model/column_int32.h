@@ -1,14 +1,14 @@
-/* (What is this? — Колонка типа INT64) */
+/* (What is this? — Колонка типа INT32) */
 
 #pragma once
 
 #include "fixed_column.h"
 
-class Int64Column final : public FixedColumn<Int64Column, int64_t, ColumnType::Int64> {
+class Int32Column final : public FixedColumn<Int32Column, int32_t, ColumnType::Int32> {
    public:
     using FixedColumn::FixedColumn;
 
-    static const char* ModuleName() { return "column_int64"; }
+    static const char* ModuleName() { return "column_int32"; }
 
     void AppendFromString(const std::string& value) override;
     std::string ValueAsString(size_t row) const override;
