@@ -95,3 +95,4 @@ examples/out_columnar
 
 # benchmarks
 benchmarks/hits_sample.csv
+benchmarks/schema_sample.csv

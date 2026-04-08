@@ -2,13 +2,10 @@
 
 #pragma once
 
-#if !defined(__SIZEOF_INT128__)
-#error "This project requires compiler support for 128-bit integers"
-#endif
-
 #include "fixed_column.h"
+#include "int128.h"
 
-class Int128Column final : public FixedColumn<Int128Column, __int128_t, ColumnType::Int128> {
+class Int128Column final : public FixedColumn<Int128Column, Int128, ColumnType::Int128> {
    public:
     using FixedColumn::FixedColumn;
 
