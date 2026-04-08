@@ -78,6 +78,7 @@ std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
 
     file.seekg(0, std::ios::beg);
     file.read(reinterpret_cast<char*>(data.data()), data.size());
+
     if (!file) {
         throw Error::PathIo("fileio", path, "read file");
     }

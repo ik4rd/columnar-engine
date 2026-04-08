@@ -18,6 +18,7 @@ class FixedColumn : public Column {
     FixedColumn& operator=(FixedColumn&&) noexcept = default;
     ~FixedColumn() override = default;
 
+   public:
     size_t Size() const override { return values_.size(); }
     void Reserve(const size_t n) override { values_.reserve(n); }
     void Clear() override { values_.clear(); }
@@ -67,5 +68,6 @@ class FixedColumn : public Column {
         return values_[row];
     }
 
+   protected:
     std::vector<T> values_;
 };

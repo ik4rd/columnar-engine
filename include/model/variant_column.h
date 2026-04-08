@@ -20,6 +20,7 @@ class VariantColumn : public Column {
     VariantColumn& operator=(VariantColumn&&) noexcept = default;
     ~VariantColumn() override = default;
 
+   public:
     size_t Size() const override { return values_.size(); }
     void Reserve(const size_t n) override { values_.reserve(n); }
     void Clear() override { values_.clear(); }
@@ -55,6 +56,7 @@ class VariantColumn : public Column {
             }
 
             WriteBytes(out, buffer);
+
             return;
         }
 
@@ -96,5 +98,6 @@ class VariantColumn : public Column {
         return values_[row];
     }
 
+   protected:
     std::vector<std::string> values_;
 };

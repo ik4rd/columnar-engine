@@ -107,6 +107,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 
     std::vector<std::string> row;
     row.reserve(column_count);
+
     size_t rows = 0;
     uint64_t bytes = 0;
 
@@ -127,6 +128,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 
         const size_t next_rows = rows + 1;
         uint64_t next_bytes = bytes;
+
         if (sizing_.max_bytes) {
             next_bytes = AddChecked(bytes, EstimateRowBytes(columns, row));
         }
@@ -180,12 +182,14 @@ void CsvBatchWriter::Flush() { csv_writer_.Flush(); }
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
     const auto file_metadata = TryGetFileMetadata(path);
+
     if (!file_metadata || !file_metadata->is_regular) {
         throw Error::NotFound("batch_io", "columnar file not found", path.string());
     }
 
     const uint64_t file_size = file_metadata->size;
     constexpr uint64_t kFooterSize = sizeof(uint64_t) + kColumnarMagic.size();
+
     if (file_size < kFooterSize) {
         throw Error::InvalidData("batch_io", "columnar file is too small", path.string());
     }
@@ -196,6 +200,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     const uint64_t metadata_size = ReadStream<uint64_t>(in);
     std::string magic_read(kColumnarMagic.size(), '\0');
     ReadBytes(in, magic_read.data(), magic_read.size());
+
     if (magic_read != kColumnarMagic) {
         throw Error::InvalidData("batch_io", "invalid columnar magic", path.string());
     }
@@ -225,6 +230,7 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
     Batch batch(metadata_.schema, row_count);
 
     const auto& columns = batch.GetColumns();
+
     if (row_group_columns.size() != columns.size()) {
         throw Error::Mismatch("batch_io", "row group column count mismatch", path_.string());
     }
@@ -257,6 +263,7 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     }
 
     const size_t row_count = batch.RowsCount();
+
     if (row_count == 0) {
         return;
     }

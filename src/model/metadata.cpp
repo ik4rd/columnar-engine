@@ -73,6 +73,7 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     }
 
     WriteStream<uint32_t>(out, metadata.schema.columns.size());
+
     for (const auto& [name, type] : metadata.schema.columns) {
         if (name.size() > std::numeric_limits<uint32_t>::max()) {
             throw Error::Overflow("columnar", "column name too long");
@@ -87,6 +88,7 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     }
 
     WriteStream<uint32_t>(out, metadata.row_groups.size());
+
     for (const auto& [row_count, columns] : metadata.row_groups) {
         WriteStream<uint32_t>(out, row_count);
         WriteStream<uint32_t>(out, columns.size());

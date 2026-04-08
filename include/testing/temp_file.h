@@ -33,9 +33,9 @@ class TempFile {
         }
         return *this;
     }
-
     ~TempFile() { Remove(); }
 
+   public:
     const std::filesystem::path& Path() const { return path_; }
 
    private:
@@ -47,5 +47,6 @@ class TempFile {
         std::filesystem::remove(path_, ec);
     }
 
+   private:
     std::filesystem::path path_;
 };

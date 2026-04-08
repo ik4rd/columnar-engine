@@ -19,6 +19,7 @@ class ColumnarBatchReader final : public BatchReader {
     ColumnarBatchReader& operator=(ColumnarBatchReader&&) noexcept = default;
     ~ColumnarBatchReader() override = default;
 
+   public:
     std::optional<Batch> ReadNext() override;
 
     const Schema& GetSchema() const { return metadata_.schema; }
@@ -27,8 +28,10 @@ class ColumnarBatchReader final : public BatchReader {
    private:
     static ColumnarMetadata ReadFileMetadata(const std::filesystem::path& path);
 
+   private:
     std::filesystem::path path_;
     std::ifstream in_;
+
     ColumnarMetadata metadata_;
     size_t next_group_ = 0;
 };
@@ -42,6 +45,7 @@ class ColumnarBatchWriter final : public BatchWriter {
     ColumnarBatchWriter& operator=(ColumnarBatchWriter&&) noexcept = default;
     ~ColumnarBatchWriter() override = default;
 
+   public:
     void Write(const Batch& batch) override;
     void Flush() override;
 
@@ -52,6 +56,7 @@ class ColumnarBatchWriter final : public BatchWriter {
    private:
     std::filesystem::path path_;
     std::ofstream out_;
+
     ColumnarMetadata metadata_;
     bool finalized_ = false;
 };

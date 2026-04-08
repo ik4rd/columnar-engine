@@ -29,6 +29,7 @@ class Error final : public std::exception {
         Io,
     };
 
+   public:
     Error(Code code, std::string module, std::string module_instance, Type type, std::string message);
     Error(const Error&) = default;
     Error(Error&&) noexcept = default;
@@ -36,6 +37,7 @@ class Error final : public std::exception {
     Error& operator=(Error&&) noexcept = default;
     ~Error() override = default;
 
+   public:
     static Error InvalidArgument(std::string module, std::string message, std::string module_instance = {});
     static Error InvalidData(std::string module, std::string message, std::string module_instance = {});
     static Error NotFound(std::string module, std::string message, std::string module_instance = {});
@@ -60,6 +62,7 @@ class Error final : public std::exception {
    private:
     static std::string BuildWhat(std::string_view module, std::string_view message);
 
+   private:
     Code code_;
     std::string module_;
     std::string module_instance_;

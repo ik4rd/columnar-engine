@@ -53,6 +53,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
 
     while (true) {
         const Traits::int_type next = buffer->sbumpc();
+
         if (Traits::eq_int_type(next, Traits::eof())) {
             if (!saw_data) {
                 return false;

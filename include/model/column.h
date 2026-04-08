@@ -19,6 +19,7 @@ class Column {
     Column& operator=(Column&&) noexcept = default;
     virtual ~Column() = default;
 
+   public:
     ColumnType Type() const { return type_; }
 
     virtual size_t Size() const = 0;

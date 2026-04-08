@@ -33,6 +33,7 @@ T ReadStream(std::istream& in) {
 
     T value = 0;
     std::memcpy(&value, bytes.data(), sizeof(value));
+
     return value;
 }
 
