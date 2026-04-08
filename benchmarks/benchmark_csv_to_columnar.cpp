@@ -20,7 +20,7 @@
 
 int main(const int argc, char** argv) {
     try {
-        size_t rows_per_group = 50000;  // default: 100000
+        size_t rows_per_group = 100000;  // default: 100000
         if (argc == 2) {
             rows_per_group = std::stoull(argv[1]);
         }

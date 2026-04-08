@@ -31,6 +31,33 @@ class VariantColumn : public Column {
     }
 
     void WriteTo(std::ostream& out) const override {
+        if constexpr (std::endian::native == std::endian::little) {
+            size_t total_size = 0;
+            for (const auto& value : values_) {
+                if (value.size() > std::numeric_limits<uint32_t>::max()) {
+                    throw Error::Overflow(Derived::ModuleName(), "value exceeds supported size");
+                }
+                total_size += sizeof(uint32_t) + value.size();
+            }
+
+            std::string buffer(total_size, '\0');
+            char* dst = buffer.data();
+
+            for (const auto& value : values_) {
+                const uint32_t length = value.size();
+                std::memcpy(dst, &length, sizeof(length));
+                dst += sizeof(length);
+
+                if (!value.empty()) {
+                    std::memcpy(dst, value.data(), value.size());
+                    dst += value.size();
+                }
+            }
+
+            WriteBytes(out, buffer);
+            return;
+        }
+
         for (const auto& value : values_) {
             if (value.size() > std::numeric_limits<uint32_t>::max()) {
                 throw Error::Overflow(Derived::ModuleName(), "value exceeds supported size");

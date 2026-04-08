@@ -40,11 +40,11 @@ static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     return current + add;
 }
 
-static uint64_t EstimateRowBytes(const Batch& batch, const std::vector<std::string>& row) {
+static uint64_t EstimateRowBytes(const std::vector<std::unique_ptr<Column>>& columns,
+                                 const std::vector<std::string>& row) {
     uint64_t bytes = 0;
-    const size_t column_count = batch.ColumnsCount();
-    for (size_t i = 0; i < column_count; ++i) {
-        bytes = AddChecked(bytes, batch.ColumnAt(i).EstimateSizeFromString(row[i]));
+    for (size_t i = 0; i < columns.size(); ++i) {
+        bytes = AddChecked(bytes, columns[i]->EstimateSizeFromString(row[i]));
     }
     return bytes;
 }
@@ -103,8 +103,10 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 
     const size_t column_count = schema_.columns.size();
     ReserveForSizing(batch, sizing_, column_count);
+    const auto& columns = batch.GetColumns();
 
     std::vector<std::string> row;
+    row.reserve(column_count);
     size_t rows = 0;
     uint64_t bytes = 0;
 
@@ -123,9 +125,11 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
             throw Error::Mismatch("batch_io", "data csv column count mismatch");
         }
 
-        const uint64_t row_bytes = EstimateRowBytes(batch, row);
         const size_t next_rows = rows + 1;
-        const uint64_t next_bytes = AddChecked(bytes, row_bytes);
+        uint64_t next_bytes = bytes;
+        if (sizing_.max_bytes) {
+            next_bytes = AddChecked(bytes, EstimateRowBytes(columns, row));
+        }
 
         if (rows > 0 && sizing_.WouldExceed(next_rows, column_count, next_bytes)) {
             pending_row_ = std::move(row);
@@ -133,7 +137,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         for (size_t col = 0; col < column_count; ++col) {
-            batch.ColumnAt(col).AppendFromString(row[col]);
+            columns[col]->AppendFromString(row[col]);
         }
 
         rows = next_rows;

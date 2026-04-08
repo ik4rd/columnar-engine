@@ -59,6 +59,7 @@ build.ninja
 
 # Build
 build
+build-release
 build-sanitizers
 compile_commands.json
 src/*.cmake

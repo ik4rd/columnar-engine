@@ -32,6 +32,11 @@ class FixedColumn : public Column {
     }
 
     void WriteTo(std::ostream& out) const override {
+        if constexpr (std::endian::native == std::endian::little) {
+            WriteBytes(out, {reinterpret_cast<const char*>(values_.data()), values_.size() * sizeof(T)});
+            return;
+        }
+
         for (const T value : values_) {
             WriteStream<T>(out, value);
         }
@@ -43,7 +48,12 @@ class FixedColumn : public Column {
             throw Error::Mismatch(Derived::ModuleName(), "column chunk size mismatch");
         }
 
-        values_.assign(row_count, 0);
+        values_.resize(row_count);
+        if constexpr (std::endian::native == std::endian::little) {
+            ReadBytes(in, reinterpret_cast<char*>(values_.data()), values_.size() * sizeof(T));
+            return;
+        }
+
         for (uint32_t row_index = 0; row_index < row_count; ++row_index) {
             values_[row_index] = ReadStream<T>(in);
         }
