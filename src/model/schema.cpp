@@ -1,9 +1,70 @@
 #include "schema.h"
 
+#include <array>
+
 #include "csv.h"
 #include "error.h"
 #include "fileio.h"
 #include "parsing.h"
+
+static bool CanParseAs(const ColumnType type, const std::string& value) {
+    try {
+        switch (type) {
+            case ColumnType::Boolean:
+                static_cast<void>(ParseBoolean(value));
+                return true;
+            case ColumnType::Int16:
+                static_cast<void>(ParseInt16(value));
+                return true;
+            case ColumnType::Int32:
+                static_cast<void>(ParseInt32(value));
+                return true;
+            case ColumnType::Int64:
+                static_cast<void>(ParseInt64(value));
+                return true;
+            case ColumnType::Int128:
+                static_cast<void>(ParseInt128(value));
+                return true;
+            case ColumnType::Date:
+                static_cast<void>(ParseDate(value));
+                return true;
+            case ColumnType::Timestamp:
+                static_cast<void>(ParseTimestamp(value));
+                return true;
+            case ColumnType::Character:
+                static_cast<void>(ParseCharacter(value));
+                return true;
+            case ColumnType::String:
+                return true;
+        }
+    } catch (const Error&) {
+        return false;
+    }
+
+    throw Error::Unsupported("schema", "unknown column type");
+}
+
+static ColumnType InferColumnType(const std::vector<std::string>& values) {
+    static constexpr std::array kInferenceOrder = {
+        ColumnType::Boolean, ColumnType::Int16,     ColumnType::Int32,     ColumnType::Int64,  ColumnType::Int128,
+        ColumnType::Date,    ColumnType::Timestamp, ColumnType::Character, ColumnType::String,
+    };
+
+    for (const ColumnType type : kInferenceOrder) {
+        bool matches = true;
+        for (const auto& value : values) {
+            if (!CanParseAs(type, value)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            return type;
+        }
+    }
+
+    return ColumnType::String;
+}
 
 Schema ReadSchemaCsv(const std::filesystem::path& path) {
     const CsvReader reader(path);
@@ -16,7 +77,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
             continue;
         }
         if (row.size() != 2) {
-            throw Error::InvalidData("columnar", "schema csv must have 2 columns", path.string());
+            throw Error::InvalidData("schema", "schema csv must have 2 columns", path.string());
         }
         schema.columns.push_back(ColumnSchema{
             row[0],
@@ -25,7 +86,42 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (schema.columns.empty()) {
-        throw Error::InvalidData("columnar", "schema csv is empty", path.string());
+        throw Error::InvalidData("schema", "schema csv is empty", path.string());
+    }
+
+    return schema;
+}
+
+Schema InferSchemaCsv(const std::filesystem::path& path) {
+    const CsvReader reader(path);
+
+    std::vector<std::vector<std::string>> values_by_column;
+    std::vector<std::string> row;
+
+    while (reader.ReadRow(row)) {
+        if (values_by_column.empty()) {
+            values_by_column.resize(row.size());
+        } else if (row.size() != values_by_column.size()) {
+            throw Error::InvalidData("schema", "csv rows have inconsistent column count", path.string());
+        }
+
+        for (size_t i = 0; i < row.size(); ++i) {
+            values_by_column[i].push_back(row[i]);
+        }
+    }
+
+    if (values_by_column.empty()) {
+        throw Error::InvalidData("schema", "csv is empty", path.string());
+    }
+
+    Schema schema;
+    schema.columns.reserve(values_by_column.size());
+
+    for (size_t i = 0; i < values_by_column.size(); ++i) {
+        schema.columns.push_back(ColumnSchema{
+            "column_" + std::to_string(i + 1),
+            InferColumnType(values_by_column[i]),
+        });
     }
 
     return schema;

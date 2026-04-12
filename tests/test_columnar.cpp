@@ -160,3 +160,38 @@ TEST(columnar, mixed_supported_types_roundtrip) {
     EXPECT_EQ(ReadRows(schema_out.Path()), schema_rows);
     EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
 }
+
+TEST(columnar, infer_schema_from_csv_is_convert_compatible) {
+    const TempFile data_in("data_infer_in");
+    const TempFile schema_out("schema_infer_out");
+    const TempFile columnar_file("columnar_infer");
+    const TempFile data_out("data_infer_out");
+
+    const std::vector<std::vector<std::string>> data_rows = {
+        {"true", "-7", "12345", "9999999999", "170141183460469231731687303715884105727", "alpha", "2024-02-29",
+         "2024-02-29 12:34:56.123456", "A"},
+        {"false", "8", "-54321", "-42", "-170141183460469231731687303715884105728", "be,ta", "1970-01-01",
+         "1970-01-01 00:00:00", "Z"},
+    };
+
+    WriteRows(data_in.Path(), data_rows);
+    WriteSchemaCsv(schema_out.Path(), InferSchemaCsv(data_in.Path()));
+
+    EXPECT_EQ(ReadRows(schema_out.Path()),
+              (std::vector<std::vector<std::string>>{
+                  {"column_1", "bool"},
+                  {"column_2", "int16"},
+                  {"column_3", "int32"},
+                  {"column_4", "int64"},
+                  {"column_5", "int128"},
+                  {"column_6", "string"},
+                  {"column_7", "date"},
+                  {"column_8", "timestamp"},
+                  {"column_9", "char"},
+              }));
+
+    ConvertCsvToColumnar(schema_out.Path(), data_in.Path(), columnar_file.Path(), 1);
+    ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
+
+    EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
+}
