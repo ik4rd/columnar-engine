@@ -2,7 +2,7 @@
 
 : "${REPO_URL:=https://github.com/ik4rd/columnar-engine}"
 : "${BRANCH:=main}"
-: "${INPUT_CSV:=/data/input.csv}"
+: "${INPUT_CSV:=/bench/sample_input.csv}"
 : "${COLUMNAR:=/work/results/output.columnar}"
 : "${RESULTS:=/work/results}"
 

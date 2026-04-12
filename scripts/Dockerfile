@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY commands.sh env.sh /bench/
+COPY commands.sh env.sh sample_input.csv /bench/
 RUN chmod +x /bench/commands.sh
 
 WORKDIR /work
