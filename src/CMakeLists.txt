@@ -19,6 +19,10 @@ add_library(columnar_engine_lib
         support/parsing.cpp
         model/schema.cpp
         io/stream.cpp
+        executor/executor.cpp
+        sql_parser/tokenizer_factory.cpp
+        sql_parser/tokenizer_tokens.cpp
+        sql_parser/tokenizer.cpp
 )
 
 target_include_directories(columnar_engine_lib PUBLIC ${COLUMNAR_INCLUDE_DIRS})
