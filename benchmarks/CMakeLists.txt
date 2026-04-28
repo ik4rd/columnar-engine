@@ -7,6 +7,15 @@ target_link_libraries(benchmark_csv_to_columnar
         columnar_engine_lib
 )
 
+add_executable(benchmark_queries
+        benchmark_queries.cpp
+)
+
+target_link_libraries(benchmark_queries
+        PRIVATE
+        columnar_engine_lib
+)
+
 target_compile_definitions(benchmark_csv_to_columnar
         PRIVATE
         COLUMNAR_BENCHMARK_DEFAULT_DATA="${PROJECT_SOURCE_DIR}/benchmarks/hits_sample.csv"
@@ -16,4 +25,10 @@ target_compile_definitions(benchmark_csv_to_columnar
         COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA="${PROJECT_SOURCE_DIR}/benchmarks/schema_sample_new.csv"
 )
 
+target_compile_definitions(benchmark_queries
+        PRIVATE
+        COLUMNAR_BENCHMARK_QUERIES_DIR="${PROJECT_SOURCE_DIR}/benchmarks/queries"
+)
+
 set_target_properties(benchmark_csv_to_columnar PROPERTIES FOLDER "benchmarks")
+set_target_properties(benchmark_queries PROPERTIES FOLDER "benchmarks")
