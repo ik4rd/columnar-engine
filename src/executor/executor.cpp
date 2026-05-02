@@ -22,6 +22,6 @@ ExecuteExpected Executor::Execute(const std::string_view query) const {
 
         return std::move(*batch);
     } catch (const Error& error) {
-        return std::unexpected(error);
+        return tl::unexpected(error);
     }
 }

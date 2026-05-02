@@ -120,11 +120,11 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
 }
 
 Expected<TokenPtr> MakeUnexpectedCharacter(const char ch, const size_t offset) {
-    return std::unexpected(Error::InvalidData("tokenizer_factory", "unexpected character '" + DescribeCharacter(ch) +
-                                                                       "' at position " + std::to_string(offset)));
+    return tl::unexpected(Error::InvalidData("tokenizer_factory", "unexpected character '" + DescribeCharacter(ch) +
+                                                                      "' at position " + std::to_string(offset)));
 }
 
 Expected<TokenPtr> MakeUnterminatedString(const size_t offset) {
-    return std::unexpected(
+    return tl::unexpected(
         Error::InvalidData("tokenizer_factory", "unterminated string literal at position " + std::to_string(offset)));
 }

@@ -1,7 +1,4 @@
 function(columnar_enable_sanitizers sanitizers_raw)
-    set(CMAKE_CXX_STANDARD 23)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    
     if (NOT sanitizers_raw)
         return()
     endif ()

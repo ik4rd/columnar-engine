@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -14,9 +13,10 @@
 #include "aggregate_function.h"
 #include "batch.h"
 #include "error.h"
+#include "expected.hpp"
 #include "tokenizer.h"
 
-using ExecuteExpected = std::expected<Batch, Error>;
+using ExecuteExpected = tl::expected<Batch, Error>;
 
 class Operator {
    public:

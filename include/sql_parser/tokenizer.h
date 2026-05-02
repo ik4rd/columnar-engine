@@ -1,13 +1,13 @@
 #pragma once
 
 #include <cstddef>
-#include <expected>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "error.h"
+#include "expected.hpp"
 
 enum class Tokens {
     NameToken,
@@ -54,7 +54,7 @@ enum class Tokens {
 std::string_view TokenTypeToString(Tokens type) noexcept;
 
 template <typename T>
-using Expected = std::expected<T, Error>;
+using Expected = tl::expected<T, Error>;
 
 class Token {
    public:

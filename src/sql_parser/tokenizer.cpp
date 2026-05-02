@@ -161,7 +161,7 @@ Expected<std::vector<TokenPtr>> TokenizeSql(const std::string_view input) {
     while (true) {
         auto token = tokenizer.GetNext();
         if (!token.has_value()) {
-            return std::unexpected(token.error());
+            return tl::unexpected(token.error());
         }
 
         tokens.push_back(token.value());
