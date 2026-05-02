@@ -49,6 +49,8 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 CTestTestfile.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
 Makefile
 Testing/Temporary
 
@@ -80,6 +82,8 @@ tests/test_csv
 tests/test_batch
 tests/test_columns
 tests/test_stream
+tests/test_executor
+tests/test_tokenizer
 
 # Examples
 examples/*.cmake
@@ -104,3 +108,4 @@ benchmarks/schema_sample.csv
 benchmarks/schema_sample_new.csv
 benchmarks/hits_sample.columnar
 benchmarks/benchmark_csv_to_columnar
+benchmarks/benchmark_queries

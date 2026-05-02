@@ -4,8 +4,8 @@
 #include <iostream>
 #include <vector>
 
-#include "csv_columnar.h"
 #include "csv.h"
+#include "csv_columnar.h"
 #include "error.h"
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_DATA
@@ -28,6 +28,8 @@
 #define COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA "benchmarks/schema_sample_new.csv"
 #endif
 
+static constexpr size_t kRowsPerGroup = 50000;
+
 struct CsvCompareResult {
     bool equal = true;
     size_t row = 0;
@@ -39,6 +41,7 @@ static CsvCompareResult CompareCsvFiles(const std::filesystem::path& lhs_path, c
 
     std::vector<std::string> lhs_row;
     std::vector<std::string> rhs_row;
+
     size_t row = 0;
 
     while (true) {
@@ -61,7 +64,7 @@ static CsvCompareResult CompareCsvFiles(const std::filesystem::path& lhs_path, c
 
 int main(const int argc, char** argv) {
     try {
-        size_t rows_per_group = 50000;  // default: 100000
+        size_t rows_per_group = kRowsPerGroup;
         if (argc == 2) {
             rows_per_group = std::stoull(argv[1]);
         }
@@ -91,28 +94,28 @@ int main(const int argc, char** argv) {
             std::chrono::duration<double>(columnar_to_csv_finished_at - columnar_to_csv_started_at).count();
         const double compare_seconds = std::chrono::duration<double>(compare_finished_at - compare_started_at).count();
 
-        std::cout << "schema: " << schema_path << '\n'
-                  << "data: " << data_path << '\n'
-                  << "columnar_output: " << output_path << '\n'
-                  << "roundtrip_schema: " << roundtrip_schema_path << '\n'
-                  << "roundtrip_data: " << roundtrip_data_path << '\n'
-                  << "rows_per_group: " << rows_per_group << '\n'
-                  << "csv_to_columnar_elapsed_seconds: " << csv_to_columnar_seconds << '\n'
-                  << "columnar_to_csv_elapsed_seconds: " << columnar_to_csv_seconds << '\n'
-                  << "csv_compare_elapsed_seconds: " << compare_seconds << '\n'
-                  << "schema_matches_source: " << (schema_compare.equal ? "true" : "false") << '\n'
-                  << "data_matches_source: " << (data_compare.equal ? "true" : "false") << '\n';
+        std::cout << "schema: " << schema_path << std::endl
+                  << "data: " << data_path << std::endl
+                  << "columnar_output: " << output_path << std::endl
+                  << "roundtrip_schema: " << roundtrip_schema_path << std::endl
+                  << "roundtrip_data: " << roundtrip_data_path << std::endl
+                  << "rows_per_group: " << rows_per_group << std::endl
+                  << "csv_to_columnar_elapsed_seconds: " << csv_to_columnar_seconds << std::endl
+                  << "columnar_to_csv_elapsed_seconds: " << columnar_to_csv_seconds << std::endl
+                  << "csv_compare_elapsed_seconds: " << compare_seconds << std::endl
+                  << "schema_matches_source: " << (schema_compare.equal ? "true" : "false") << std::endl
+                  << "data_matches_source: " << (data_compare.equal ? "true" : "false") << std::endl;
 
         if (!schema_compare.equal) {
-            std::cout << "schema_first_mismatch_row: " << schema_compare.row << '\n';
+            std::cout << "schema_first_mismatch_row: " << schema_compare.row << std::endl;
         }
         if (!data_compare.equal) {
-            std::cout << "data_first_mismatch_row: " << data_compare.row << '\n';
+            std::cout << "data_first_mismatch_row: " << data_compare.row << std::endl;
         }
 
         return schema_compare.equal && data_compare.equal ? 0 : 2;
     } catch (const std::exception& ex) {
-        std::cerr << ex.what() << '\n';
+        std::cerr << ex.what() << std::endl;
         return 1;
     }
 }

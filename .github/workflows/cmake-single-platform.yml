@@ -37,6 +37,7 @@ jobs:
           ./tests/test_csv
           ./tests/test_fileio
           ./tests/test_stream
+          ./tests/test_tokenizer
 
   sanitizers:
     runs-on: ubuntu-latest

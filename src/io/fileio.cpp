@@ -1,5 +1,7 @@
 #include "fileio.h"
 
+#include <iterator>
+
 #include "error.h"
 
 std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path) {
@@ -43,6 +45,19 @@ bool FileExists(const std::filesystem::path& path) {
     return exists;
 }
 
+void EnsureParentDirectory(const std::filesystem::path& path) {
+    const auto parent = path.parent_path();
+    if (parent.empty()) {
+        return;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+    if (ec) {
+        throw Error::PathIo("fileio", path, "create parent directories");
+    }
+}
+
 std::ifstream OpenInputFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
@@ -57,6 +72,11 @@ std::ofstream OpenOutputFile(const std::filesystem::path& path, const FileOpenMo
         throw Error::PathIo("fileio", path, mode == FileOpenMode::Append ? "open for append" : "open for write");
     }
     return file;
+}
+
+std::string ReadTextFile(const std::filesystem::path& path) {
+    std::ifstream file = OpenInputFile(path);
+    return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {

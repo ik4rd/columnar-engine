@@ -19,6 +19,9 @@ set(COLUMNAR_INCLUDE_DIRS
         ${PROJECT_SOURCE_DIR}/include/model
         ${PROJECT_SOURCE_DIR}/include/support
         ${PROJECT_SOURCE_DIR}/include/testing
+        ${PROJECT_SOURCE_DIR}/include/executor
+        ${PROJECT_SOURCE_DIR}/include/sql_parser
+        ${PROJECT_SOURCE_DIR}/include/tl
 )
 
 include_directories(${COLUMNAR_INCLUDE_DIRS})

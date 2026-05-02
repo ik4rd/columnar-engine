@@ -14,11 +14,20 @@ add_library(columnar_engine_lib
         convert/csv_columnar.cpp
         io/csv.cpp
         support/error.cpp
+        support/ascii.cpp
         io/fileio.cpp
         model/metadata.cpp
         support/parsing.cpp
         model/schema.cpp
         io/stream.cpp
+        executor/executor.cpp
+        executor/query_parser.cpp
+        executor/query_planner.cpp
+        executor/aggregate_states.cpp
+        executor/operators.cpp
+        sql_parser/tokenizer_factory.cpp
+        sql_parser/tokenizer_tokens.cpp
+        sql_parser/tokenizer.cpp
 )
 
 target_include_directories(columnar_engine_lib PUBLIC ${COLUMNAR_INCLUDE_DIRS})

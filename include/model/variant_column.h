@@ -32,41 +32,31 @@ class VariantColumn : public Column {
     }
 
     void WriteTo(std::ostream& out) const override {
-        if constexpr (std::endian::native == std::endian::little) {
-            size_t total_size = 0;
-            for (const auto& value : values_) {
-                if (value.size() > std::numeric_limits<uint32_t>::max()) {
-                    throw Error::Overflow(Derived::ModuleName(), "value exceeds supported size");
-                }
-                total_size += sizeof(uint32_t) + value.size();
-            }
-
-            std::string buffer(total_size, '\0');
-            char* dst = buffer.data();
-
-            for (const auto& value : values_) {
-                const uint32_t length = value.size();
-                std::memcpy(dst, &length, sizeof(length));
-                dst += sizeof(length);
-
-                if (!value.empty()) {
-                    std::memcpy(dst, value.data(), value.size());
-                    dst += value.size();
-                }
-            }
-
-            WriteBytes(out, buffer);
-
-            return;
-        }
+        size_t total_size = 0;
 
         for (const auto& value : values_) {
             if (value.size() > std::numeric_limits<uint32_t>::max()) {
                 throw Error::Overflow(Derived::ModuleName(), "value exceeds supported size");
             }
-            WriteStream<uint32_t>(out, value.size());
-            WriteBytes(out, value);
+            total_size += sizeof(uint32_t) + value.size();
         }
+
+        std::string buffer(total_size, '\0');
+        char* dst = buffer.data();
+
+        for (const auto& value : values_) {
+            const uint32_t length = value.size();
+
+            std::memcpy(dst, &length, sizeof(length));
+            dst += sizeof(length);
+
+            if (!value.empty()) {
+                std::memcpy(dst, value.data(), value.size());
+                dst += value.size();
+            }
+        }
+
+        WriteBytes(out, buffer);
     }
 
     void ReadFrom(std::istream& in, const uint32_t row_count, const uint64_t size) override {
@@ -74,6 +64,7 @@ class VariantColumn : public Column {
         values_.reserve(row_count);
 
         uint64_t consumed = 0;
+
         for (uint32_t row_index = 0; row_index < row_count; ++row_index) {
             const uint32_t length = ReadStream<uint32_t>(in);
             consumed += sizeof(uint32_t);
