@@ -49,3 +49,6 @@ class CsvBatchWriter final : public BatchWriter {
     CsvWriter csv_writer_;
     Schema schema_;
 };
+
+void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows);
+void WriteBatchCsv(const std::filesystem::path& path, const Batch& batch);

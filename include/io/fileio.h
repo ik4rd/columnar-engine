@@ -18,6 +18,7 @@ struct FileMetadata {
 std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path);
 
 bool FileExists(const std::filesystem::path& path);
+void EnsureParentDirectory(const std::filesystem::path& path);
 
 std::ifstream OpenInputFile(const std::filesystem::path& path);
 
@@ -28,6 +29,7 @@ enum class FileOpenMode {
 
 std::ofstream OpenOutputFile(const std::filesystem::path& path, FileOpenMode mode = FileOpenMode::Truncate);
 
+std::string ReadTextFile(const std::filesystem::path& path);
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path);
 void WriteFileBytes(const std::filesystem::path& path, std::span<const uint8_t> bytes);
 void WriteFileBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes);

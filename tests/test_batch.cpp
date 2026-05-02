@@ -14,20 +14,6 @@ static_assert(std::is_copy_assignable_v<Batch>);
 static_assert(std::is_move_constructible_v<Batch>);
 static_assert(std::is_move_assignable_v<Batch>);
 
-static void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows) {
-    const size_t row_count = batch.RowsCount();
-    const size_t column_count = batch.ColumnsCount();
-
-    for (size_t row = 0; row < row_count; ++row) {
-        std::vector<std::string> values;
-        values.reserve(column_count);
-        for (size_t col = 0; col < column_count; ++col) {
-            values.push_back(batch.ColumnAt(col).ValueAsString(row));
-        }
-        rows.push_back(std::move(values));
-    }
-}
-
 TEST(batch, csv_reader_respects_max_rows) {
     Schema schema;
     schema.columns = {
@@ -61,6 +47,28 @@ TEST(batch, csv_reader_respects_max_rows) {
     EXPECT_EQ(second->ColumnAt(1).ValueAsString(0), "gamma");
 
     EXPECT_FALSE(reader.ReadNext().has_value());
+}
+
+TEST(batch, write_batch_csv_writes_single_batch) {
+    Schema schema;
+    schema.columns = {
+        {"id", ColumnType::Int64},
+        {"name", ColumnType::String},
+    };
+
+    Batch batch(schema);
+    batch.ColumnAt(0).AppendFromString("1");
+    batch.ColumnAt(1).AppendFromString("alpha");
+    batch.ColumnAt(0).AppendFromString("2");
+    batch.ColumnAt(1).AppendFromString("be,ta");
+
+    const TempFile data_out("batch_write_csv");
+    WriteBatchCsv(data_out.Path(), batch);
+
+    EXPECT_EQ(ReadRows(data_out.Path()), (std::vector<std::vector<std::string>>{
+                                             {"1", "alpha"},
+                                             {"2", "be,ta"},
+                                         }));
 }
 
 TEST(batch, columnar_roundtrip) {

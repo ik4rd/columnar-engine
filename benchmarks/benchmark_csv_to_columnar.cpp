@@ -41,6 +41,7 @@ static CsvCompareResult CompareCsvFiles(const std::filesystem::path& lhs_path, c
 
     std::vector<std::string> lhs_row;
     std::vector<std::string> rhs_row;
+
     size_t row = 0;
 
     while (true) {
@@ -117,6 +118,4 @@ int main(const int argc, char** argv) {
         std::cerr << ex.what() << std::endl;
         return 1;
     }
-
-    return 0;
 }

@@ -1,22 +1,13 @@
 #include "parsing.h"
 
-#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 
+#include "ascii.h"
 #include "error.h"
-
-static std::string ToLower(const std::string_view input) {
-    std::string output;
-    output.reserve(input.size());
-    for (const unsigned char ch : input) {
-        output.push_back(std::tolower(ch));
-    }
-    return output;
-}
 
 template <std::integral T>
 T ParseInteger(const std::string& value, const std::string_view type_name) {
@@ -78,15 +69,13 @@ static std::string FormatDateParts(const std::chrono::year_month_day ymd) {
 }
 
 bool ParseBoolean(const std::string& value) {
-    const std::string lowered = ToLower(value);
-
+    const std::string lowered = ToLowerAscii(value);
     if (lowered == "true" || lowered == "1") {
         return true;
     }
     if (lowered == "false" || lowered == "0") {
         return false;
     }
-
     throw Error::InvalidData("parsing", "invalid bool value");
 }
 
@@ -118,6 +107,7 @@ Int128 ParseInt128(const std::string& value) {
     const UInt128 limit = negative ? negative_limit : positive_limit;
 
     UInt128 magnitude = 0;
+
     for (; pos < value.size(); ++pos) {
         const char ch = value[pos];
         if (ch < '0' || ch > '9') {
@@ -196,6 +186,7 @@ int64_t ParseTimestamp(const std::string& value) {
 
     const auto timestamp = day_point + std::chrono::hours{hour} + std::chrono::minutes{minute} +
                            std::chrono::seconds{second} + std::chrono::microseconds{microseconds};
+
     return std::chrono::duration_cast<std::chrono::microseconds>(timestamp.time_since_epoch()).count();
 }
 
@@ -268,7 +259,7 @@ std::string TimestampToString(const int64_t value) {
 }
 
 ColumnType ParseColumnType(const std::string_view input) {
-    const std::string lowered = ToLower(input);
+    const std::string lowered = ToLowerAscii(input);
     if (lowered == "bool") {
         return ColumnType::Boolean;
     }

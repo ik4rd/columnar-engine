@@ -25,12 +25,12 @@ TEST(sql_tokenizer, tokenizes_select_query) {
 
     EXPECT_EQ(
         CollectTypes(tokens),
-        (std::vector<Tokens>{
-            Tokens::kSelect,      Tokens::kDistinct,  Tokens::kNameToken,      Tokens::kComma,     Tokens::kCount,
-            Tokens::kOpenBracket, Tokens::kAsterisk,  Tokens::kCloseBracket,   Tokens::kComma,     Tokens::kLength,
-            Tokens::kOpenBracket, Tokens::kNameToken, Tokens::kCloseBracket,   Tokens::kFrom,      Tokens::kNameToken,
-            Tokens::kGroup,       Tokens::kBy,        Tokens::kNameToken,      Tokens::kOrder,     Tokens::kBy,
-            Tokens::kNameToken,   Tokens::kLimit,     Tokens::kNumericLiteral, Tokens::kSemicolon, Tokens::kEndOfInput,
+        (std::vector{
+            Tokens::Select,      Tokens::Distinct,  Tokens::NameToken,      Tokens::Comma,     Tokens::Count,
+            Tokens::OpenBracket, Tokens::Asterisk,  Tokens::CloseBracket,   Tokens::Comma,     Tokens::Length,
+            Tokens::OpenBracket, Tokens::NameToken, Tokens::CloseBracket,   Tokens::From,      Tokens::NameToken,
+            Tokens::Group,       Tokens::By,        Tokens::NameToken,      Tokens::Order,     Tokens::By,
+            Tokens::NameToken,   Tokens::Limit,     Tokens::NumericLiteral, Tokens::Semicolon, Tokens::EOI,
         }));
 
     ASSERT_EQ(tokens.size(), 25U);
@@ -51,19 +51,19 @@ TEST(sql_tokenizer, tokenizes_create_with_literals_and_case_insensitive_keywords
     ASSERT_TRUE(result.has_value());
     const auto& tokens = result.value();
 
-    EXPECT_EQ(CollectTypes(tokens), (std::vector<Tokens>{
-                                        Tokens::kCreate,
-                                        Tokens::kNameToken,
-                                        Tokens::kAs,
-                                        Tokens::kSelect,
-                                        Tokens::kStringLiteral,
-                                        Tokens::kComma,
-                                        Tokens::kNameToken,
-                                        Tokens::kMinus,
-                                        Tokens::kNumericLiteral,
-                                        Tokens::kFrom,
-                                        Tokens::kNameToken,
-                                        Tokens::kEndOfInput,
+    EXPECT_EQ(CollectTypes(tokens), (std::vector{
+                                        Tokens::Create,
+                                        Tokens::NameToken,
+                                        Tokens::As,
+                                        Tokens::Select,
+                                        Tokens::StringLiteral,
+                                        Tokens::Comma,
+                                        Tokens::NameToken,
+                                        Tokens::Minus,
+                                        Tokens::NumericLiteral,
+                                        Tokens::From,
+                                        Tokens::NameToken,
+                                        Tokens::EOI,
                                     }));
 
     ASSERT_EQ(tokens.size(), 12U);
@@ -84,25 +84,25 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
         ASSERT_TRUE(token.has_value());
         types.push_back(token.value()->GetType());
 
-        if (token.value()->GetType() == Tokens::kEndOfInput) {
+        if (token.value()->GetType() == Tokens::EOI) {
             break;
         }
     }
 
-    EXPECT_EQ(types, (std::vector<Tokens>{
-                         Tokens::kWhere,
-                         Tokens::kNameToken,
-                         Tokens::kGreaterOrEqual,
-                         Tokens::kNumericLiteral,
-                         Tokens::kAnd,
-                         Tokens::kNameToken,
-                         Tokens::kNotEqual,
-                         Tokens::kNumericLiteral,
-                         Tokens::kAnd,
-                         Tokens::kNameToken,
-                         Tokens::kNotEqual,
-                         Tokens::kNumericLiteral,
-                         Tokens::kEndOfInput,
+    EXPECT_EQ(types, (std::vector{
+                         Tokens::Where,
+                         Tokens::NameToken,
+                         Tokens::GreaterOrEqual,
+                         Tokens::NumericLiteral,
+                         Tokens::And,
+                         Tokens::NameToken,
+                         Tokens::NotEqual,
+                         Tokens::NumericLiteral,
+                         Tokens::And,
+                         Tokens::NameToken,
+                         Tokens::NotEqual,
+                         Tokens::NumericLiteral,
+                         Tokens::EOI,
                      }));
 }
 

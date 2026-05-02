@@ -24,13 +24,14 @@ Expected<TokenPtr> Tokenizer::GetNext() {
     }
 
     if (pos_ >= query_.size()) {
-        return MakeToken(Tokens::kEndOfInput, {}, query_.size());
+        return MakeToken(Tokens::EOI, {}, query_.size());
     }
 
     const char ch = query_[pos_];
     if (IsIdentifierStart(ch)) {
         const size_t start = pos_;
         ++pos_;
+
         while (pos_ < query_.size() && IsIdentifierPart(query_[pos_])) {
             ++pos_;
         }
@@ -43,6 +44,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
     if (std::isdigit(static_cast<unsigned char>(ch)) != 0) {
         const size_t start = pos_;
         ++pos_;
+
         while (pos_ < query_.size() && std::isdigit(static_cast<unsigned char>(query_[pos_])) != 0) {
             ++pos_;
         }
@@ -57,7 +59,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
 
         const std::string_view text = std::string_view(query_).substr(start, pos_ - start);
 
-        return MakeToken(Tokens::kNumericLiteral, std::string(text), start);
+        return MakeToken(Tokens::NumericLiteral, std::string(text), start);
     }
 
     if (ch == '\'') {
@@ -65,6 +67,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
         ++pos_;
 
         bool terminated = false;
+
         while (pos_ < query_.size()) {
             if (query_[pos_] != '\'') {
                 ++pos_;
@@ -88,60 +91,60 @@ Expected<TokenPtr> Tokenizer::GetNext() {
 
         const std::string_view text = std::string_view(query_).substr(start, pos_ - start);
 
-        return MakeToken(Tokens::kStringLiteral, std::string(text), start);
+        return MakeToken(Tokens::StringLiteral, std::string(text), start);
     }
 
     const size_t start = pos_;
     switch (ch) {
         case '+':
             ++pos_;
-            return MakeToken(Tokens::kPlus, "+", start);
+            return MakeToken(Tokens::Plus, "+", start);
         case '-':
             ++pos_;
-            return MakeToken(Tokens::kMinus, "-", start);
+            return MakeToken(Tokens::Minus, "-", start);
         case '*':
             ++pos_;
-            return MakeToken(Tokens::kAsterisk, "*", start);
+            return MakeToken(Tokens::Asterisk, "*", start);
         case '(':
             ++pos_;
-            return MakeToken(Tokens::kOpenBracket, "(", start);
+            return MakeToken(Tokens::OpenBracket, "(", start);
         case ')':
             ++pos_;
-            return MakeToken(Tokens::kCloseBracket, ")", start);
+            return MakeToken(Tokens::CloseBracket, ")", start);
         case ',':
             ++pos_;
-            return MakeToken(Tokens::kComma, ",", start);
+            return MakeToken(Tokens::Comma, ",", start);
         case '.':
             ++pos_;
-            return MakeToken(Tokens::kDot, ".", start);
+            return MakeToken(Tokens::Dot, ".", start);
         case ';':
             ++pos_;
-            return MakeToken(Tokens::kSemicolon, ";", start);
+            return MakeToken(Tokens::Semicolon, ";", start);
         case '=':
             ++pos_;
-            return MakeToken(Tokens::kEqual, "=", start);
+            return MakeToken(Tokens::Equal, "=", start);
         case '<':
             ++pos_;
             if (pos_ < query_.size() && query_[pos_] == '=') {
                 ++pos_;
-                return MakeToken(Tokens::kLessOrEqual, "<=", start);
+                return MakeToken(Tokens::LessOrEqual, "<=", start);
             }
             if (pos_ < query_.size() && query_[pos_] == '>') {
                 ++pos_;
-                return MakeToken(Tokens::kNotEqual, "<>", start);
+                return MakeToken(Tokens::NotEqual, "<>", start);
             }
-            return MakeToken(Tokens::kLess, "<", start);
+            return MakeToken(Tokens::Less, "<", start);
         case '>':
             ++pos_;
             if (pos_ < query_.size() && query_[pos_] == '=') {
                 ++pos_;
-                return MakeToken(Tokens::kGreaterOrEqual, ">=", start);
+                return MakeToken(Tokens::GreaterOrEqual, ">=", start);
             }
-            return MakeToken(Tokens::kGreater, ">", start);
+            return MakeToken(Tokens::Greater, ">", start);
         case '!':
             if (pos_ + 1 < query_.size() && query_[pos_ + 1] == '=') {
                 pos_ += 2;
-                return MakeToken(Tokens::kNotEqual, "!=", start);
+                return MakeToken(Tokens::NotEqual, "!=", start);
             }
             return MakeUnexpectedCharacter(ch, start);
         default:
@@ -162,7 +165,7 @@ Expected<std::vector<TokenPtr>> TokenizeSql(const std::string_view input) {
         }
 
         tokens.push_back(token.value());
-        if (token.value()->GetType() == Tokens::kEndOfInput) {
+        if (token.value()->GetType() == Tokens::EOI) {
             break;
         }
     }

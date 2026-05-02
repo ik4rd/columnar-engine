@@ -4,78 +4,77 @@
 
 std::string_view TokenTypeToString(const Tokens type) noexcept {
     switch (type) {
-        case Tokens::kNameToken:
+        case Tokens::NameToken:
             return "name";
-        case Tokens::kNumericLiteral:
+        case Tokens::NumericLiteral:
             return "numeric_literal";
-        case Tokens::kStringLiteral:
+        case Tokens::StringLiteral:
             return "string_literal";
-        case Tokens::kSelect:
+        case Tokens::Select:
             return "select";
-        case Tokens::kFrom:
+        case Tokens::From:
             return "from";
-        case Tokens::kCreate:
+        case Tokens::Create:
             return "create";
-        case Tokens::kAs:
+        case Tokens::As:
             return "as";
-        case Tokens::kSum:
+        case Tokens::Sum:
             return "sum";
-        case Tokens::kCount:
+        case Tokens::Count:
             return "count";
-        case Tokens::kAvg:
+        case Tokens::Avg:
             return "avg";
-        case Tokens::kMax:
+        case Tokens::Max:
             return "max";
-        case Tokens::kMin:
+        case Tokens::Min:
             return "min";
-        case Tokens::kAnd:
+        case Tokens::And:
             return "and";
-        case Tokens::kDistinct:
+        case Tokens::Distinct:
             return "distinct";
-        case Tokens::kLength:
+        case Tokens::Length:
             return "length";
-        case Tokens::kWhere:
+        case Tokens::Where:
             return "where";
-        case Tokens::kBy:
+        case Tokens::By:
             return "by";
-        case Tokens::kGroup:
+        case Tokens::Group:
             return "group";
-        case Tokens::kOrder:
+        case Tokens::Order:
             return "order";
-        case Tokens::kLimit:
+        case Tokens::Limit:
             return "limit";
-        case Tokens::kPlus:
+        case Tokens::Plus:
             return "plus";
-        case Tokens::kMinus:
+        case Tokens::Minus:
             return "minus";
-        case Tokens::kAsterisk:
+        case Tokens::Asterisk:
             return "asterisk";
-        case Tokens::kOpenBracket:
+        case Tokens::OpenBracket:
             return "open_bracket";
-        case Tokens::kCloseBracket:
+        case Tokens::CloseBracket:
             return "close_bracket";
-        case Tokens::kComma:
+        case Tokens::Comma:
             return "comma";
-        case Tokens::kDot:
+        case Tokens::Dot:
             return "dot";
-        case Tokens::kSemicolon:
+        case Tokens::Semicolon:
             return "semicolon";
-        case Tokens::kEqual:
+        case Tokens::Equal:
             return "equal";
-        case Tokens::kNotEqual:
+        case Tokens::NotEqual:
             return "not_equal";
-        case Tokens::kLess:
+        case Tokens::Less:
             return "less";
-        case Tokens::kLessOrEqual:
+        case Tokens::LessOrEqual:
             return "less_or_equal";
-        case Tokens::kGreater:
+        case Tokens::Greater:
             return "greater";
-        case Tokens::kGreaterOrEqual:
+        case Tokens::GreaterOrEqual:
             return "greater_or_equal";
-        case Tokens::kEndOfInput:
+        case Tokens::EOI:
             return "end_of_input";
     }
-
     return "unknown";
 }
 
@@ -93,41 +92,41 @@ const std::vector<TokenPtr>& Command::GetArgs() const noexcept { return args_; }
 #define COLUMNAR_DEFINE_TOKEN_TYPE(token_class, token_value) \
     Tokens token_class::GetType() const noexcept { return Tokens::token_value; }
 
-COLUMNAR_DEFINE_TOKEN_TYPE(TSelectToken, kSelect)
-COLUMNAR_DEFINE_TOKEN_TYPE(TCreateToken, kCreate)
-COLUMNAR_DEFINE_TOKEN_TYPE(TFromToken, kFrom)
-COLUMNAR_DEFINE_TOKEN_TYPE(TLimitToken, kLimit)
-COLUMNAR_DEFINE_TOKEN_TYPE(TOrderToken, kOrder)
-COLUMNAR_DEFINE_TOKEN_TYPE(TWhereToken, kWhere)
-COLUMNAR_DEFINE_TOKEN_TYPE(TGroupToken, kGroup)
-COLUMNAR_DEFINE_TOKEN_TYPE(TSumToken, kSum)
-COLUMNAR_DEFINE_TOKEN_TYPE(TMinToken, kMin)
-COLUMNAR_DEFINE_TOKEN_TYPE(TMaxToken, kMax)
-COLUMNAR_DEFINE_TOKEN_TYPE(TCountToken, kCount)
-COLUMNAR_DEFINE_TOKEN_TYPE(TDistinctToken, kDistinct)
-COLUMNAR_DEFINE_TOKEN_TYPE(TAvgToken, kAvg)
-COLUMNAR_DEFINE_TOKEN_TYPE(TLengthToken, kLength)
-COLUMNAR_DEFINE_TOKEN_TYPE(TPlusToken, kPlus)
-COLUMNAR_DEFINE_TOKEN_TYPE(TMinusToken, kMinus)
-COLUMNAR_DEFINE_TOKEN_TYPE(TNameToken, kNameToken)
-COLUMNAR_DEFINE_TOKEN_TYPE(TNumericLiteralToken, kNumericLiteral)
-COLUMNAR_DEFINE_TOKEN_TYPE(TStringLiteralToken, kStringLiteral)
-COLUMNAR_DEFINE_TOKEN_TYPE(TAsToken, kAs)
-COLUMNAR_DEFINE_TOKEN_TYPE(TAndToken, kAnd)
-COLUMNAR_DEFINE_TOKEN_TYPE(TByToken, kBy)
-COLUMNAR_DEFINE_TOKEN_TYPE(TOpenBracketToken, kOpenBracket)
-COLUMNAR_DEFINE_TOKEN_TYPE(TCommaToken, kComma)
-COLUMNAR_DEFINE_TOKEN_TYPE(TCloseBracketToken, kCloseBracket)
-COLUMNAR_DEFINE_TOKEN_TYPE(TAsteriskToken, kAsterisk)
-COLUMNAR_DEFINE_TOKEN_TYPE(TDotToken, kDot)
-COLUMNAR_DEFINE_TOKEN_TYPE(TSemicolonToken, kSemicolon)
-COLUMNAR_DEFINE_TOKEN_TYPE(TEqualToken, kEqual)
-COLUMNAR_DEFINE_TOKEN_TYPE(TNotEqualToken, kNotEqual)
-COLUMNAR_DEFINE_TOKEN_TYPE(TLessToken, kLess)
-COLUMNAR_DEFINE_TOKEN_TYPE(TLessOrEqualToken, kLessOrEqual)
-COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterToken, kGreater)
-COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterOrEqualToken, kGreaterOrEqual)
-COLUMNAR_DEFINE_TOKEN_TYPE(TEndOfInputToken, kEndOfInput)
+COLUMNAR_DEFINE_TOKEN_TYPE(TSelectToken, Select)
+COLUMNAR_DEFINE_TOKEN_TYPE(TCreateToken, Create)
+COLUMNAR_DEFINE_TOKEN_TYPE(TFromToken, From)
+COLUMNAR_DEFINE_TOKEN_TYPE(TLimitToken, Limit)
+COLUMNAR_DEFINE_TOKEN_TYPE(TOrderToken, Order)
+COLUMNAR_DEFINE_TOKEN_TYPE(TWhereToken, Where)
+COLUMNAR_DEFINE_TOKEN_TYPE(TGroupToken, Group)
+COLUMNAR_DEFINE_TOKEN_TYPE(TSumToken, Sum)
+COLUMNAR_DEFINE_TOKEN_TYPE(TMinToken, Min)
+COLUMNAR_DEFINE_TOKEN_TYPE(TMaxToken, Max)
+COLUMNAR_DEFINE_TOKEN_TYPE(TCountToken, Count)
+COLUMNAR_DEFINE_TOKEN_TYPE(TDistinctToken, Distinct)
+COLUMNAR_DEFINE_TOKEN_TYPE(TAvgToken, Avg)
+COLUMNAR_DEFINE_TOKEN_TYPE(TLengthToken, Length)
+COLUMNAR_DEFINE_TOKEN_TYPE(TPlusToken, Plus)
+COLUMNAR_DEFINE_TOKEN_TYPE(TMinusToken, Minus)
+COLUMNAR_DEFINE_TOKEN_TYPE(TNameToken, NameToken)
+COLUMNAR_DEFINE_TOKEN_TYPE(TNumericLiteralToken, NumericLiteral)
+COLUMNAR_DEFINE_TOKEN_TYPE(TStringLiteralToken, StringLiteral)
+COLUMNAR_DEFINE_TOKEN_TYPE(TAsToken, As)
+COLUMNAR_DEFINE_TOKEN_TYPE(TAndToken, And)
+COLUMNAR_DEFINE_TOKEN_TYPE(TByToken, By)
+COLUMNAR_DEFINE_TOKEN_TYPE(TOpenBracketToken, OpenBracket)
+COLUMNAR_DEFINE_TOKEN_TYPE(TCommaToken, Comma)
+COLUMNAR_DEFINE_TOKEN_TYPE(TCloseBracketToken, CloseBracket)
+COLUMNAR_DEFINE_TOKEN_TYPE(TAsteriskToken, Asterisk)
+COLUMNAR_DEFINE_TOKEN_TYPE(TDotToken, Dot)
+COLUMNAR_DEFINE_TOKEN_TYPE(TSemicolonToken, Semicolon)
+COLUMNAR_DEFINE_TOKEN_TYPE(TEqualToken, Equal)
+COLUMNAR_DEFINE_TOKEN_TYPE(TNotEqualToken, NotEqual)
+COLUMNAR_DEFINE_TOKEN_TYPE(TLessToken, Less)
+COLUMNAR_DEFINE_TOKEN_TYPE(TLessOrEqualToken, LessOrEqual)
+COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterToken, Greater)
+COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterOrEqualToken, GreaterOrEqual)
+COLUMNAR_DEFINE_TOKEN_TYPE(TEndOfInputToken, EOI)
 
 #undef COLUMNAR_DEFINE_TOKEN_TYPE
 

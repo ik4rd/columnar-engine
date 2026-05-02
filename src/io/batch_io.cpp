@@ -168,6 +168,7 @@ void CsvBatchWriter::Write(const Batch& batch) {
 
     const size_t column_count = schema_.columns.size();
     const size_t row_count = batch.RowsCount();
+
     std::vector<std::string> row(column_count);
 
     for (size_t row_index = 0; row_index < row_count; ++row_index) {
@@ -179,6 +180,28 @@ void CsvBatchWriter::Write(const Batch& batch) {
 }
 
 void CsvBatchWriter::Flush() { csv_writer_.Flush(); }
+
+void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& rows) {
+    const size_t row_count = batch.RowsCount();
+    const size_t column_count = batch.ColumnsCount();
+
+    for (size_t row = 0; row < row_count; ++row) {
+        std::vector<std::string> values;
+        values.reserve(column_count);
+
+        for (size_t col = 0; col < column_count; ++col) {
+            values.push_back(batch.ColumnAt(col).ValueAsString(row));
+        }
+
+        rows.push_back(std::move(values));
+    }
+}
+
+void WriteBatchCsv(const std::filesystem::path& path, const Batch& batch) {
+    CsvBatchWriter writer(path, batch.GetSchema());
+    writer.Write(batch);
+    writer.Flush();
+}
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
     const auto file_metadata = TryGetFileMetadata(path);

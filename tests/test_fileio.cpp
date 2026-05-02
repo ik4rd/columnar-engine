@@ -61,6 +61,19 @@ TEST(fileio, read_missing_file_throws) {
     EXPECT_THROW(ReadFileBytes(missing), Error);
 }
 
+TEST(fileio, read_text_roundtrip) {
+    const TempFile temp("fileio_text_roundtrip");
+    const std::string payload = "SELECT COUNT(*)\nFROM hits\nWHERE UserID = 42;\n";
+
+    std::ofstream out = OpenOutputFile(temp.Path());
+    out << payload;
+    ASSERT_TRUE(out.good());
+    out.flush();
+    ASSERT_TRUE(out.good());
+
+    EXPECT_EQ(ReadTextFile(temp.Path()), payload);
+}
+
 TEST(fileio, file_exists_checks) {
     const TempFile temp("fileio_exists");
     EXPECT_FALSE(FileExists(temp.Path()));
@@ -68,6 +81,16 @@ TEST(fileio, file_exists_checks) {
     WriteFileBytes(temp.Path(), std::vector<uint8_t>{1});
 
     EXPECT_TRUE(FileExists(temp.Path()));
+}
+
+TEST(fileio, ensure_parent_directory_creates_missing_directories) {
+    const auto file_path = UniqueTempPath("fileio_nested") / "a" / "b" / "query.sql";
+    const auto parent = file_path.parent_path();
+
+    ASSERT_FALSE(std::filesystem::exists(parent));
+    EnsureParentDirectory(file_path);
+    EXPECT_TRUE(std::filesystem::exists(parent));
+    EXPECT_TRUE(std::filesystem::is_directory(parent));
 }
 
 TEST(fileio, stream_roundtrip) {
