@@ -144,19 +144,25 @@ ParsedQuery ParseQuery(const std::string_view query) {
 
         cursor.Consume(comparison_token, "expected comparison operator in WHERE");
 
-        const Token& literal = cursor.Peek();
-        switch (literal.GetType()) {
-            case Tokens::NumericLiteral:
-            case Tokens::StringLiteral:
-            case Tokens::NameToken:
-                filter.literal = ParsedLiteral{
-                    .text = std::string(literal.GetText()),
-                    .token_type = literal.GetType(),
-                };
-                cursor.Consume(literal.GetType(), "expected literal after comparison operator");
-                break;
-            default:
-                throw Error::InvalidArgument("query_parser", "unsupported literal in WHERE");
+        if (cursor.TryConsume(Tokens::Minus)) {
+            const Token& literal = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after '-'");
+            filter.literal =
+                ParsedLiteral{.text = "-" + std::string(literal.GetText()), .token_type = Tokens::NumericLiteral};
+        } else {
+            const Token& literal = cursor.Peek();
+            switch (literal.GetType()) {
+                case Tokens::NumericLiteral:
+                case Tokens::StringLiteral:
+                case Tokens::NameToken:
+                    filter.literal = ParsedLiteral{
+                        .text = std::string(literal.GetText()),
+                        .token_type = literal.GetType(),
+                    };
+                    cursor.Consume(literal.GetType(), "expected literal after comparison operator");
+                    break;
+                default:
+                    throw Error::InvalidArgument("query_parser", "unsupported literal in WHERE");
+            }
         }
 
         parsed.filter = std::move(filter);
