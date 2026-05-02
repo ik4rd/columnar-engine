@@ -81,75 +81,11 @@ static Int128 ParseToInt128(const ColumnType type, const std::string_view value)
     throw Error::Unsupported("executor", "unsupported numeric conversion");
 }
 
-static UInt128 ToMagnitude(const Int128 value) {
-    if (value >= 0) {
-        return static_cast<UInt128>(value);
-    }
-
-    UInt128 magnitude = static_cast<UInt128>(-(value + 1));
-    ++magnitude;
-
-    return magnitude;
-}
-
-static std::string UInt128ToString(UInt128 value) {
-    if (value == 0) {
-        return "0";
-    }
-
-    std::string out;
-
-    while (value > 0) {
-        out.push_back(static_cast<char>('0' + value % 10));
-        value /= 10;
-    }
-
-    std::ranges::reverse(out);
-
-    return out;
-}
-
 static std::string FormatAverage(const Int128 sum, const uint64_t count) {
     if (count == 0) {
         return "0";
     }
-
-    const bool negative = sum < 0;
-    const UInt128 magnitude = ToMagnitude(sum);
-    const UInt128 divisor = count;
-    const UInt128 integer = magnitude / divisor;
-    UInt128 remainder = magnitude % divisor;
-
-    std::string output = UInt128ToString(integer);
-
-    if (remainder != 0) {
-        output.push_back('.');
-
-        std::string fractional;
-        fractional.reserve(6);
-
-        for (size_t i = 0; i < 6 && remainder != 0; ++i) {
-            remainder *= 10;
-            fractional.push_back(static_cast<char>('0' + remainder / divisor));
-            remainder %= divisor;
-        }
-
-        while (!fractional.empty() && fractional.back() == '0') {
-            fractional.pop_back();
-        }
-
-        if (!fractional.empty()) {
-            output += fractional;
-        } else {
-            output.pop_back();
-        }
-    }
-
-    if (negative && output != "0") {
-        output.insert(output.begin(), '-');
-    }
-
-    return output;
+    return Int128ToString(sum / static_cast<Int128>(count));
 }
 
 class CountAS final : public AggState {

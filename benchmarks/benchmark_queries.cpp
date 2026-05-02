@@ -14,10 +14,6 @@
 #define COLUMNAR_BENCHMARK_QUERIES_DIR "benchmarks/queries"
 #endif
 
-#ifndef COLUMNAR_BENCHMARK_DATA_DIR
-#define COLUMNAR_BENCHMARK_DATA_DIR "benchmarks"
-#endif
-
 static constexpr int FirstQueryId = 0;
 static constexpr int LastQueryId = 42;
 
@@ -82,6 +78,14 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
             status = "passed";
         } else {
             status = "failed";
+            std::cout << "query_" << query_id << ": expected:\n" << expected_result;
+            if (!expected_result.empty() && expected_result.back() != '\n') {
+                std::cout << std::endl;
+            }
+            std::cout << "query_" << query_id << ": actual:\n" << actual_result;
+            if (!actual_result.empty() && actual_result.back() != '\n') {
+                std::cout << std::endl;
+            }
         }
     } else {
         status = "no_reference";
@@ -101,7 +105,6 @@ int main(const int argc, char** argv) {
         }
 
         const std::filesystem::path queries_dir = COLUMNAR_BENCHMARK_QUERIES_DIR;
-        const std::filesystem::path data_dir = COLUMNAR_BENCHMARK_DATA_DIR;
 
         Executor executor;
         executor.RegisterTable("hits", "hits_sample.columnar");
