@@ -98,7 +98,7 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
             throw Error::InvalidArgument("query_parser",
                                          std::string(spec.function->canonical_name) + " does not support '*'");
         }
-        spec.count_star = true;
+        spec.star = true;
     } else {
         spec.distinct = cursor.TryConsume(Tokens::Distinct);
         if (spec.distinct && !spec.function->distinct) {
@@ -110,7 +110,7 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
     }
 
     cursor.Consume(Tokens::CloseBracket, "expected ')' after aggregate arguments");
-    spec.output_name = FormatAgg(*spec.function, spec.column_name, spec.distinct, spec.count_star);
+    spec.output_name = FormatAgg(*spec.function, spec.column_name, spec.distinct, spec.star);
 
     return spec;
 }

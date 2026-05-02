@@ -66,7 +66,7 @@ struct FilterSpec {
 struct AggSpec {
     const AggFuncDefinition* function = nullptr;
     bool distinct = false;
-    bool count_star = false;
+    bool star = false;
     std::string column_name;
     std::string output_name;
 };
@@ -80,7 +80,7 @@ struct ParsedQuery {
 struct PlannedAgg {
     const AggFuncDefinition* function = nullptr;
     bool distinct = false;
-    bool count_star = false;
+    bool star = false;
     std::optional<size_t> column_index;
     ColumnType input_type = ColumnType::String;
     std::string output_name;

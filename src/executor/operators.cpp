@@ -172,7 +172,7 @@ class AggOperator final : public Operator {
         while (auto batch = child_->Next()) {
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
                 for (auto& binding : bindings_) {
-                    if (!binding.aggregate.count_star) {
+                    if (!binding.aggregate.star) {
                         std::string materialized = batch->ColumnAt(*binding.aggregate.column_index).ValueAsString(row);
                         binding.state->Consume(materialized);
                     } else {

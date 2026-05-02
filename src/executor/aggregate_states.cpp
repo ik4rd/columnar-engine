@@ -390,6 +390,14 @@ std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
     if (aggregate.function == nullptr || aggregate.function->factory == nullptr) {
         throw Error::Unsupported("executor", "aggregate is not registered");
     }
+    if (aggregate.distinct && !aggregate.function->distinct) {
+        throw Error::Unsupported("executor", "DISTINCT is not supported for aggregate '" +
+                                                 std::string(aggregate.function->canonical_name) + "'");
+    }
+    if (aggregate.star && !aggregate.function->star) {
+        throw Error::Unsupported(
+            "executor", "aggregate '" + std::string(aggregate.function->canonical_name) + "' does not support '*'");
+    }
     std::unique_ptr<AggState> state = aggregate.function->factory(aggregate);
     if (aggregate.distinct) {
         state = std::make_unique<DistinctAS>(std::move(state));

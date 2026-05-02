@@ -90,13 +90,13 @@ PlannedQuery PlanQuery(const ParsedQuery& parsed,
         PlannedAgg planned_aggregate{
             .function = aggregate.function,
             .distinct = aggregate.distinct,
-            .count_star = aggregate.count_star,
+            .star = aggregate.star,
             .column_index = std::nullopt,
             .input_type = ColumnType::String,
             .output_name = aggregate.output_name,
         };
 
-        if (!aggregate.count_star) {
+        if (!aggregate.star) {
             const size_t source_index = FindColumnIndex(schema, aggregate.column_name);
             planned_aggregate.column_index = register_projection(source_index);
             planned_aggregate.input_type = schema.columns[source_index].type;
