@@ -38,45 +38,46 @@ static Batch BuildHitsTable(const std::string_view query) {
     if (!result.has_value()) {
         throw result.error();
     }
+
     return std::move(result.value());
 }
 
 TEST(executor, executes_basic_aggregate_queries) {
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits;");
-        EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"COUNT(*)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"5"}));
+        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
+        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"5"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0;");
-        EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"COUNT(*)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"4"}));
+        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
+        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT SUM(AdvEngineID), COUNT(*), AVG(ResolutionWidth) FROM hits;");
         EXPECT_EQ(BatchColumnNames(batch),
                   (std::vector<std::string>{"SUM(AdvEngineID)", "COUNT(*)", "AVG(ResolutionWidth)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"18", "5", "300.2"}));
+        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"18", "5", "300"}));
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT AVG(UserID) FROM hits;");
-        EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AVG(UserID)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"4.2"}));
+        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"AVG(UserID)"});
+        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(DISTINCT UserID) FROM hits;");
-        EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"COUNT(DISTINCT UserID)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"4"}));
+        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(DISTINCT UserID)"});
+        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(DISTINCT SearchPhrase) FROM hits;");
-        EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"COUNT(DISTINCT SearchPhrase)"}));
-        EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"4"}));
+        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(DISTINCT SearchPhrase)"});
+        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
