@@ -66,6 +66,13 @@ std::ifstream OpenInputFile(const std::filesystem::path& path) {
     return file;
 }
 
+void SeekInputFile(std::istream& in, const std::filesystem::path& path, const uint64_t offset) {
+    in.seekg(static_cast<std::streamoff>(offset));
+    if (!in) {
+        throw Error::PathIo("fileio", path, "seek for read");
+    }
+}
+
 std::ofstream OpenOutputFile(const std::filesystem::path& path, const FileOpenMode mode) {
     std::ofstream file(path, std::ios::binary | (mode == FileOpenMode::Append ? std::ios::app : std::ios::trunc));
     if (!file.is_open()) {

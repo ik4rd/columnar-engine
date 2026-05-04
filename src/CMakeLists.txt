@@ -24,6 +24,7 @@ add_library(columnar_engine_lib
         executor/query_parser.cpp
         executor/query_planner.cpp
         executor/aggregate_states.cpp
+        executor/operator_utils.cpp
         executor/operators.cpp
         sql_parser/tokenizer_factory.cpp
         sql_parser/tokenizer_tokens.cpp

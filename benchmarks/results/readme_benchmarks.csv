@@ -1,0 +1,9 @@
+query_id,query_file,sql,first_run_ms,warm_avg_ms,warm_median_ms,warm_min_ms,warm_max_ms,status,error
+0,benchmarks/queries/query_0.sql,SELECT COUNT(*) FROM hits;,53.43,9.63,9.23,8.77,11.28,ok,
+1,benchmarks/queries/query_1.sql,SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0;,41.22,27.88,27.79,27.43,28.51,ok,
+2,benchmarks/queries/query_2.sql,"SELECT SUM(AdvEngineID), COUNT(*), AVG(ResolutionWidth) FROM hits;",62.18,54.10,53.49,50.64,58.77,ok,
+3,benchmarks/queries/query_3.sql,SELECT AVG(UserID) FROM hits;,85.12,58.40,54.68,54.23,70.00,ok,
+4,benchmarks/queries/query_4.sql,SELECT COUNT(DISTINCT UserID) FROM hits;,46.61,47.05,47.30,43.96,49.62,ok,
+5,benchmarks/queries/query_5.sql,SELECT COUNT(DISTINCT SearchPhrase) FROM hits;,61.44,45.14,44.92,44.58,46.12,ok,
+6,benchmarks/queries/query_6.sql,"SELECT MIN(EventDate), MAX(EventDate) FROM hits;",685.92,665.72,665.60,665.26,666.43,ok,
+7,benchmarks/queries/query_7.sql,"SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY AdvEngineID ORDER BY COUNT(*) DESC;",28.69,28.12,28.13,28.01,28.20,ok,

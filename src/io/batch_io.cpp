@@ -11,13 +11,6 @@
 
 static constexpr std::string_view ColumnarMagic = "CLMN";
 
-static void SeekRead(const std::filesystem::path& path, std::ifstream& in, const uint64_t pos) {
-    in.seekg(pos);
-    if (!in) {
-        throw Error::PathIo("batch_io", path, "seek file");
-    }
-}
-
 static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out) {
     const auto pos = out.tellp();
     if (pos == -1) {
@@ -218,7 +211,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     }
 
     std::ifstream in = OpenInputFile(path);
-    SeekRead(path, in, file_size - FooterSize);
+    SeekInputFile(in, path, file_size - FooterSize);
 
     const uint64_t metadata_size = ReadStream<uint64_t>(in);
     std::string magic_read(ColumnarMagic.size(), '\0');
@@ -232,7 +225,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
         throw Error::InvalidData("batch_io", "metadata size exceeds file size", path.string());
     }
 
-    SeekRead(path, in, file_size - FooterSize - metadata_size);
+    SeekInputFile(in, path, file_size - FooterSize - metadata_size);
 
     return ReadMetadata(in);
 }
@@ -260,7 +253,7 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
 
     for (size_t col = 0; col < columns.size(); ++col) {
         const auto& [offset, size] = row_group_columns[col];
-        SeekRead(path_, in_, offset);
+        SeekInputFile(in_, path_, offset);
         columns[col]->ReadFrom(in_, row_count, size);
     }
 

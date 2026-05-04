@@ -2,20 +2,23 @@
 #include <utility>
 
 #include "executor/executor.h"
+#include "support/ascii.h"
 
 class TokenCursor {
    public:
     explicit TokenCursor(std::vector<TokenPtr> tokens) : tokens_(std::move(tokens)) {}
 
    public:
-    const Token& Peek() const {
-        if (pos_ >= tokens_.size()) {
+    const Token& Peek(const size_t lookahead = 0) const {
+        if (pos_ + lookahead >= tokens_.size()) {
             throw Error::InvalidArgument("query_parser", "unexpected end of query");
         }
-        return *tokens_[pos_];
+        return *tokens_[pos_ + lookahead];
     }
 
-    bool Match(const Tokens type) const { return pos_ < tokens_.size() && tokens_[pos_]->GetType() == type; }
+    bool Match(const Tokens type, const size_t lookahead = 0) const {
+        return pos_ + lookahead < tokens_.size() && tokens_[pos_ + lookahead]->GetType() == type;
+    }
 
     const Token& Consume(const Tokens type, const std::string_view message) {
         if (!Match(type)) {
@@ -115,6 +118,48 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
     return spec;
 }
 
+static SelectItemSpec ParseSelectItem(TokenCursor& cursor) {
+    if (cursor.Match(Tokens::NameToken) && !cursor.Match(Tokens::OpenBracket, 1)) {
+        const Token& token = cursor.Consume(Tokens::NameToken, "expected column name in SELECT");
+        return SelectItemSpec{
+            .kind = SelectItemKind::GroupKey,
+            .column_name = std::string(token.GetText()),
+            .aggregate = {},
+            .output_name = std::string(token.GetText()),
+        };
+    }
+
+    return SelectItemSpec{
+        .kind = SelectItemKind::Aggregate,
+        .column_name = {},
+        .aggregate = ParseAggregate(cursor),
+        .output_name = {},
+    };
+}
+
+static OrderBySpec ParseOrderByItem(TokenCursor& cursor) {
+    SelectItemSpec item = ParseSelectItem(cursor);
+    if (item.kind == SelectItemKind::Aggregate) {
+        item.output_name = item.aggregate.output_name;
+    }
+
+    bool descending = false;
+    if (cursor.Match(Tokens::NameToken)) {
+        const std::string direction = ToUpperAscii(cursor.Peek().GetText());
+        if (direction == "DESC") {
+            cursor.Consume(Tokens::NameToken, "expected DESC");
+            descending = true;
+        } else if (direction == "ASC") {
+            cursor.Consume(Tokens::NameToken, "expected ASC");
+        }
+    }
+
+    return OrderBySpec{
+        .item = std::move(item),
+        .descending = descending,
+    };
+}
+
 ParsedQuery ParseQuery(const std::string_view query) {
     auto tokenized = TokenizeSql(query);
     if (!tokenized.has_value()) {
@@ -126,9 +171,15 @@ ParsedQuery ParseQuery(const std::string_view query) {
     ParsedQuery parsed;
     cursor.Consume(Tokens::Select, "expected SELECT");
 
-    parsed.aggregates.push_back(ParseAggregate(cursor));
+    parsed.select_items.push_back(ParseSelectItem(cursor));
     while (cursor.TryConsume(Tokens::Comma)) {
-        parsed.aggregates.push_back(ParseAggregate(cursor));
+        parsed.select_items.push_back(ParseSelectItem(cursor));
+    }
+
+    for (auto& item : parsed.select_items) {
+        if (item.kind == SelectItemKind::Aggregate) {
+            item.output_name = item.aggregate.output_name;
+        }
     }
 
     cursor.Consume(Tokens::From, "expected FROM");
@@ -166,6 +217,23 @@ ParsedQuery ParseQuery(const std::string_view query) {
         }
 
         parsed.filter = std::move(filter);
+    }
+
+    if (cursor.TryConsume(Tokens::Group)) {
+        cursor.Consume(Tokens::By, "expected BY after GROUP");
+        parsed.group_by.push_back(std::string(cursor.Consume(Tokens::NameToken, "expected column name in GROUP BY").GetText()));
+        while (cursor.TryConsume(Tokens::Comma)) {
+            parsed.group_by.push_back(
+                std::string(cursor.Consume(Tokens::NameToken, "expected column name in GROUP BY").GetText()));
+        }
+    }
+
+    if (cursor.TryConsume(Tokens::Order)) {
+        cursor.Consume(Tokens::By, "expected BY after ORDER");
+        parsed.order_by.push_back(ParseOrderByItem(cursor));
+        while (cursor.TryConsume(Tokens::Comma)) {
+            parsed.order_by.push_back(ParseOrderByItem(cursor));
+        }
     }
 
     cursor.TryConsume(Tokens::Semicolon);

@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "io/csv_batch_io.h"
 #include "executor/executor.h"
+#include "io/csv_batch_io.h"
 #include "io/fileio.h"
 #include "support/query_runners.h"
 
@@ -15,7 +15,7 @@
 #endif
 
 static constexpr int FirstQueryId = 0;
-static constexpr int LastQueryId = 42;
+static constexpr int LastQueryId = 7;
 
 std::string BatchToString(const Batch& batch) {
     std::vector<std::vector<std::string>> rows;
@@ -105,9 +105,10 @@ int main(const int argc, char** argv) {
         }
 
         const std::filesystem::path queries_dir = COLUMNAR_BENCHMARK_QUERIES_DIR;
+        const std::filesystem::path data_path = queries_dir.parent_path() / "hits_sample.columnar";
 
         Executor executor;
-        executor.RegisterTable("hits", "hits_sample.columnar");
+        executor.RegisterTable("hits", data_path);
 
         size_t found_queries = 0;
 

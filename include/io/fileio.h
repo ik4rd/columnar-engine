@@ -19,6 +19,7 @@ bool FileExists(const std::filesystem::path& path);
 void EnsureParentDirectory(const std::filesystem::path& path);
 
 std::ifstream OpenInputFile(const std::filesystem::path& path);
+void SeekInputFile(std::istream& in, const std::filesystem::path& path, uint64_t offset);
 
 enum class FileOpenMode {
     Truncate,

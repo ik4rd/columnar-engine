@@ -1,11 +1,11 @@
 #include <string>
 #include <vector>
 
-#include "io/csv.h"
 #include "convert/csv_columnar.h"
 #include "executor/executor.h"
-#include "testing/executor_test_utils.h"
 #include "gtest/gtest.h"
+#include "io/csv.h"
+#include "testing/executor_test_utils.h"
 #include "testing/temp_file.h"
 
 static Batch BuildHitsTable(const std::string_view query) {
@@ -46,6 +46,18 @@ TEST(executor, usage_example_register_table_and_execute_query) {
     const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits;");
     EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
     EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"5"});
+}
+
+TEST(executor, groups_rows_and_orders_by_aggregate_descending) {
+    const Batch batch = BuildHitsTable(
+        "SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY AdvEngineID ORDER BY COUNT(*) DESC;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
+                                    {"7", "2"},
+                                    {"1", "1"},
+                                    {"3", "1"},
+                                }));
 }
 
 TEST(executor, executes_basic_aggregate_queries) {

@@ -1,66 +1,13 @@
+#include <algorithm>
 #include <fstream>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "io/columnar_batch_io.h"
 #include "executor/executor.h"
+#include "executor/operator_utils.h"
+#include "io/columnar_batch_io.h"
 #include "io/fileio.h"
-#include "support/parsing.h"
-
-static void SeekRead(const std::filesystem::path& path, std::ifstream& in, const uint64_t offset) {
-    in.seekg(static_cast<std::streamoff>(offset));
-    if (!in) {
-        throw Error::PathIo("operators", path, "seek file");
-    }
-}
-
-template <typename T>
-static bool EvaluateComparison(const T left, const T right, const ComparisonKind kind) {
-    if (kind == ComparisonKind::Equal) {
-        return left == right;
-    }
-    if (kind == ComparisonKind::NotEqual) {
-        return left != right;
-    }
-    if (kind == ComparisonKind::Less) {
-        return left < right;
-    }
-    if (kind == ComparisonKind::LessOrEqual) {
-        return left <= right;
-    }
-    if (kind == ComparisonKind::Greater) {
-        return left > right;
-    }
-    if (kind == ComparisonKind::GreaterOrEqual) {
-        return left >= right;
-    }
-    throw Error::Unsupported("operators", "unsupported comparison kind");
-}
-
-static bool MatchesComparison(const ColumnType type, const std::string_view lhs, const std::string_view rhs,
-                              const ComparisonKind kind) {
-    switch (type) {
-        case ColumnType::Boolean:
-            return EvaluateComparison(ParseBoolean(std::string(lhs)), ParseBoolean(std::string(rhs)), kind);
-        case ColumnType::Int16:
-            return EvaluateComparison(ParseInt16(std::string(lhs)), ParseInt16(std::string(rhs)), kind);
-        case ColumnType::Int32:
-            return EvaluateComparison(ParseInt32(std::string(lhs)), ParseInt32(std::string(rhs)), kind);
-        case ColumnType::Int64:
-            return EvaluateComparison(ParseInt64(std::string(lhs)), ParseInt64(std::string(rhs)), kind);
-        case ColumnType::Int128:
-            return EvaluateComparison(ParseInt128(std::string(lhs)), ParseInt128(std::string(rhs)), kind);
-        case ColumnType::String:
-            return EvaluateComparison(std::string(lhs), std::string(rhs), kind);
-        case ColumnType::Date:
-            return EvaluateComparison(ParseDate(std::string(lhs)), ParseDate(std::string(rhs)), kind);
-        case ColumnType::Timestamp:
-            return EvaluateComparison(ParseTimestamp(std::string(lhs)), ParseTimestamp(std::string(rhs)), kind);
-        case ColumnType::Character:
-            return EvaluateComparison(ParseCharacter(std::string(lhs)), ParseCharacter(std::string(rhs)), kind);
-    }
-    throw Error::Unsupported("operators", "unsupported column type in comparison");
-}
 
 class ScanOperator final : public Operator {
    public:
@@ -93,7 +40,7 @@ class ScanOperator final : public Operator {
         for (size_t projected_index = 0; projected_index < projection_indexes_.size(); ++projected_index) {
             const size_t source_index = projection_indexes_[projected_index];
             const auto& chunk = row_group.columns[source_index];
-            SeekRead(path_, in_, chunk.offset);
+            SeekInputFile(in_, path_, chunk.offset);
             batch.ColumnAt(projected_index).ReadFrom(in_, row_group.row_count, chunk.size);
         }
 
@@ -188,7 +135,7 @@ class AggOperator final : public Operator {
         for (const auto& binding : bindings_) {
             schema.columns.push_back(ColumnSchema{
                 .name = binding.aggregate.output_name,
-                .type = ColumnType::String,
+                .type = AggregateOutputType(binding.aggregate),
             });
         }
 
@@ -207,11 +154,162 @@ class AggOperator final : public Operator {
     bool returned_ = false;
 };
 
+class GroupAggOperator final : public Operator {
+   public:
+    GroupAggOperator(std::unique_ptr<Operator> child, std::vector<PlannedGroupKey> group_keys,
+                     std::vector<PlannedAgg> aggregates, std::vector<PlannedSelectItem> select_items,
+                     std::vector<PlannedOrderBy> order_by)
+        : child_(std::move(child)),
+          group_keys_(std::move(group_keys)),
+          aggregates_(std::move(aggregates)),
+          select_items_(std::move(select_items)),
+          order_by_(std::move(order_by)) {}
+
+   public:
+    std::optional<Batch> Next() override {
+        if (returned_) {
+            return std::nullopt;
+        }
+        returned_ = true;
+
+        while (auto batch = child_->Next()) {
+            for (size_t row = 0; row < batch->RowsCount(); ++row) {
+                std::vector<std::string> key_values;
+                key_values.reserve(group_keys_.size());
+
+                std::string group_id;
+                for (const auto& group_key : group_keys_) {
+                    std::string value = batch->ColumnAt(group_key.column_index).ValueAsString(row);
+                    group_id += std::to_string(value.size());
+                    group_id.push_back(':');
+                    group_id += value;
+                    group_id.push_back('|');
+                    key_values.push_back(std::move(value));
+                }
+
+                size_t group_index = 0;
+                const auto it = group_indexes_.find(group_id);
+                if (it == group_indexes_.end()) {
+                    group_index = groups_.size();
+                    group_indexes_.emplace(std::move(group_id), group_index);
+                    groups_.push_back(GroupState{
+                        .key_values = std::move(key_values),
+                        .states = CreateStates(),
+                    });
+                } else {
+                    group_index = it->second;
+                }
+
+                GroupState& group = groups_[group_index];
+                for (size_t i = 0; i < aggregates_.size(); ++i) {
+                    const PlannedAgg& aggregate = aggregates_[i];
+                    if (!aggregate.star) {
+                        std::string materialized = batch->ColumnAt(*aggregate.column_index).ValueAsString(row);
+                        group.states[i]->Consume(materialized);
+                    } else {
+                        group.states[i]->Consume(std::nullopt);
+                    }
+                }
+            }
+        }
+
+        Schema schema;
+        schema.columns.reserve(select_items_.size());
+        for (const auto& item : select_items_) {
+            schema.columns.push_back(ColumnSchema{
+                .name = item.output_name,
+                .type = item.output_type,
+            });
+        }
+
+        std::vector<std::vector<std::string>> rows;
+        rows.reserve(groups_.size());
+        for (const auto& group : groups_) {
+            rows.push_back(MaterializeRow(group));
+        }
+
+        if (!order_by_.empty()) {
+            std::ranges::sort(rows, [&](const std::vector<std::string>& lhs, const std::vector<std::string>& rhs) {
+                for (const auto& order : order_by_) {
+                    const int comparison =
+                        CompareValues(order.value_type, lhs[order.result_column_index], rhs[order.result_column_index]);
+                    if (comparison != 0) {
+                        return order.descending ? comparison > 0 : comparison < 0;
+                    }
+                }
+
+                for (size_t i = 0; i < select_items_.size(); ++i) {
+                    const int comparison = CompareValues(select_items_[i].output_type, lhs[i], rhs[i]);
+                    if (comparison != 0) {
+                        return comparison < 0;
+                    }
+                }
+
+                return false;
+            });
+        }
+
+        Batch result(schema, rows.size());
+        for (const auto& row : rows) {
+            for (size_t i = 0; i < row.size(); ++i) {
+                result.ColumnAt(i).AppendFromString(row[i]);
+            }
+        }
+
+        return result;
+    }
+
+   private:
+    struct GroupState {
+        std::vector<std::string> key_values;
+        std::vector<std::unique_ptr<AggState>> states;
+    };
+
+    std::vector<std::unique_ptr<AggState>> CreateStates() const {
+        std::vector<std::unique_ptr<AggState>> states;
+        states.reserve(aggregates_.size());
+        for (const auto& aggregate : aggregates_) {
+            states.push_back(CreateAggState(aggregate));
+        }
+        return states;
+    }
+
+    std::vector<std::string> MaterializeRow(const GroupState& group) const {
+        std::vector<std::string> row;
+        row.reserve(select_items_.size());
+
+        for (const auto& item : select_items_) {
+            if (item.kind == SelectItemKind::GroupKey) {
+                row.push_back(group.key_values[item.index]);
+            } else {
+                row.push_back(group.states[item.index]->Finalize());
+            }
+        }
+
+        return row;
+    }
+
+   private:
+    std::unique_ptr<Operator> child_;
+    std::vector<PlannedGroupKey> group_keys_;
+    std::vector<PlannedAgg> aggregates_;
+    std::vector<PlannedSelectItem> select_items_;
+    std::vector<PlannedOrderBy> order_by_;
+    std::unordered_map<std::string, size_t> group_indexes_;
+    std::vector<GroupState> groups_;
+    bool returned_ = false;
+};
+
 std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
     std::unique_ptr<Operator> root = std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes);
     if (planned.filter.has_value()) {
         root = std::make_unique<FilterOperator>(std::move(root), *planned.filter);
     }
-    root = std::make_unique<AggOperator>(std::move(root), planned.aggregates);
+    if (!planned.group_keys.empty()) {
+        root = std::make_unique<GroupAggOperator>(std::move(root), planned.group_keys, planned.aggregates,
+                                                  planned.select_items, planned.order_by);
+    } else {
+        root = std::make_unique<AggOperator>(std::move(root), planned.aggregates);
+    }
     return root;
 }
