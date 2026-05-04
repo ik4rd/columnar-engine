@@ -107,7 +107,7 @@ int main(const int argc, char** argv) {
         const std::filesystem::path queries_dir = COLUMNAR_BENCHMARK_QUERIES_DIR;
 
         Executor executor;
-        executor.RegisterTable("hits", "benchmarks/hits_sample.columnar");
+        executor.RegisterTable("hits", "hits_sample.columnar");
 
         size_t found_queries = 0;
 

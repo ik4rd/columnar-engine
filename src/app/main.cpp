@@ -21,7 +21,7 @@ void ConfigureConvertCommand(argparse::ArgumentParser& command) {
     command.add_argument("--schema").required();
     command.add_argument("--input").required();
     command.add_argument("--output").required();
-    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(50000);
+    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(size_t{50000});
 }
 
 void ConfigureRoundtripCommand(argparse::ArgumentParser& command) {

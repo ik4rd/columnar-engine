@@ -45,12 +45,12 @@ static bool CanParseAs(const ColumnType type, const std::string& value) {
 }
 
 static ColumnType InferColumnType(const std::vector<std::string>& values) {
-    static constexpr std::array kInferenceOrder = {
+    static constexpr std::array InferenceOrder = {
         ColumnType::Boolean, ColumnType::Int16,     ColumnType::Int32,     ColumnType::Int64,  ColumnType::Int128,
         ColumnType::Date,    ColumnType::Timestamp, ColumnType::Character, ColumnType::String,
     };
 
-    for (const ColumnType type : kInferenceOrder) {
+    for (const ColumnType type : InferenceOrder) {
         bool matches = true;
         for (const auto& value : values) {
             if (!CanParseAs(type, value)) {
@@ -75,6 +75,9 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
     while (reader.ReadRow(row)) {
         if (row.size() == 1 && row[0].empty()) {
             continue;
+        }
+        while (row.size() > 2 && row.back().empty()) {
+            row.pop_back();
         }
         if (row.size() != 2) {
             throw Error::InvalidData("schema", "schema csv must have 2 columns", path.string());

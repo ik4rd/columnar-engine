@@ -28,7 +28,7 @@
 #define COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA "benchmarks/schema_sample_new.csv"
 #endif
 
-static constexpr size_t kRowsPerGroup = 50000;
+static constexpr size_t RowsPerGroup = 50000;
 
 struct CsvCompareResult {
     bool equal = true;
@@ -64,7 +64,7 @@ static CsvCompareResult CompareCsvFiles(const std::filesystem::path& lhs_path, c
 
 int main(const int argc, char** argv) {
     try {
-        size_t rows_per_group = kRowsPerGroup;
+        size_t rows_per_group = RowsPerGroup;
         if (argc == 2) {
             rows_per_group = std::stoull(argv[1]);
         }

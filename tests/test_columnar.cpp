@@ -195,3 +195,14 @@ TEST(columnar, infer_schema_from_csv_is_convert_compatible) {
 
     EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
 }
+
+TEST(columnar, schema_rows_with_trailing_empty_columns_are_accepted) {
+    const TempFile schema_in("schema_trailing_empty");
+    const TempFile data_in("data_trailing_empty");
+    const TempFile columnar_file("columnar_trailing_empty");
+
+    WriteRows(schema_in.Path(), {{"id", "int64", ""}, {"name", "string", ""}});
+    WriteRows(data_in.Path(), {{"1", "alpha"}, {"2", "beta"}});
+
+    EXPECT_NO_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 2));
+}
