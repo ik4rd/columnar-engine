@@ -229,24 +229,27 @@ class GroupAggOperator final : public Operator {
         }
 
         if (!order_by_.empty()) {
-            std::ranges::sort(rows, [&](const std::vector<std::string>& lhs, const std::vector<std::string>& rhs) {
-                for (const auto& order : order_by_) {
-                    const int comparison =
-                        CompareValues(order.value_type, lhs[order.result_column_index], rhs[order.result_column_index]);
-                    if (comparison != 0) {
-                        return order.descending ? comparison > 0 : comparison < 0;
+            std::ranges::stable_sort(
+                rows, [&](const std::vector<std::string>& lhs, const std::vector<std::string>& rhs) {
+                    for (const auto& order : order_by_) {
+                        const int comparison = CompareValues(order.value_type, lhs[order.result_column_index],
+                                                             rhs[order.result_column_index]);
+                        if (comparison != 0) {
+                            return order.descending ? comparison > 0 : comparison < 0;
+                        }
                     }
-                }
 
-                for (size_t i = 0; i < select_items_.size(); ++i) {
-                    const int comparison = CompareValues(select_items_[i].output_type, lhs[i], rhs[i]);
-                    if (comparison != 0) {
-                        return comparison < 0;
+                    for (size_t i = 0; i < select_items_.size(); ++i) {
+                        if (select_items_[i].kind != SelectItemKind::GroupKey) {
+                            continue;
+                        }
+                        const int comparison = CompareValues(select_items_[i].output_type, lhs[i], rhs[i]);
+                        if (comparison != 0) {
+                            return comparison > 0;
+                        }
                     }
-                }
-
-                return false;
-            });
+                    return false;
+                });
         }
 
         Batch result(schema, rows.size());
@@ -300,6 +303,41 @@ class GroupAggOperator final : public Operator {
     bool returned_ = false;
 };
 
+class LimitOperator final : public Operator {
+   public:
+    LimitOperator(std::unique_ptr<Operator> child, const size_t limit) : child_(std::move(child)), remaining_(limit) {}
+
+   public:
+    std::optional<Batch> Next() override {
+        if (remaining_ == 0) {
+            return std::nullopt;
+        }
+
+        while (auto batch = child_->Next()) {
+            if (batch->RowsCount() <= remaining_) {
+                remaining_ -= batch->RowsCount();
+                return batch;
+            }
+
+            Batch limited(batch->GetSchema(), remaining_);
+            for (size_t row = 0; row < remaining_; ++row) {
+                for (size_t column_index = 0; column_index < batch->ColumnsCount(); ++column_index) {
+                    limited.ColumnAt(column_index).AppendFromString(batch->ColumnAt(column_index).ValueAsString(row));
+                }
+            }
+            remaining_ = 0;
+            return limited;
+        }
+
+        remaining_ = 0;
+        return std::nullopt;
+    }
+
+   private:
+    std::unique_ptr<Operator> child_;
+    size_t remaining_;
+};
+
 std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
     std::unique_ptr<Operator> root = std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes);
     if (planned.filter.has_value()) {
@@ -310,6 +348,9 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
                                                   planned.select_items, planned.order_by);
     } else {
         root = std::make_unique<AggOperator>(std::move(root), planned.aggregates);
+    }
+    if (planned.limit.has_value()) {
+        root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
     }
     return root;
 }

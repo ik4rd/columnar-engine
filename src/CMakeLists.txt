@@ -23,6 +23,7 @@ add_library(columnar_engine_lib
         executor/executor.cpp
         executor/query_parser.cpp
         executor/query_planner.cpp
+        executor/planner_utils.cpp
         executor/aggregate_states.cpp
         executor/operator_utils.cpp
         executor/operators.cpp

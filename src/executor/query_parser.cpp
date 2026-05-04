@@ -1,4 +1,5 @@
 #include <array>
+#include <charconv>
 #include <utility>
 
 #include "executor/executor.h"
@@ -88,6 +89,44 @@ static ComparisonKind ComparisonKindFromToken(const Tokens type) {
     }
 }
 
+static std::string FormatColumnRef(const ColumnRef& column) {
+    if (column.qualifier.empty()) {
+        return column.name;
+    }
+    return column.qualifier + "." + column.name;
+}
+
+static ColumnRef ParseColumnRef(TokenCursor& cursor, const std::string_view message) {
+    ColumnRef column{
+        .qualifier = {},
+        .name = std::string(cursor.Consume(Tokens::NameToken, message).GetText()),
+    };
+
+    if (cursor.TryConsume(Tokens::Dot)) {
+        column.qualifier = std::move(column.name);
+        column.name = std::string(cursor.Consume(Tokens::NameToken, "expected column name after '.'").GetText());
+    }
+
+    return column;
+}
+
+static std::optional<size_t> ParseOptionalLimit(TokenCursor& cursor) {
+    if (!cursor.TryConsume(Tokens::Limit)) {
+        return std::nullopt;
+    }
+
+    const Token& limit_token = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after LIMIT");
+    size_t limit = 0;
+    const std::string_view text = limit_token.GetText();
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    if (const auto [ptr, ec] = std::from_chars(begin, end, limit); ec != std::errc() || ptr != end) {
+        throw Error::InvalidArgument("query_parser", "invalid LIMIT value");
+    }
+
+    return limit;
+}
+
 static AggSpec ParseAggregate(TokenCursor& cursor) {
     const Token& function_token = cursor.ConsumeFunctionToken("expected aggregate function");
 
@@ -108,40 +147,57 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
             throw Error::InvalidArgument("query_parser",
                                          std::string(spec.function->canonical_name) + " does not support DISTINCT");
         }
-        const auto& token = cursor.Consume(Tokens::NameToken, "expected column name in aggregate");
-        spec.column_name = std::string(token.GetText());
+        spec.column = ParseColumnRef(cursor, "expected column name in aggregate");
     }
 
     cursor.Consume(Tokens::CloseBracket, "expected ')' after aggregate arguments");
-    spec.output_name = FormatAgg(*spec.function, spec.column_name, spec.distinct, spec.star);
+    spec.output_name = FormatAgg(*spec.function, FormatColumnRef(spec.column), spec.distinct, spec.star);
 
     return spec;
 }
 
-static SelectItemSpec ParseSelectItem(TokenCursor& cursor) {
+static SelectItemSpec ParseSelectExpression(TokenCursor& cursor) {
     if (cursor.Match(Tokens::NameToken) && !cursor.Match(Tokens::OpenBracket, 1)) {
-        const Token& token = cursor.Consume(Tokens::NameToken, "expected column name in SELECT");
+        const ColumnRef column = ParseColumnRef(cursor, "expected column name in SELECT");
         return SelectItemSpec{
             .kind = SelectItemKind::GroupKey,
-            .column_name = std::string(token.GetText()),
+            .column = column,
             .aggregate = {},
-            .output_name = std::string(token.GetText()),
+            .output_name = column.name,
         };
     }
 
     return SelectItemSpec{
         .kind = SelectItemKind::Aggregate,
-        .column_name = {},
+        .column = {},
         .aggregate = ParseAggregate(cursor),
         .output_name = {},
     };
 }
 
-static OrderBySpec ParseOrderByItem(TokenCursor& cursor) {
-    SelectItemSpec item = ParseSelectItem(cursor);
-    if (item.kind == SelectItemKind::Aggregate) {
+static std::string ParseSelectItemAlias(TokenCursor& cursor) {
+    if (cursor.TryConsume(Tokens::As)) {
+        return std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
+    }
+    if (cursor.Match(Tokens::NameToken)) {
+        return std::string(cursor.Consume(Tokens::NameToken, "expected alias").GetText());
+    }
+    return {};
+}
+
+static SelectItemSpec ParseSelectItem(TokenCursor& cursor) {
+    SelectItemSpec item = ParseSelectExpression(cursor);
+    if (const std::string alias = ParseSelectItemAlias(cursor); !alias.empty()) {
+        item.output_name = alias;
+    } else if (item.kind == SelectItemKind::Aggregate) {
         item.output_name = item.aggregate.output_name;
     }
+    return item;
+}
+
+static OrderBySpec ParseOrderByItem(TokenCursor& cursor) {
+    SelectItemSpec item = ParseSelectExpression(cursor);
+    item.output_name = item.kind == SelectItemKind::Aggregate ? item.aggregate.output_name : item.column.name;
 
     bool descending = false;
     if (cursor.Match(Tokens::NameToken)) {
@@ -176,19 +232,17 @@ ParsedQuery ParseQuery(const std::string_view query) {
         parsed.select_items.push_back(ParseSelectItem(cursor));
     }
 
-    for (auto& item : parsed.select_items) {
-        if (item.kind == SelectItemKind::Aggregate) {
-            item.output_name = item.aggregate.output_name;
-        }
-    }
-
     cursor.Consume(Tokens::From, "expected FROM");
     parsed.table_name = std::string(cursor.Consume(Tokens::NameToken, "expected table name").GetText());
+    if (cursor.TryConsume(Tokens::As)) {
+        parsed.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
+    } else if (cursor.Match(Tokens::NameToken)) {
+        parsed.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected table alias").GetText());
+    }
 
     if (cursor.TryConsume(Tokens::Where)) {
         FilterSpec filter;
-        filter.column_name =
-            std::string(cursor.Consume(Tokens::NameToken, "expected column name after WHERE").GetText());
+        filter.column = ParseColumnRef(cursor, "expected column name after WHERE");
 
         const Tokens comparison_token = cursor.Peek().GetType();
         filter.comparison = ComparisonKindFromToken(comparison_token);
@@ -221,10 +275,9 @@ ParsedQuery ParseQuery(const std::string_view query) {
 
     if (cursor.TryConsume(Tokens::Group)) {
         cursor.Consume(Tokens::By, "expected BY after GROUP");
-        parsed.group_by.push_back(std::string(cursor.Consume(Tokens::NameToken, "expected column name in GROUP BY").GetText()));
+        parsed.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
         while (cursor.TryConsume(Tokens::Comma)) {
-            parsed.group_by.push_back(
-                std::string(cursor.Consume(Tokens::NameToken, "expected column name in GROUP BY").GetText()));
+            parsed.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
         }
     }
 
@@ -236,6 +289,7 @@ ParsedQuery ParseQuery(const std::string_view query) {
         }
     }
 
+    parsed.limit = ParseOptionalLimit(cursor);
     cursor.TryConsume(Tokens::Semicolon);
     cursor.Consume(Tokens::EndOfInput, "unexpected trailing tokens");
 

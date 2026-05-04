@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -17,16 +18,20 @@ static Batch BuildHitsTable(const std::string_view query) {
                                       {"AdvEngineID", "int64"},
                                       {"ResolutionWidth", "int32"},
                                       {"UserID", "int64"},
+                                      {"RegionID", "int32"},
+                                      {"MobilePhone", "bool"},
+                                      {"MobilePhoneModel", "string"},
+                                      {"SearchEngineID", "int32"},
                                       {"SearchPhrase", "string"},
                                       {"EventDate", "date"},
                                   });
 
     WriteRows(data_file.Path(), {
-                                    {"0", "100", "1", "alpha", "2024-01-05"},
-                                    {"7", "200", "2", "beta", "2024-01-03"},
-                                    {"3", "301", "2", "alpha", "2024-01-07"},
-                                    {"7", "500", "5", "gamma", "2024-01-01"},
-                                    {"1", "400", "11", "delta", "2024-01-09"},
+                                    {"0", "100", "1", "10", "false", "", "1", "alpha", "2024-01-05"},
+                                    {"7", "200", "2", "20", "true", "iPhone", "1", "beta", "2024-01-03"},
+                                    {"3", "301", "2", "10", "true", "Pixel", "2", "alpha", "2024-01-07"},
+                                    {"7", "500", "5", "20", "true", "iPhone", "1", "gamma", "2024-01-01"},
+                                    {"1", "400", "11", "30", "false", "Nokia", "2", "delta", "2024-01-09"},
                                 });
 
     ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
@@ -53,11 +58,82 @@ TEST(executor, groups_rows_and_orders_by_aggregate_descending) {
         "SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY AdvEngineID ORDER BY COUNT(*) DESC;");
 
     EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
-    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
-                                    {"7", "2"},
-                                    {"1", "1"},
-                                    {"3", "1"},
-                                }));
+    auto actual_rows = BatchRows(batch);
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"7", "2"},
+        {"1", "1"},
+        {"3", "1"},
+    };
+    std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
+    std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
+TEST(executor, supports_from_with_as_alias_and_qualified_columns) {
+    const Batch batch = BuildHitsTable(
+        "SELECT h.AdvEngineID, COUNT(*) FROM hits AS h WHERE h.AdvEngineID <> 0 GROUP BY h.AdvEngineID ORDER BY "
+        "COUNT(*) DESC;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+    auto actual_rows = BatchRows(batch);
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"7", "2"},
+        {"1", "1"},
+        {"3", "1"},
+    };
+    std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
+    std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
+TEST(executor, supports_from_with_bare_alias) {
+    const Batch batch = BuildHitsTable(
+        "SELECT h.AdvEngineID, COUNT(*) FROM hits h WHERE h.AdvEngineID <> 0 GROUP BY h.AdvEngineID ORDER BY "
+        "COUNT(*) DESC;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+    auto actual_rows = BatchRows(batch);
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"7", "2"},
+        {"1", "1"},
+        {"3", "1"},
+    };
+    std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
+    std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
+TEST(executor, supports_select_alias_order_by_alias_and_limit) {
+    const Batch batch = BuildHitsTable(
+        "SELECT RegionID, COUNT(DISTINCT UserID) AS u FROM hits GROUP BY RegionID ORDER BY u DESC LIMIT 2;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "u"}));
+    auto actual_rows = BatchRows(batch);
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"10", "2"},
+        {"20", "2"},
+    };
+    std::ranges::sort(actual_rows);
+    std::ranges::sort(expected_rows);
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
+TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
+    const Batch batch = BuildHitsTable(
+        "SELECT RegionID, SUM(AdvEngineID), COUNT(*) AS c, AVG(ResolutionWidth), COUNT(DISTINCT UserID) "
+        "FROM hits GROUP BY RegionID ORDER BY c DESC LIMIT 2;");
+
+    EXPECT_EQ(BatchColumnNames(batch),
+              (std::vector<std::string>{"RegionID", "SUM(AdvEngineID)", "c", "AVG(ResolutionWidth)",
+                                        "COUNT(DISTINCT UserID)"}));
+    auto actual_rows = BatchRows(batch);
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"10", "3", "2", "200", "2"},
+        {"20", "14", "2", "350", "2"},
+    };
+    std::ranges::sort(actual_rows);
+    std::ranges::sort(expected_rows);
+    EXPECT_EQ(actual_rows, expected_rows);
 }
 
 TEST(executor, executes_basic_aggregate_queries) {

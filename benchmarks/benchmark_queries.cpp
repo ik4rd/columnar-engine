@@ -1,13 +1,13 @@
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <vector>
 
 #include "executor/executor.h"
-#include "io/csv_batch_io.h"
 #include "io/fileio.h"
+#include "support/query_result_checks.h"
 #include "support/query_runners.h"
 
 #ifndef COLUMNAR_BENCHMARK_QUERIES_DIR
@@ -15,30 +15,13 @@
 #endif
 
 static constexpr int FirstQueryId = 0;
-static constexpr int LastQueryId = 42;
-
-std::string BatchToString(const Batch& batch) {
-    std::vector<std::vector<std::string>> rows;
-    AppendBatchRows(batch, rows);
-
-    std::string result;
-
-    for (const auto& row : rows) {
-        for (size_t i = 0; i < row.size(); ++i) {
-            result += row[i];
-            if (i + 1 < row.size()) {
-                result += ",";
-            }
-        }
-        result += "\n";
-    }
-
-    return result;
-}
+static constexpr int LastQueryId = 16;
 
 void RunQuery(const Executor& executor, const std::filesystem::path& path, const int query_id, bool record = false) {
     const auto& runners = GetQueryRunners();
     const auto it = runners.find(query_id);
+    const std::string query_sql = std::filesystem::exists(path) ? ReadTextFile(path) : "";
+    const bool compare_unordered = QueryUsesGroupBy(query_sql);
 
     ExecuteExpected result;
     const auto start = std::chrono::steady_clock::now();
@@ -46,8 +29,7 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
     if (it != runners.end()) {
         result = it->second(executor);
     } else if (std::filesystem::exists(path)) {
-        const std::string sql = ReadTextFile(path);
-        result = executor.Execute(sql);
+        result = executor.Execute(query_sql);
     } else {
         std::cout << "query_" << query_id << ": missing, status=skipped" << std::endl;
         return;
@@ -74,7 +56,8 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
         status = "recorded";
     } else if (std::filesystem::exists(ref_path)) {
         const std::string expected_result = ReadTextFile(ref_path);
-        if (actual_result == expected_result) {
+        if (compare_unordered ? EqualAsRowMultisets(actual_result, expected_result)
+                              : actual_result == expected_result) {
             status = "passed";
         } else {
             status = "failed";

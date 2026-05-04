@@ -55,8 +55,13 @@ struct ParsedLiteral {
     Tokens token_type = Tokens::StringLiteral;
 };
 
+struct ColumnRef {
+    std::string qualifier;
+    std::string name;
+};
+
 struct FilterSpec {
-    std::string column_name;
+    ColumnRef column;
     ComparisonKind comparison = ComparisonKind::Equal;
     ParsedLiteral literal;
 };
@@ -65,7 +70,7 @@ struct AggSpec {
     const AggFuncDefinition* function = nullptr;
     bool distinct = false;
     bool star = false;
-    std::string column_name;
+    ColumnRef column;
     std::string output_name;
 };
 
@@ -76,7 +81,7 @@ enum class SelectItemKind {
 
 struct SelectItemSpec {
     SelectItemKind kind = SelectItemKind::GroupKey;
-    std::string column_name;
+    ColumnRef column;
     AggSpec aggregate;
     std::string output_name;
 };
@@ -88,10 +93,12 @@ struct OrderBySpec {
 
 struct ParsedQuery {
     std::string table_name;
+    std::string table_alias;
     std::vector<SelectItemSpec> select_items;
-    std::vector<std::string> group_by;
+    std::vector<ColumnRef> group_by;
     std::optional<FilterSpec> filter;
     std::vector<OrderBySpec> order_by;
+    std::optional<size_t> limit;
 };
 
 struct PlannedAgg {
@@ -137,6 +144,7 @@ struct PlannedQuery {
     std::vector<PlannedAgg> aggregates;
     std::vector<PlannedSelectItem> select_items;
     std::vector<PlannedOrderBy> order_by;
+    std::optional<size_t> limit;
 };
 
 class AggState {

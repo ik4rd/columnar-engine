@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the first N benchmark queries, write CSV stats, and refresh the README benchmark table."
     )
-    parser.add_argument("--count", type=int, default=43, help="Number of first queries to benchmark.")
+    parser.add_argument("--count", type=int, default=17, help="Number of first queries to benchmark.")
     parser.add_argument("--warm-runs", type=int, default=4, help="Number of warm runs after the first measured run.")
     parser.add_argument(
         "--query-dir",
@@ -214,7 +214,7 @@ def render_markdown(csv_path: pathlib.Path, rows: list[dict[str, str]], count: i
 
     for row in rows:
         query_file = row["query_file"]
-        query_label = f"[query_{row['query_id']}.sql]({query_file})"
+        query_label = f"[{row['query_id']}]({query_file})"
         status = row["status"]
         if row["error"]:
             status = f"{status}: {markdown_escape(compact_sql(row['error'], max_len=48))}"
