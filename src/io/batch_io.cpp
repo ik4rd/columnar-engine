@@ -2,14 +2,14 @@
 #include <limits>
 #include <utility>
 
-#include "columnar_batch_io.h"
-#include "csv.h"
-#include "csv_batch_io.h"
-#include "error.h"
-#include "metadata.h"
-#include "stream.h"
+#include "io/columnar_batch_io.h"
+#include "io/csv.h"
+#include "io/csv_batch_io.h"
+#include "io/stream.h"
+#include "model/metadata.h"
+#include "support/error.h"
 
-static constexpr std::string_view kColumnarMagic = "CLMN";
+static constexpr std::string_view ColumnarMagic = "CLMN";
 
 static void SeekRead(const std::filesystem::path& path, std::ifstream& in, const uint64_t pos) {
     in.seekg(pos);
@@ -211,28 +211,28 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     }
 
     const uint64_t file_size = file_metadata->size;
-    constexpr uint64_t kFooterSize = sizeof(uint64_t) + kColumnarMagic.size();
+    constexpr uint64_t FooterSize = sizeof(uint64_t) + ColumnarMagic.size();
 
-    if (file_size < kFooterSize) {
+    if (file_size < FooterSize) {
         throw Error::InvalidData("batch_io", "columnar file is too small", path.string());
     }
 
     std::ifstream in = OpenInputFile(path);
-    SeekRead(path, in, file_size - kFooterSize);
+    SeekRead(path, in, file_size - FooterSize);
 
     const uint64_t metadata_size = ReadStream<uint64_t>(in);
-    std::string magic_read(kColumnarMagic.size(), '\0');
+    std::string magic_read(ColumnarMagic.size(), '\0');
     ReadBytes(in, magic_read.data(), magic_read.size());
 
-    if (magic_read != kColumnarMagic) {
+    if (magic_read != ColumnarMagic) {
         throw Error::InvalidData("batch_io", "invalid columnar magic", path.string());
     }
 
-    if (metadata_size > file_size - kFooterSize) {
+    if (metadata_size > file_size - FooterSize) {
         throw Error::InvalidData("batch_io", "metadata size exceeds file size", path.string());
     }
 
-    SeekRead(path, in, file_size - kFooterSize - metadata_size);
+    SeekRead(path, in, file_size - FooterSize - metadata_size);
 
     return ReadMetadata(in);
 }
@@ -310,7 +310,9 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
 
 void ColumnarBatchWriter::Flush() { FlushWrite(path_, out_); }
 
-void ColumnarBatchWriter::Finalize() {
+void ColumnarBatchWriter::Finalize() && { FinalizeImpl(); }
+
+void ColumnarBatchWriter::FinalizeImpl() {
     if (finalized_) {
         throw Error::InvalidState("batch_io", "writer already finalized", path_.string());
     }
@@ -321,7 +323,7 @@ void ColumnarBatchWriter::Finalize() {
     const uint64_t metadata_size = metadata_end - metadata_start;
 
     WriteStream<uint64_t>(out_, metadata_size);
-    WriteBytes(out_, kColumnarMagic);
+    WriteBytes(out_, ColumnarMagic);
 
     FlushWrite(path_, out_);
     finalized_ = true;

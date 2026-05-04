@@ -1,5 +1,3 @@
-/* (What is this? — CSV <-> колоночный формат) */
-
 #pragma once
 
 #include <cstddef>

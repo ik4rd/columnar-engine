@@ -1,10 +1,10 @@
-#include "metadata.h"
+#include "model/metadata.h"
 
 #include <limits>
 #include <string>
 
-#include "error.h"
-#include "stream.h"
+#include "support/error.h"
+#include "io/stream.h"
 
 static ColumnType ColumnTypeFromByte(const uint8_t type_byte) {
     switch (static_cast<ColumnType>(type_byte)) {

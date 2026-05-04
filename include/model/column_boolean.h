@@ -1,8 +1,6 @@
-/* (What is this? — Колонка логического типа) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class BooleanColumn final : public FixedColumn<BooleanColumn, uint8_t, ColumnType::Boolean> {
    public:

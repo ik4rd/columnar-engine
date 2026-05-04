@@ -2,15 +2,15 @@
 #include <string>
 #include <vector>
 
-#include "columnar_batch_io.h"
-#include "csv_columnar.h"
-#include "csv.h"
-#include "error.h"
-#include "fileio.h"
+#include "io/columnar_batch_io.h"
+#include "convert/csv_columnar.h"
+#include "io/csv.h"
+#include "support/error.h"
+#include "io/fileio.h"
 #include "gtest/gtest.h"
-#include "parsing.h"
-#include "schema.h"
-#include "temp_file.h"
+#include "support/parsing.h"
+#include "model/schema.h"
+#include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
     const TempFile schema_in("schema_in");

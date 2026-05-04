@@ -1,5 +1,3 @@
-/* (What is this? — Обертки над потоками, чтение и запись) */
-
 #pragma once
 
 #include <algorithm>
@@ -13,7 +11,7 @@
 #include <ostream>
 #include <string_view>
 
-#include "error.h"
+#include "support/error.h"
 
 void ReadBytes(std::istream& in, char* dst, size_t size);
 void WriteBytes(std::ostream& out, std::string_view bytes);

@@ -1,6 +1,6 @@
-#include "column_boolean.h"
+#include "model/column_boolean.h"
 
-#include "parsing.h"
+#include "support/parsing.h"
 
 void BooleanColumn::AppendFromString(const std::string& value) { AppendValue(ParseBoolean(value) ? 1 : 0); }
 

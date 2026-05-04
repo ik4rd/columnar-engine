@@ -1,6 +1,6 @@
-#include "column_int32.h"
+#include "model/column_int32.h"
 
-#include "parsing.h"
+#include "support/parsing.h"
 
 void Int32Column::AppendFromString(const std::string& value) { AppendValue(ParseInt32(value)); }
 

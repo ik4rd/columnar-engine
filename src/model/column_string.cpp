@@ -1,4 +1,4 @@
-#include "column_string.h"
+#include "model/column_string.h"
 
 void StringColumn::AppendFromString(const std::string& value) { AppendValue(value); }
 

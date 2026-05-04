@@ -1,6 +1,6 @@
-#include "column_timestamp.h"
+#include "model/column_timestamp.h"
 
-#include "parsing.h"
+#include "support/parsing.h"
 
 void TimestampColumn::AppendFromString(const std::string& value) { AppendValue(ParseTimestamp(value)); }
 

@@ -1,10 +1,8 @@
-/* (What is this? — Потоковое чтение/запись батчей из CSV в колоночный формат) */
-
 #pragma once
 
 #include <optional>
 
-#include "batch.h"
+#include "model/batch.h"
 
 struct BatchSizing {
     std::optional<size_t> max_rows;

@@ -1,8 +1,6 @@
-/* (What is this? — Колонка типа TIMESTAMP) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class TimestampColumn final : public FixedColumn<TimestampColumn, int64_t, ColumnType::Timestamp> {
    public:

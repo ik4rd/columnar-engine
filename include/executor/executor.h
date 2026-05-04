@@ -1,5 +1,3 @@
-/* (What is this? — Объявление классов и функций исполнителя запросов) */
-
 #pragma once
 
 #include <filesystem>
@@ -10,11 +8,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "aggregate_function.h"
-#include "batch.h"
-#include "error.h"
-#include "expected.hpp"
-#include "tokenizer.h"
+#include "executor/aggregate_function.h"
+#include "model/batch.h"
+#include "support/error.h"
+#include "tl/expected.hpp"
+#include "sql_parser/tokenizer.h"
 
 using ExecuteExpected = tl::expected<Batch, Error>;
 

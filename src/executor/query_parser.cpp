@@ -1,7 +1,7 @@
 #include <array>
 #include <utility>
 
-#include "executor.h"
+#include "executor/executor.h"
 
 class TokenCursor {
    public:
@@ -52,7 +52,7 @@ class TokenCursor {
             case Tokens::LessOrEqual:
             case Tokens::Greater:
             case Tokens::GreaterOrEqual:
-            case Tokens::EOI:
+            case Tokens::EndOfInput:
                 throw Error::InvalidArgument("query_parser", std::string(message));
             default:
                 break;
@@ -169,7 +169,7 @@ ParsedQuery ParseQuery(const std::string_view query) {
     }
 
     cursor.TryConsume(Tokens::Semicolon);
-    cursor.Consume(Tokens::EOI, "unexpected trailing tokens");
+    cursor.Consume(Tokens::EndOfInput, "unexpected trailing tokens");
 
     return parsed;
 }

@@ -6,8 +6,8 @@
 #include <string_view>
 #include <vector>
 
-#include "error.h"
-#include "expected.hpp"
+#include "support/error.h"
+#include "tl/expected.hpp"
 
 enum class Tokens {
     NameToken,
@@ -48,7 +48,7 @@ enum class Tokens {
     Greater,
     GreaterOrEqual,
 
-    EOI,
+    EndOfInput,
 };
 
 std::string_view TokenTypeToString(Tokens type) noexcept;

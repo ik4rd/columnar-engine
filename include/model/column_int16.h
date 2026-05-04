@@ -1,8 +1,6 @@
-/* (What is this? — Колонка типа INT16) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class Int16Column final : public FixedColumn<Int16Column, int16_t, ColumnType::Int16> {
    public:

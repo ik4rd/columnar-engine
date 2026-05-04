@@ -9,7 +9,7 @@ target_link_libraries(benchmark_csv_to_columnar
 
 add_executable(benchmark_queries
         benchmark_queries.cpp
-        query_runners.cpp query_runners.h
+        support/query_runners.h
 )
 
 target_link_libraries(benchmark_queries

@@ -1,8 +1,8 @@
 #include <algorithm>
 
-#include "ascii.h"
-#include "columnar_batch_io.h"
-#include "executor.h"
+#include "support/ascii.h"
+#include "io/columnar_batch_io.h"
+#include "executor/executor.h"
 
 static size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);

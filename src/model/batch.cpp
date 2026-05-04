@@ -1,8 +1,8 @@
-#include "batch.h"
+#include "model/batch.h"
 
 #include <utility>
 
-#include "error.h"
+#include "support/error.h"
 
 static std::vector<std::unique_ptr<Column>> CloneColumns(const std::vector<std::unique_ptr<Column>>& columns) {
     std::vector<std::unique_ptr<Column>> clones;

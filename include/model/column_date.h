@@ -1,8 +1,6 @@
-/* (What is this? — Колонка типа DATE) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class DateColumn final : public FixedColumn<DateColumn, int32_t, ColumnType::Date> {
    public:

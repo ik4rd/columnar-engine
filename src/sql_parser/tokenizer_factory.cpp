@@ -4,8 +4,8 @@
 #include <unordered_map>
 #include <utility>
 
-#include "ascii.h"
-#include "tokenizer.h"
+#include "support/ascii.h"
+#include "sql_parser/tokenizer.h"
 
 static const std::unordered_map<std::string, Tokens> kKeywords = {
     {"AS", Tokens::As},       {"AND", Tokens::And},       {"AVG", Tokens::Avg},           {"BY", Tokens::By},
@@ -113,7 +113,7 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
             return std::make_shared<TGreaterToken>(std::move(text), offset);
         case Tokens::GreaterOrEqual:
             return std::make_shared<TGreaterOrEqualToken>(std::move(text), offset);
-        case Tokens::EOI:
+        case Tokens::EndOfInput:
             return std::make_shared<TEndOfInputToken>(std::move(text), offset);
     }
     return nullptr;

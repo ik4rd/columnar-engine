@@ -1,8 +1,6 @@
-/* (What is this? — Колонка типа INT64) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class Int64Column final : public FixedColumn<Int64Column, int64_t, ColumnType::Int64> {
    public:

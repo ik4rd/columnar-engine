@@ -1,14 +1,12 @@
-/* (What is this? — Чтение/запись батчей из CSV в колоночный формат) */
-
 #pragma once
 
 #include <filesystem>
 #include <fstream>
 #include <optional>
 
-#include "batch_io.h"
-#include "fileio.h"
-#include "metadata.h"
+#include "io/batch_io.h"
+#include "io/fileio.h"
+#include "model/metadata.h"
 
 class ColumnarBatchReader final : public BatchReader {
    public:
@@ -49,9 +47,12 @@ class ColumnarBatchWriter final : public BatchWriter {
     void Write(const Batch& batch) override;
     void Flush() override;
 
-    void Finalize();
+    void Finalize() &&;
 
     const ColumnarMetadata& GetMetadata() const { return metadata_; }
+
+   private:
+    void FinalizeImpl();
 
    private:
     std::filesystem::path path_;

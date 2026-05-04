@@ -1,12 +1,12 @@
 #include <string>
 #include <vector>
 
-#include "csv.h"
-#include "csv_columnar.h"
-#include "executor.h"
-#include "executor_test_utils.h"
+#include "io/csv.h"
+#include "convert/csv_columnar.h"
+#include "executor/executor.h"
+#include "testing/executor_test_utils.h"
 #include "gtest/gtest.h"
-#include "temp_file.h"
+#include "testing/temp_file.h"
 
 static Batch BuildHitsTable(const std::string_view query) {
     const TempFile schema_file("executor_schema");
@@ -42,13 +42,13 @@ static Batch BuildHitsTable(const std::string_view query) {
     return std::move(result.value());
 }
 
-TEST(executor, executes_basic_aggregate_queries) {
-    {
-        const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits;");
-        EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
-        EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"5"});
-    }
+TEST(executor, usage_example_register_table_and_execute_query) {
+    const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits;");
+    EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
+    EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"5"});
+}
 
+TEST(executor, executes_basic_aggregate_queries) {
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0;");
         EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});

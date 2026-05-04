@@ -1,8 +1,6 @@
-/* (What is this? — Колонка типа STRING) */
-
 #pragma once
 
-#include "variant_column.h"
+#include "model/variant_column.h"
 
 class StringColumn final : public VariantColumn<StringColumn, ColumnType::String> {
    public:

@@ -1,8 +1,8 @@
-#include "fileio.h"
+#include "io/fileio.h"
 
 #include <iterator>
 
-#include "error.h"
+#include "support/error.h"
 
 std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path) {
     std::error_code ec;

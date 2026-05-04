@@ -1,9 +1,9 @@
-#include "csv.h"
+#include "io/csv.h"
 
 #include <utility>
 
-#include "error.h"
-#include "fileio.h"
+#include "io/fileio.h"
+#include "support/error.h"
 
 static bool NeedsCsvQuotes(const std::string_view value) {
     return value.find_first_of(",\"\n\r") != std::string_view::npos;

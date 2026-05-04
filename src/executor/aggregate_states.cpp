@@ -4,11 +4,11 @@
 #include <unordered_set>
 #include <utility>
 
-#include "aggregate_function.h"
-#include "ascii.h"
-#include "executor.h"
-#include "int128.h"
-#include "parsing.h"
+#include "executor/aggregate_function.h"
+#include "support/ascii.h"
+#include "executor/executor.h"
+#include "support/int128.h"
+#include "support/parsing.h"
 
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {

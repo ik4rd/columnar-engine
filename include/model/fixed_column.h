@@ -1,12 +1,10 @@
-/* (What is this? — База для колонок фиксированного размера) */
-
 #pragma once
 
 #include <vector>
 
-#include "column.h"
-#include "error.h"
-#include "stream.h"
+#include "io/stream.h"
+#include "model/column.h"
+#include "support/error.h"
 
 template <class Derived, std::integral T, ColumnType TypeValue>
 class FixedColumn : public Column {

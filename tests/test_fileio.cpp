@@ -3,10 +3,10 @@
 #include <string>
 #include <vector>
 
-#include "error.h"
-#include "fileio.h"
+#include "support/error.h"
+#include "io/fileio.h"
 #include "gtest/gtest.h"
-#include "temp_file.h"
+#include "testing/temp_file.h"
 
 TEST(fileio, write_and_read_roundtrip) {
     const TempFile temp("fileio_roundtrip");

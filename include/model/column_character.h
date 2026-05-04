@@ -1,8 +1,6 @@
-/* (What is this? — Колонка символьного типа) */
-
 #pragma once
 
-#include "fixed_column.h"
+#include "model/fixed_column.h"
 
 class CharacterColumn final : public FixedColumn<CharacterColumn, char, ColumnType::Character> {
    public:

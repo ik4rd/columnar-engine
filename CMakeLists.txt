@@ -14,17 +14,8 @@ include(cmake/dependencies_package.cmake)
 include(cmake/sanitizers.cmake)
 
 set(COLUMNAR_INCLUDE_DIRS
-        ${PROJECT_SOURCE_DIR}/include/convert
-        ${PROJECT_SOURCE_DIR}/include/io
-        ${PROJECT_SOURCE_DIR}/include/model
-        ${PROJECT_SOURCE_DIR}/include/support
-        ${PROJECT_SOURCE_DIR}/include/testing
-        ${PROJECT_SOURCE_DIR}/include/executor
-        ${PROJECT_SOURCE_DIR}/include/sql_parser
-        ${PROJECT_SOURCE_DIR}/include/tl
+        ${PROJECT_SOURCE_DIR}/include
 )
-
-include_directories(${COLUMNAR_INCLUDE_DIRS})
 
 add_compile_options(-Wall -Wextra -Werror -Wpedantic -O2)
 

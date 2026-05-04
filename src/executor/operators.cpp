@@ -2,10 +2,10 @@
 #include <utility>
 #include <vector>
 
-#include "columnar_batch_io.h"
-#include "executor.h"
-#include "fileio.h"
-#include "parsing.h"
+#include "io/columnar_batch_io.h"
+#include "executor/executor.h"
+#include "io/fileio.h"
+#include "support/parsing.h"
 
 static void SeekRead(const std::filesystem::path& path, std::ifstream& in, const uint64_t offset) {
     in.seekg(static_cast<std::streamoff>(offset));

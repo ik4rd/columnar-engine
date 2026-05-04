@@ -1,5 +1,3 @@
-/* (What is this? — Модуль временного файла) */
-
 #pragma once
 
 #include <chrono>

@@ -1,8 +1,8 @@
-#include "executor.h"
+#include "executor/executor.h"
 
 #include <utility>
 
-#include "ascii.h"
+#include "support/ascii.h"
 
 void Executor::RegisterTable(const std::string& name, std::filesystem::path path) {
     tables_[ToLowerAscii(name)] = std::move(path);

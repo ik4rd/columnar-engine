@@ -1,6 +1,6 @@
-#include "stream.h"
+#include "io/stream.h"
 
-#include "error.h"
+#include "support/error.h"
 
 void ReadBytes(std::istream& in, char* dst, const size_t size) {
     if (size == 0) {

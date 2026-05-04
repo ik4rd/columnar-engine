@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "csv_batch_io.h"
 #include "gtest/gtest.h"
+#include "io/csv_batch_io.h"
 
 inline std::vector<std::string> SingleRowValues(const Batch& batch) {
     EXPECT_EQ(batch.RowsCount(), 1u);

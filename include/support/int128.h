@@ -1,5 +1,3 @@
-/* (What is this? — Алиасы для 128-битных целых) */
-
 #pragma once
 
 #if !defined(__SIZEOF_INT128__)

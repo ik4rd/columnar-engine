@@ -1,9 +1,7 @@
-/* (What is this? — Колонка типа INT128) */
-
 #pragma once
 
-#include "fixed_column.h"
-#include "int128.h"
+#include "model/fixed_column.h"
+#include "support/int128.h"
 
 class Int128Column final : public FixedColumn<Int128Column, Int128, ColumnType::Int128> {
    public:

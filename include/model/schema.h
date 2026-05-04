@@ -1,5 +1,3 @@
-/* (What is this? — Чтение/запись схемы из CSV) */
-
 #pragma once
 
 #include <cstdint>

@@ -1,6 +1,6 @@
-#include "column_int128.h"
+#include "model/column_int128.h"
 
-#include "parsing.h"
+#include "support/parsing.h"
 
 void Int128Column::AppendFromString(const std::string& value) { AppendValue(ParseInt128(value)); }
 

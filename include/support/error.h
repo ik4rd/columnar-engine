@@ -1,5 +1,3 @@
-/* (What is this? — Модуль ошибок) */
-
 #pragma once
 
 #include <cstdint>

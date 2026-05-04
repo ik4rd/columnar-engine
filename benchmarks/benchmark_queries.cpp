@@ -5,10 +5,10 @@
 #include <string>
 #include <vector>
 
-#include "csv_batch_io.h"
-#include "executor.h"
-#include "fileio.h"
-#include "query_runners.h"
+#include "io/csv_batch_io.h"
+#include "executor/executor.h"
+#include "io/fileio.h"
+#include "support/query_runners.h"
 
 #ifndef COLUMNAR_BENCHMARK_QUERIES_DIR
 #define COLUMNAR_BENCHMARK_QUERIES_DIR "benchmarks/queries"

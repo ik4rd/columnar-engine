@@ -1,14 +1,12 @@
-/* (What is this? — База для колонок переменной длины) */
-
 #pragma once
 
 #include <limits>
 #include <utility>
 #include <vector>
 
-#include "column.h"
-#include "error.h"
-#include "stream.h"
+#include "io/stream.h"
+#include "model/column.h"
+#include "support/error.h"
 
 template <class Derived, ColumnType TypeValue>
 class VariantColumn : public Column {

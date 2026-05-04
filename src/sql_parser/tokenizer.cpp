@@ -1,4 +1,4 @@
-#include "tokenizer.h"
+#include "sql_parser/tokenizer.h"
 
 #include <cctype>
 #include <string>
@@ -24,7 +24,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
     }
 
     if (pos_ >= query_.size()) {
-        return MakeToken(Tokens::EOI, {}, query_.size());
+        return MakeToken(Tokens::EndOfInput, {}, query_.size());
     }
 
     const char ch = query_[pos_];
@@ -165,7 +165,7 @@ Expected<std::vector<TokenPtr>> TokenizeSql(const std::string_view input) {
         }
 
         tokens.push_back(token.value());
-        if (token.value()->GetType() == Tokens::EOI) {
+        if (token.value()->GetType() == Tokens::EndOfInput) {
             break;
         }
     }

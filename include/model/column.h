@@ -1,5 +1,3 @@
-/* (What is this? — Абстракция колонок) */
-
 #pragma once
 
 #include <cstdint>
@@ -8,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "schema.h"
+#include "model/schema.h"
 
 class Column {
    public:

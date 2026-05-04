@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "tokenizer.h"
+#include "sql_parser/tokenizer.h"
 
 static std::vector<Tokens> CollectTypes(const std::vector<TokenPtr>& tokens) {
     std::vector<Tokens> types;
@@ -30,7 +30,7 @@ TEST(sql_tokenizer, tokenizes_select_query) {
             Tokens::OpenBracket, Tokens::Asterisk,  Tokens::CloseBracket,   Tokens::Comma,     Tokens::Length,
             Tokens::OpenBracket, Tokens::NameToken, Tokens::CloseBracket,   Tokens::From,      Tokens::NameToken,
             Tokens::Group,       Tokens::By,        Tokens::NameToken,      Tokens::Order,     Tokens::By,
-            Tokens::NameToken,   Tokens::Limit,     Tokens::NumericLiteral, Tokens::Semicolon, Tokens::EOI,
+            Tokens::NameToken,   Tokens::Limit,     Tokens::NumericLiteral, Tokens::Semicolon, Tokens::EndOfInput,
         }));
 
     ASSERT_EQ(tokens.size(), 25U);
@@ -63,7 +63,7 @@ TEST(sql_tokenizer, tokenizes_create_with_literals_and_case_insensitive_keywords
                                         Tokens::NumericLiteral,
                                         Tokens::From,
                                         Tokens::NameToken,
-                                        Tokens::EOI,
+                                        Tokens::EndOfInput,
                                     }));
 
     ASSERT_EQ(tokens.size(), 12U);
@@ -84,7 +84,7 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
         ASSERT_TRUE(token.has_value());
         types.push_back(token.value()->GetType());
 
-        if (token.value()->GetType() == Tokens::EOI) {
+        if (token.value()->GetType() == Tokens::EndOfInput) {
             break;
         }
     }
@@ -102,7 +102,7 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
                          Tokens::NameToken,
                          Tokens::NotEqual,
                          Tokens::NumericLiteral,
-                         Tokens::EOI,
+                         Tokens::EndOfInput,
                      }));
 }
 

@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "csv.h"
+#include "io/csv.h"
 #include "gtest/gtest.h"
 
 static_assert(!std::is_copy_constructible_v<CsvReader>);

@@ -1,12 +1,10 @@
-/* (What is this? — Класс батча) */
-
 #pragma once
 
 #include <memory>
 #include <vector>
 
-#include "column.h"
-#include "schema.h"
+#include "model/column.h"
+#include "model/schema.h"
 
 class Batch {
    public:

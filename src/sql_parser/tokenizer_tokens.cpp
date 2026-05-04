@@ -1,6 +1,6 @@
 #include <utility>
 
-#include "tokenizer.h"
+#include "sql_parser/tokenizer.h"
 
 std::string_view TokenTypeToString(const Tokens type) noexcept {
     switch (type) {
@@ -72,7 +72,7 @@ std::string_view TokenTypeToString(const Tokens type) noexcept {
             return "greater";
         case Tokens::GreaterOrEqual:
             return "greater_or_equal";
-        case Tokens::EOI:
+        case Tokens::EndOfInput:
             return "end_of_input";
     }
     return "unknown";
@@ -126,7 +126,7 @@ COLUMNAR_DEFINE_TOKEN_TYPE(TLessToken, Less)
 COLUMNAR_DEFINE_TOKEN_TYPE(TLessOrEqualToken, LessOrEqual)
 COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterToken, Greater)
 COLUMNAR_DEFINE_TOKEN_TYPE(TGreaterOrEqualToken, GreaterOrEqual)
-COLUMNAR_DEFINE_TOKEN_TYPE(TEndOfInputToken, EOI)
+COLUMNAR_DEFINE_TOKEN_TYPE(TEndOfInputToken, EndOfInput)
 
 #undef COLUMNAR_DEFINE_TOKEN_TYPE
 

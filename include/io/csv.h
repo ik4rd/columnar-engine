@@ -1,5 +1,3 @@
-/* (What is this? — Чтение/запись CSV) */
-
 #pragma once
 
 #include <filesystem>

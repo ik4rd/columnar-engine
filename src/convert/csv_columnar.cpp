@@ -1,9 +1,11 @@
-#include "csv_columnar.h"
+#include <utility>
 
-#include "columnar_batch_io.h"
-#include "csv_batch_io.h"
-#include "error.h"
-#include "schema.h"
+#include "convert/csv_columnar.h"
+
+#include "io/columnar_batch_io.h"
+#include "io/csv_batch_io.h"
+#include "support/error.h"
+#include "model/schema.h"
 
 void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::filesystem::path& data_path,
                           const std::filesystem::path& output_path, size_t max_rows_per_group) {
@@ -23,7 +25,7 @@ void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::f
         batch_writer.Write(*batch);
     }
 
-    batch_writer.Finalize();
+    std::move(batch_writer).Finalize();
 }
 
 void ConvertColumnarToCsv(const std::filesystem::path& columnar_path, const std::filesystem::path& schema_path,

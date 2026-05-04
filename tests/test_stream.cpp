@@ -3,7 +3,7 @@
 #include <sstream>
 
 #include "gtest/gtest.h"
-#include "stream.h"
+#include "io/stream.h"
 
 TEST(stream, roundtrip_signed_integrals) {
     std::stringstream buffer;
