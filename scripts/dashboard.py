@@ -20,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the first N benchmark queries, write CSV stats, and refresh the README benchmark table."
     )
-    parser.add_argument("--count", type=int, default=8, help="Number of first queries to benchmark.")
+    parser.add_argument("--count", type=int, default=43, help="Number of first queries to benchmark.")
     parser.add_argument("--warm-runs", type=int, default=4, help="Number of warm runs after the first measured run.")
     parser.add_argument(
         "--query-dir",

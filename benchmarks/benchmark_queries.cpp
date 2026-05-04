@@ -15,7 +15,7 @@
 #endif
 
 static constexpr int FirstQueryId = 0;
-static constexpr int LastQueryId = 7;
+static constexpr int LastQueryId = 42;
 
 std::string BatchToString(const Batch& batch) {
     std::vector<std::vector<std::string>> rows;
