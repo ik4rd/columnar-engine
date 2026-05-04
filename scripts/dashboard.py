@@ -208,14 +208,13 @@ def render_markdown(csv_path: pathlib.Path, rows: list[dict[str, str]], count: i
         "## Dashboard",
         "",
         "",
-        "| Query | SQL | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Query | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
 
     for row in rows:
         query_file = row["query_file"]
         query_label = f"[query_{row['query_id']}.sql]({query_file})"
-        sql = f"`{markdown_escape(compact_sql(row['sql']))}`"
         status = row["status"]
         if row["error"]:
             status = f"{status}: {markdown_escape(compact_sql(row['error'], max_len=48))}"
@@ -225,7 +224,6 @@ def render_markdown(csv_path: pathlib.Path, rows: list[dict[str, str]], count: i
             + " | ".join(
                 [
                     query_label,
-                    sql,
                     row["first_run_ms"] or "—",
                     row["warm_avg_ms"] or "—",
                     row["warm_median_ms"] or "—",
