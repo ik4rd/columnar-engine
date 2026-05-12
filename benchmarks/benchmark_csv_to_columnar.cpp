@@ -4,8 +4,8 @@
 #include <iostream>
 #include <vector>
 
-#include "io/csv.h"
 #include "convert/csv_columnar.h"
+#include "io/csv.h"
 #include "support/error.h"
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_DATA
@@ -13,7 +13,7 @@
 #endif
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_SCHEMA
-#define COLUMNAR_BENCHMARK_DEFAULT_SCHEMA "benchmarks/schema_sample.csv"
+#define COLUMNAR_BENCHMARK_DEFAULT_SCHEMA "benchmarks/scheme.csv"
 #endif
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_OUTPUT

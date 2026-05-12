@@ -22,7 +22,7 @@ target_link_libraries(benchmark_queries
 target_compile_definitions(benchmark_csv_to_columnar
         PRIVATE
         COLUMNAR_BENCHMARK_DEFAULT_DATA="${PROJECT_SOURCE_DIR}/benchmarks/hits_sample.csv"
-        COLUMNAR_BENCHMARK_DEFAULT_SCHEMA="${PROJECT_SOURCE_DIR}/benchmarks/schema_sample.csv"
+        COLUMNAR_BENCHMARK_DEFAULT_SCHEMA="${PROJECT_SOURCE_DIR}/benchmarks/scheme.csv"
         COLUMNAR_BENCHMARK_DEFAULT_OUTPUT="${PROJECT_SOURCE_DIR}/benchmarks/hits_sample.columnar"
         COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_DATA="${PROJECT_SOURCE_DIR}/benchmarks/hits_sample_new.csv"
         COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA="${PROJECT_SOURCE_DIR}/benchmarks/schema_sample_new.csv"
