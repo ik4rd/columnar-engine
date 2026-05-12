@@ -11,7 +11,7 @@ packages=(
 
 if ! command -v apt-get >/dev/null 2>&1; then
   echo "apt-get not found; assuming build dependencies are already installed."
-  exit 0
+  return 0 2>/dev/null
 fi
 
 missing=()
@@ -23,14 +23,14 @@ done
 
 if ((${#missing[@]} == 0)); then
   echo "Build dependencies already installed."
-  exit 0
+  return 0 2>/dev/null
 fi
 
 if [[ "$(id -u)" -eq 0 ]]; then
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
   rm -rf /var/lib/apt/lists/*
-  exit 0
+  return 0 2>/dev/null
 fi
 
 sudo apt-get update
