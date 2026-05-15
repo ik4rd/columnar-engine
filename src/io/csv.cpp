@@ -1,9 +1,39 @@
 #include "io/csv.h"
 
+#include <optional>
 #include <utility>
 
 #include "io/fileio.h"
 #include "support/error.h"
+
+class CsvCharReader {
+   public:
+    explicit CsvCharReader(std::istream& in) : buffer_(in.rdbuf()) {}
+
+   public:
+    std::optional<char> Read() const {
+        const Traits::int_type next = buffer_->sbumpc();
+        if (Traits::eq_int_type(next, Traits::eof())) {
+            return std::nullopt;
+        }
+        return Traits::to_char_type(next);
+    }
+
+    std::optional<char> Peek() const {
+        const Traits::int_type next = buffer_->sgetc();
+        if (Traits::eq_int_type(next, Traits::eof())) {
+            return std::nullopt;
+        }
+        return Traits::to_char_type(next);
+    }
+
+    void Discard() const { static_cast<void>(Read()); }
+
+   private:
+    using Traits = std::streambuf::traits_type;
+
+    std::streambuf* buffer_;
+};
 
 static bool NeedsCsvQuotes(const std::string_view value) {
     return value.find_first_of(",\"\n\r") != std::string_view::npos;
@@ -39,22 +69,14 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
     row.clear();
     row.emplace_back();
 
-    auto* buffer = in_->rdbuf();
-    using Traits = std::streambuf::traits_type;
-    /* До этого чтение происходило через istream::get() и peek()
-     * Traits требуется только как вспомогательный тип для:
-     *      - eof()
-     *      - to_chat_type()
-     *      - eq_int_type()
-     */
+    const CsvCharReader input(*in_);
 
     bool in_quotes = false;
     bool saw_data = false;
 
     while (true) {
-        const Traits::int_type next = buffer->sbumpc();
-
-        if (Traits::eq_int_type(next, Traits::eof())) {
+        const std::optional<char> next = input.Read();
+        if (!next.has_value()) {
             if (!saw_data) {
                 return false;
             }
@@ -65,13 +87,12 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
         }
 
         saw_data = true;
-        const char ch = Traits::to_char_type(next);
+        const char ch = *next;
 
         if (in_quotes) {
             if (ch == '"') {
-                const Traits::int_type peek = buffer->sgetc();
-                if (Traits::to_char_type(peek) == '"') {
-                    buffer->sbumpc();
+                if (input.Peek() == '"') {
+                    input.Discard();
                     row.back().push_back('"');
                 } else {
                     in_quotes = false;
@@ -101,8 +122,8 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
         }
 
         if (ch == '\r') {
-            if (Traits::to_char_type(buffer->sgetc()) == '\n') {
-                buffer->sbumpc();
+            if (input.Peek() == '\n') {
+                input.Discard();
             }
             return true;
         }
