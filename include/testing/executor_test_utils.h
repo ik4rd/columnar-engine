@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "io/csv_batch_io.h"
+#include "io/csv_batch.h"
 
 inline std::vector<std::string> SingleRowValues(const Batch& batch) {
     EXPECT_EQ(batch.RowsCount(), 1u);

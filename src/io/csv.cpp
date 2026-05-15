@@ -3,7 +3,7 @@
 #include <optional>
 #include <utility>
 
-#include "io/fileio.h"
+#include "io/file.h"
 #include "support/error.h"
 
 class CsvCharReader {

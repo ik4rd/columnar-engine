@@ -11,8 +11,8 @@ add_library(columnar_engine_core
         model/column_string.cpp
         model/column_timestamp.cpp
         model/metadata.cpp
-        io/batch_io.cpp
-        io/fileio.cpp
+        io/batch.cpp
+        io/file.cpp
         io/stream.cpp
         support/error.cpp
         support/ascii.cpp
@@ -22,14 +22,14 @@ add_library(columnar_engine_core
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
 
 add_library(columnar_engine_columnar
-        io/columnar_batch_io.cpp
+        io/columnar_batch.cpp
 )
 
 target_link_libraries(columnar_engine_columnar PUBLIC columnar_engine_core)
 
 add_library(columnar_engine_csv
         io/csv.cpp
-        io/csv_batch_io.cpp
+        io/csv_batch.cpp
         model/schema_csv.cpp
 )
 

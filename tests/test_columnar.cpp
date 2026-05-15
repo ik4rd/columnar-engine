@@ -2,15 +2,15 @@
 #include <string>
 #include <vector>
 
-#include "io/columnar_batch_io.h"
 #include "convert/csv_columnar.h"
-#include "io/csv.h"
-#include "support/error.h"
-#include "io/fileio.h"
 #include "gtest/gtest.h"
-#include "support/parsing.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/file.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
+#include "support/error.h"
+#include "support/parsing.h"
 #include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {

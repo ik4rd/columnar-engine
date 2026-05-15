@@ -6,7 +6,7 @@
 #include <string>
 
 #include "executor/executor.h"
-#include "io/fileio.h"
+#include "io/file.h"
 #include "support/query_result_checks.h"
 #include "support/query_runners.h"
 

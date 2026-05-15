@@ -3,13 +3,13 @@
 #include <stdexcept>
 #include <vector>
 
-#include "io/csv_batch_io.h"
 #include "convert/csv_columnar.h"
-#include "support/error.h"
 #include "executor/executor.h"
-#include "io/fileio.h"
+#include "io/csv_batch.h"
+#include "io/file.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
+#include "support/error.h"
 
 void ConfigureInferSchemaCommand(argparse::ArgumentParser& command) {
     command.add_description("Infer a schema from a CSV file.");

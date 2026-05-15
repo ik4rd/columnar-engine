@@ -6,8 +6,8 @@
 #include "executor/aggregate_state.h"
 #include "executor/operator.h"
 #include "executor/operator_utils.h"
-#include "io/columnar_batch_io.h"
-#include "io/fileio.h"
+#include "io/columnar_batch.h"
+#include "io/file.h"
 #include "support/error.h"
 
 class ScanOperator final : public Operator {

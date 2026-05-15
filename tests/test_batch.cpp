@@ -3,11 +3,11 @@
 #include <utility>
 #include <vector>
 
-#include "io/columnar_batch_io.h"
-#include "io/csv.h"
-#include "io/csv_batch_io.h"
-#include "support/error.h"
 #include "gtest/gtest.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/csv_batch.h"
+#include "support/error.h"
 #include "testing/temp_file.h"
 
 static_assert(std::is_copy_constructible_v<Batch>);

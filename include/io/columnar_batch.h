@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <optional>
 
-#include "io/batch_io.h"
-#include "io/fileio.h"
+#include "io/batch.h"
+#include "io/file.h"
 #include "model/metadata.h"
 
 class ColumnarBatchReader final : public BatchReader {

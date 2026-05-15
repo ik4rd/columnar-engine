@@ -4,7 +4,7 @@
 
 #include "executor/operator_utils.h"
 #include "executor/planner_utils.h"
-#include "io/columnar_batch_io.h"
+#include "io/columnar_batch.h"
 #include "support/ascii.h"
 #include "support/error.h"
 

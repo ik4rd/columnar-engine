@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "io/batch_io.h"
+#include "io/batch.h"
 #include "io/csv.h"
 
 class CsvBatchReader final : public BatchReader {

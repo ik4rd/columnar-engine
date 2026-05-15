@@ -1,5 +1,3 @@
-#include "io/columnar_batch_io.h"
-
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -7,6 +5,7 @@
 #include <string_view>
 #include <utility>
 
+#include "io/columnar_batch.h"
 #include "io/stream.h"
 #include "support/error.h"
 

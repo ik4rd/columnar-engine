@@ -1,8 +1,7 @@
-#include "io/batch_io.h"
-
 #include <string>
 #include <string_view>
 
+#include "io/batch.h"
 #include "support/error.h"
 
 static void ValidateOptionalLimit(const std::optional<size_t>& value, const std::string_view name) {

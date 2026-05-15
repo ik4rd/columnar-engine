@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "support/error.h"
-#include "io/fileio.h"
 #include "gtest/gtest.h"
+#include "io/file.h"
+#include "support/error.h"
 #include "testing/temp_file.h"
 
 TEST(fileio, write_and_read_roundtrip) {

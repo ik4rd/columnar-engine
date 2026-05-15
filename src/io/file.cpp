@@ -1,8 +1,7 @@
-#include "io/fileio.h"
-
 #include <iterator>
 #include <utility>
 
+#include "io/file.h"
 #include "io/stream.h"
 #include "support/error.h"
 
