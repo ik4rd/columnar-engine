@@ -130,9 +130,9 @@ class AggOperator final : public Operator {
                 for (const auto& binding : bindings_) {
                     if (binding.aggregate.argument_kind == AggArgumentKind::Column) {
                         std::string materialized = batch->ColumnAt(binding.aggregate.column_index).ValueAsString(row);
-                        binding.state->Consume(materialized);
+                        binding.state->ConsumeValue(materialized);
                     } else {
-                        binding.state->Consume(std::nullopt);
+                        binding.state->ConsumeRow();
                     }
                 }
             }
@@ -214,9 +214,9 @@ class GroupAggOperator final : public Operator {
                     const PlannedAgg& aggregate = aggregates_[i];
                     if (aggregate.argument_kind == AggArgumentKind::Column) {
                         std::string materialized = batch->ColumnAt(aggregate.column_index).ValueAsString(row);
-                        group.states[i]->Consume(materialized);
+                        group.states[i]->ConsumeValue(materialized);
                     } else {
-                        group.states[i]->Consume(std::nullopt);
+                        group.states[i]->ConsumeRow();
                     }
                 }
             }

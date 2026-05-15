@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 
@@ -17,7 +16,8 @@ class AggState {
     virtual ~AggState() = default;
 
    public:
-    virtual void Consume(std::optional<std::string_view> value) = 0;
+    virtual void ConsumeValue(std::string_view value) = 0;
+    virtual void ConsumeRow() = 0;
     virtual std::string Finalize() const = 0;
 };
 
