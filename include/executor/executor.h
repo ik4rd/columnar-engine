@@ -1,33 +1,15 @@
 #pragma once
 
 #include <filesystem>
-#include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
-#include "executor/aggregate_function.h"
 #include "model/batch.h"
 #include "support/error.h"
 #include "tl/expected.hpp"
-#include "sql_parser/tokenizer.h"
 
 using ExecuteExpected = tl::expected<Batch, Error>;
-
-class Operator {
-   public:
-    Operator() = default;
-    Operator(const Operator&) = delete;
-    Operator(Operator&&) noexcept = default;
-    Operator& operator=(const Operator&) = delete;
-    Operator& operator=(Operator&&) noexcept = default;
-    virtual ~Operator() = default;
-
-   public:
-    virtual std::optional<Batch> Next() = 0;
-};
 
 class Executor {
    public:
@@ -40,128 +22,3 @@ class Executor {
    private:
     std::unordered_map<std::string, std::filesystem::path> tables_;
 };
-
-enum class ComparisonKind {
-    Equal,
-    NotEqual,
-    Less,
-    LessOrEqual,
-    Greater,
-    GreaterOrEqual,
-};
-
-struct ParsedLiteral {
-    std::string text;
-    Tokens token_type = Tokens::StringLiteral;
-};
-
-struct ColumnRef {
-    std::string qualifier;
-    std::string name;
-};
-
-struct FilterSpec {
-    ColumnRef column;
-    ComparisonKind comparison = ComparisonKind::Equal;
-    ParsedLiteral literal;
-};
-
-struct AggSpec {
-    const AggFuncDefinition* function = nullptr;
-    bool distinct = false;
-    bool star = false;
-    ColumnRef column;
-    std::string output_name;
-};
-
-enum class SelectItemKind {
-    GroupKey,
-    Aggregate,
-};
-
-struct SelectItemSpec {
-    SelectItemKind kind = SelectItemKind::GroupKey;
-    ColumnRef column;
-    AggSpec aggregate;
-    std::string output_name;
-};
-
-struct OrderBySpec {
-    SelectItemSpec item;
-    bool descending = false;
-};
-
-struct ParsedQuery {
-    std::string table_name;
-    std::string table_alias;
-    std::vector<SelectItemSpec> select_items;
-    std::vector<ColumnRef> group_by;
-    std::optional<FilterSpec> filter;
-    std::vector<OrderBySpec> order_by;
-    std::optional<size_t> limit;
-};
-
-struct PlannedAgg {
-    const AggFuncDefinition* function = nullptr;
-    bool distinct = false;
-    bool star = false;
-    std::optional<size_t> column_index;
-    ColumnType input_type = ColumnType::String;
-    std::string output_name;
-};
-
-struct PlannedGroupKey {
-    size_t column_index = 0;
-    ColumnType column_type = ColumnType::String;
-    std::string output_name;
-};
-
-struct PlannedSelectItem {
-    SelectItemKind kind = SelectItemKind::GroupKey;
-    size_t index = 0;
-    ColumnType output_type = ColumnType::String;
-    std::string output_name;
-};
-
-struct PlannedOrderBy {
-    size_t result_column_index = 0;
-    bool descending = false;
-    ColumnType value_type = ColumnType::String;
-};
-
-struct PlannedFilter {
-    size_t column_index = 0;
-    ColumnType column_type = ColumnType::String;
-    ComparisonKind comparison = ComparisonKind::Equal;
-    std::string literal_text;
-};
-
-struct PlannedQuery {
-    std::filesystem::path table_path;
-    std::vector<size_t> projection_indexes;
-    std::optional<PlannedFilter> filter;
-    std::vector<PlannedGroupKey> group_keys;
-    std::vector<PlannedAgg> aggregates;
-    std::vector<PlannedSelectItem> select_items;
-    std::vector<PlannedOrderBy> order_by;
-    std::optional<size_t> limit;
-};
-
-class AggState {
-   public:
-    AggState() = default;
-    AggState(const AggState&) = delete;
-    AggState(AggState&&) noexcept = default;
-    AggState& operator=(const AggState&) = delete;
-    AggState& operator=(AggState&&) noexcept = default;
-    virtual ~AggState() = default;
-
-   public:
-    virtual void Consume(std::optional<std::string_view> value) = 0;
-    virtual std::string Finalize() const = 0;
-};
-
-ParsedQuery ParseQuery(std::string_view query);
-PlannedQuery PlanQuery(const ParsedQuery& parsed, const std::unordered_map<std::string, std::filesystem::path>& tables);
-std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate);
-std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned);

@@ -4,10 +4,12 @@
 #include <utility>
 #include <vector>
 
-#include "executor/executor.h"
+#include "executor/aggregate_state.h"
+#include "executor/operator.h"
 #include "executor/operator_utils.h"
 #include "io/columnar_batch_io.h"
 #include "io/fileio.h"
+#include "support/error.h"
 
 class ScanOperator final : public Operator {
    public:
@@ -68,9 +70,10 @@ class FilterOperator final : public Operator {
             Batch filtered(batch->GetSchema());
 
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                const std::string value = batch->ColumnAt(filter_.column_index).ValueAsString(row);
+                const std::string left = MaterializeValue(filter_.left, *batch, row);
+                const std::string right = MaterializeValue(filter_.right, *batch, row);
 
-                if (!MatchesComparison(filter_.column_type, value, filter_.literal_text, filter_.comparison)) {
+                if (!MatchesComparison(filter_.comparison_type, left, right, filter_.comparison)) {
                     continue;
                 }
 
@@ -85,6 +88,14 @@ class FilterOperator final : public Operator {
         }
 
         return std::nullopt;
+    }
+
+   private:
+    static std::string MaterializeValue(const PlannedValue& value, const Batch& batch, const size_t row) {
+        if (value.kind == PlannedValueKind::Literal) {
+            return value.literal_text;
+        }
+        return batch.ColumnAt(value.column_index).ValueAsString(row);
     }
 
    private:
@@ -118,9 +129,9 @@ class AggOperator final : public Operator {
 
         while (auto batch = child_->Next()) {
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                for (auto& binding : bindings_) {
-                    if (!binding.aggregate.star) {
-                        std::string materialized = batch->ColumnAt(*binding.aggregate.column_index).ValueAsString(row);
+                for (const auto& binding : bindings_) {
+                    if (binding.aggregate.argument_kind == AggArgumentKind::Column) {
+                        std::string materialized = batch->ColumnAt(binding.aggregate.column_index).ValueAsString(row);
                         binding.state->Consume(materialized);
                     } else {
                         binding.state->Consume(std::nullopt);
@@ -203,8 +214,8 @@ class GroupAggOperator final : public Operator {
                 GroupState& group = groups_[group_index];
                 for (size_t i = 0; i < aggregates_.size(); ++i) {
                     const PlannedAgg& aggregate = aggregates_[i];
-                    if (!aggregate.star) {
-                        std::string materialized = batch->ColumnAt(*aggregate.column_index).ValueAsString(row);
+                    if (aggregate.argument_kind == AggArgumentKind::Column) {
+                        std::string materialized = batch->ColumnAt(aggregate.column_index).ValueAsString(row);
                         group.states[i]->Consume(materialized);
                     } else {
                         group.states[i]->Consume(std::nullopt);

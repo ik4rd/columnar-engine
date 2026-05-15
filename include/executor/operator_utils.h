@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "executor/executor.h"
+#include "executor/query_plan.h"
 
 int CompareValues(ColumnType type, std::string_view lhs, std::string_view rhs);
 bool MatchesComparison(ColumnType type, std::string_view lhs, std::string_view rhs, ComparisonKind kind);

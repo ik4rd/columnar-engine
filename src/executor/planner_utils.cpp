@@ -1,6 +1,7 @@
 #include "executor/planner_utils.h"
 
 #include "support/ascii.h"
+#include "support/error.h"
 
 size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);
@@ -16,15 +17,15 @@ static bool SameQualifier(const std::string_view lhs, const std::string_view rhs
     return ToLowerAscii(lhs) == ToLowerAscii(rhs);
 }
 
-void ValidateColumnQualifier(const ParsedQuery& parsed, const ColumnRef& column) {
+void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
     if (column.qualifier.empty()) {
         return;
     }
 
-    if (SameQualifier(column.qualifier, parsed.table_name)) {
+    if (SameQualifier(column.qualifier, query.table_name)) {
         return;
     }
-    if (!parsed.table_alias.empty() && SameQualifier(column.qualifier, parsed.table_alias)) {
+    if (!query.table_alias.empty() && SameQualifier(column.qualifier, query.table_alias)) {
         return;
     }
 
@@ -51,13 +52,13 @@ static std::string UnescapeSqlString(const std::string_view text) {
     return result;
 }
 
-std::string NormalizeLiteral(const ParsedLiteral& literal, const ColumnType type) {
-    switch (literal.token_type) {
-        case Tokens::StringLiteral:
+std::string NormalizeLiteral(const QueryLiteral& literal, const ColumnType type) {
+    switch (literal.kind) {
+        case LiteralKind::String:
             return UnescapeSqlString(literal.text);
-        case Tokens::NumericLiteral:
-        case Tokens::NameToken:
-            if (type == ColumnType::String && literal.token_type == Tokens::NameToken) {
+        case LiteralKind::Numeric:
+        case LiteralKind::Identifier:
+            if (type == ColumnType::String && literal.kind == LiteralKind::Identifier) {
                 return literal.text;
             }
             return literal.text;

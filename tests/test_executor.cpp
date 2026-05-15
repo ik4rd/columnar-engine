@@ -103,6 +103,13 @@ TEST(executor, supports_from_with_bare_alias) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, supports_column_to_column_filter) {
+    const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits h WHERE h.AdvEngineID > h.SearchEngineID;");
+
+    EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
+    EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"3"});
+}
+
 TEST(executor, supports_select_alias_order_by_alias_and_limit) {
     const Batch batch = BuildHitsTable(
         "SELECT RegionID, COUNT(DISTINCT UserID) AS u FROM hits GROUP BY RegionID ORDER BY u DESC LIMIT 2;");
@@ -123,9 +130,8 @@ TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
         "SELECT RegionID, SUM(AdvEngineID), COUNT(*) AS c, AVG(ResolutionWidth), COUNT(DISTINCT UserID) "
         "FROM hits GROUP BY RegionID ORDER BY c DESC LIMIT 2;");
 
-    EXPECT_EQ(BatchColumnNames(batch),
-              (std::vector<std::string>{"RegionID", "SUM(AdvEngineID)", "c", "AVG(ResolutionWidth)",
-                                        "COUNT(DISTINCT UserID)"}));
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "SUM(AdvEngineID)", "c",
+                                                                 "AVG(ResolutionWidth)", "COUNT(DISTINCT UserID)"}));
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"10", "3", "2", "200", "2"},

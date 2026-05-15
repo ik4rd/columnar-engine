@@ -3,6 +3,7 @@
 #include <string>
 
 #include "support/ascii.h"
+#include "support/error.h"
 #include "support/parsing.h"
 
 template <typename T>

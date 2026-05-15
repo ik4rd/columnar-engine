@@ -40,4 +40,3 @@ struct AggRegistrar {
 
 const AggFuncDefinition& ResolveAggFunc(std::string_view name);
 bool AggSupportsInputType(const AggFuncDefinition& definition, ColumnType type);
-std::string FormatAgg(const AggFuncDefinition& definition, std::string_view column_name, bool distinct, bool star);

@@ -4,9 +4,10 @@
 #include <unordered_set>
 #include <utility>
 
+#include "executor/aggregate_state.h"
 #include "executor/aggregate_function.h"
 #include "support/ascii.h"
-#include "executor/executor.h"
+#include "support/error.h"
 #include "support/int128.h"
 #include "support/parsing.h"
 
@@ -306,22 +307,6 @@ bool AggSupportsInputType(const AggFuncDefinition& definition, const ColumnType 
     return definition.supports_type(type);
 }
 
-std::string FormatAgg(const AggFuncDefinition& definition, const std::string_view column_name, const bool distinct,
-                      const bool star) {
-    std::string output(definition.canonical_name);
-    output += '(';
-    if (star) {
-        output += '*';
-    } else {
-        if (distinct) {
-            output += "DISTINCT ";
-        }
-        output += column_name;
-    }
-    output += ')';
-    return output;
-}
-
 std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
     if (aggregate.function == nullptr || aggregate.function->factory == nullptr) {
         throw Error::Unsupported("executor", "aggregate is not registered");
@@ -330,7 +315,7 @@ std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
         throw Error::Unsupported("executor", "DISTINCT is not supported for aggregate '" +
                                                  std::string(aggregate.function->canonical_name) + "'");
     }
-    if (aggregate.star && !aggregate.function->star) {
+    if (aggregate.argument_kind == AggArgumentKind::Star && !aggregate.function->star) {
         throw Error::Unsupported(
             "executor", "aggregate '" + std::string(aggregate.function->canonical_name) + "' does not support '*'");
     }
