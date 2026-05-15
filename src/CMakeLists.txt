@@ -1,6 +1,5 @@
-add_library(columnar_engine_lib
+add_library(columnar_engine_core
         model/batch.cpp
-        io/batch_io.cpp
         model/column.cpp
         model/column_boolean.cpp
         model/column_character.cpp
@@ -11,15 +10,42 @@ add_library(columnar_engine_lib
         model/column_int64.cpp
         model/column_string.cpp
         model/column_timestamp.cpp
-        convert/csv_columnar.cpp
-        io/csv.cpp
+        model/metadata.cpp
+        io/batch_io.cpp
+        io/fileio.cpp
+        io/stream.cpp
         support/error.cpp
         support/ascii.cpp
-        io/fileio.cpp
-        model/metadata.cpp
         support/parsing.cpp
-        model/schema.cpp
-        io/stream.cpp
+)
+
+target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
+
+add_library(columnar_engine_columnar
+        io/columnar_batch_io.cpp
+)
+
+target_link_libraries(columnar_engine_columnar PUBLIC columnar_engine_core)
+
+add_library(columnar_engine_csv
+        io/csv.cpp
+        io/csv_batch_io.cpp
+        model/schema_csv.cpp
+)
+
+target_link_libraries(columnar_engine_csv PUBLIC columnar_engine_core)
+
+add_library(columnar_engine_convert
+        convert/csv_columnar.cpp
+)
+
+target_link_libraries(columnar_engine_convert
+        PUBLIC
+        columnar_engine_columnar
+        columnar_engine_csv
+)
+
+add_library(columnar_engine_executor
         executor/executor.cpp
         executor/query_parser.cpp
         executor/query_planner.cpp
@@ -32,6 +58,18 @@ add_library(columnar_engine_lib
         sql_parser/tokenizer.cpp
 )
 
-target_include_directories(columnar_engine_lib PUBLIC ${COLUMNAR_INCLUDE_DIRS})
+target_link_libraries(columnar_engine_executor PUBLIC columnar_engine_columnar)
+
+add_library(columnar_engine_lib INTERFACE)
+
+target_link_libraries(columnar_engine_lib
+        INTERFACE
+        columnar_engine_core
+        columnar_engine_columnar
+        columnar_engine_csv
+        columnar_engine_convert
+        columnar_engine_executor
+)
+
 add_executable(columnar_engine app/main.cpp)
 target_link_libraries(columnar_engine PRIVATE columnar_engine_lib argparse)

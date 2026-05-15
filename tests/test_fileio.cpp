@@ -146,6 +146,17 @@ TEST(fileio, stream_seek_and_tell) {
     EXPECT_EQ(value, payload[2]);
 }
 
+TEST(fileio, input_file_reads_at_offsets) {
+    const TempFile temp("fileio_input_file_read_at");
+    const std::vector<uint8_t> payload = {10, 11, 12, 13, 14};
+
+    WriteFileBytes(temp.Path(), payload);
+
+    InputFile file(temp.Path());
+    EXPECT_EQ(file.ReadAt<uint8_t>(3), payload[3]);
+    EXPECT_EQ(file.ReadStringAt(1, 3), std::string("\x0B\x0C\x0D", 3));
+}
+
 TEST(fileio, stream_open_missing_throws) {
     const auto missing = UniqueTempPath("fileio_stream_missing");
 

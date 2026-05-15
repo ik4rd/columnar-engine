@@ -1,10 +1,11 @@
-#include "model/schema.h"
+#include "model/schema_csv.h"
 
 #include <array>
+#include <string>
+#include <vector>
 
 #include "io/csv.h"
 #include "support/error.h"
-#include "io/fileio.h"
 #include "support/parsing.h"
 
 static bool CanParseAs(const ColumnType type, const std::string& value) {

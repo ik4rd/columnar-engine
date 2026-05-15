@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <fstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -14,7 +13,7 @@
 class ScanOperator final : public Operator {
    public:
     ScanOperator(std::filesystem::path path, std::vector<size_t> projection_indexes)
-        : path_(std::move(path)), in_(OpenInputFile(path_)), metadata_(ColumnarBatchReader(path_).GetMetadata()) {
+        : path_(std::move(path)), input_(path_), metadata_(ColumnarBatchReader(path_).GetMetadata()) {
         if (metadata_.schema.columns.empty()) {
             throw Error::InvalidData("operators", "columnar schema is empty", path_.string());
         }
@@ -42,8 +41,7 @@ class ScanOperator final : public Operator {
         for (size_t projected_index = 0; projected_index < projection_indexes_.size(); ++projected_index) {
             const size_t source_index = projection_indexes_[projected_index];
             const auto& chunk = row_group.columns[source_index];
-            SeekInputFile(in_, path_, chunk.offset);
-            batch.ColumnAt(projected_index).ReadFrom(in_, row_group.row_count, chunk.size);
+            batch.ColumnAt(projected_index).ReadFrom(input_.StreamAt(chunk.offset), row_group.row_count, chunk.size);
         }
 
         return batch;
@@ -51,7 +49,7 @@ class ScanOperator final : public Operator {
 
    private:
     std::filesystem::path path_;
-    std::ifstream in_;
+    InputFile input_;
 
     ColumnarMetadata metadata_;
     std::vector<size_t> projection_indexes_;

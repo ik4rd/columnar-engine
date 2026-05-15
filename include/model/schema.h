@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -29,7 +28,3 @@ struct Schema {
 
     bool operator==(const Schema& other) const = default;
 };
-
-Schema ReadSchemaCsv(const std::filesystem::path& path);
-Schema InferSchemaCsv(const std::filesystem::path& path);
-void WriteSchemaCsv(const std::filesystem::path& path, const Schema& schema);

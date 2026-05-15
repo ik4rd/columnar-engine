@@ -10,6 +10,7 @@
 #include "gtest/gtest.h"
 #include "support/parsing.h"
 #include "model/schema.h"
+#include "model/schema_csv.h"
 #include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {

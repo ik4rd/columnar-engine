@@ -1,7 +1,9 @@
 #include "io/fileio.h"
 
 #include <iterator>
+#include <utility>
 
+#include "io/stream.h"
 #include "support/error.h"
 
 std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path) {
@@ -71,6 +73,28 @@ void SeekInputFile(std::istream& in, const std::filesystem::path& path, const ui
     if (!in) {
         throw Error::PathIo("fileio", path, "seek for read");
     }
+}
+
+InputFile::InputFile(std::filesystem::path path) : path_(std::move(path)), in_(OpenInputFile(path_)) {}
+
+void InputFile::ReadAt(char* dst, const size_t size, const uint64_t offset) {
+    SeekInputFile(in_, path_, offset);
+    try {
+        ReadBytes(in_, dst, size);
+    } catch (const Error&) {
+        throw Error::PathIo("fileio", path_, "read file");
+    }
+}
+
+std::string InputFile::ReadStringAt(const uint64_t offset, const size_t size) {
+    std::string result(size, '\0');
+    ReadAt(result.data(), result.size(), offset);
+    return result;
+}
+
+std::istream& InputFile::StreamAt(const uint64_t offset) {
+    SeekInputFile(in_, path_, offset);
+    return in_;
 }
 
 std::ofstream OpenOutputFile(const std::filesystem::path& path, const FileOpenMode mode) {

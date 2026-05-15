@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <fstream>
 #include <optional>
 
 #include "io/batch_io.h"
@@ -28,7 +27,7 @@ class ColumnarBatchReader final : public BatchReader {
 
    private:
     std::filesystem::path path_;
-    std::ifstream in_;
+    InputFile input_;
 
     ColumnarMetadata metadata_;
     size_t next_group_ = 0;
@@ -50,9 +49,6 @@ class ColumnarBatchWriter final : public BatchWriter {
     void Finalize() &&;
 
     const ColumnarMetadata& GetMetadata() const { return metadata_; }
-
-   private:
-    void FinalizeImpl();
 
    private:
     std::filesystem::path path_;
