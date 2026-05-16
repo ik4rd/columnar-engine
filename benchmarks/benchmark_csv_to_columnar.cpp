@@ -6,7 +6,7 @@
 
 #include "io/csv.h"
 #include "convert/csv_columnar.h"
-#include "support/error.h"
+#include "common/error.h"
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_DATA
 #define COLUMNAR_BENCHMARK_DEFAULT_DATA "benchmarks/hits_sample.csv"

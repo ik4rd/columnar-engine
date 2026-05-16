@@ -1,11 +1,12 @@
 #include "io/csv_batch.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
-#include <memory>
 #include <utility>
 
-#include "support/error.h"
+#include "common/error.h"
+#include "common/int128.h"
 
 static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     if (add > std::numeric_limits<uint64_t>::max() - current) {
@@ -14,11 +15,32 @@ static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     return current + add;
 }
 
-static uint64_t EstimateRowBytes(const std::vector<std::unique_ptr<Column>>& columns,
-                                 const std::vector<std::string>& row) {
+static uint64_t EstimateValueBytes(const ColumnType type, const std::string_view value) {
+    switch (type) {
+        case ColumnType::Boolean:
+            return sizeof(uint8_t);
+        case ColumnType::Int16:
+            return sizeof(int16_t);
+        case ColumnType::Int32:
+        case ColumnType::Date:
+            return sizeof(int32_t);
+        case ColumnType::Int64:
+        case ColumnType::Timestamp:
+            return sizeof(int64_t);
+        case ColumnType::Int128:
+            return sizeof(Int128);
+        case ColumnType::Character:
+            return sizeof(char);
+        case ColumnType::String:
+            return value.size();
+    }
+    throw Error::Unsupported("batch_io", "unsupported column type");
+}
+
+static uint64_t EstimateRowBytes(const Schema& schema, const std::vector<std::string>& row) {
     uint64_t bytes = 0;
-    for (size_t i = 0; i < columns.size(); ++i) {
-        bytes = AddChecked(bytes, columns[i]->EstimateSizeFromString(row[i]));
+    for (size_t i = 0; i < schema.columns.size(); ++i) {
+        bytes = AddChecked(bytes, EstimateValueBytes(schema.columns[i].type, row[i]));
     }
     return bytes;
 }
@@ -35,7 +57,7 @@ static void ValidateSizing(const BatchSizing& sizing) {
     }
 }
 
-static void ReserveForSizing(const Batch& batch, const BatchSizing& sizing, const size_t column_count) {
+static void ReserveForSizing(Batch& batch, const BatchSizing& sizing, const size_t column_count) {
     if (sizing.max_rows) {
         batch.Reserve(*sizing.max_rows);
         return;
@@ -62,7 +84,6 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 
     const size_t column_count = schema_.columns.size();
     ReserveForSizing(batch, sizing_, column_count);
-    const auto& columns = batch.GetColumns();
 
     std::vector<std::string> row;
     row.reserve(column_count);
@@ -82,14 +103,14 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         if (row.size() != column_count) {
-            throw Error::Mismatch("batch_io", "data csv column count mismatch");
+            throw Error::InconsistentData("batch_io", "data csv column count mismatch");
         }
 
         const size_t next_rows = rows + 1;
         uint64_t next_bytes = bytes;
 
         if (sizing_.max_bytes) {
-            next_bytes = AddChecked(bytes, EstimateRowBytes(columns, row));
+            next_bytes = AddChecked(bytes, EstimateRowBytes(schema_, row));
         }
 
         if (rows > 0 && sizing_.WouldExceed(next_rows, column_count, next_bytes)) {
@@ -98,7 +119,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         for (size_t col = 0; col < column_count; ++col) {
-            columns[col]->AppendFromString(row[col]);
+            batch.AppendValueFromString(col, row[col]);
         }
 
         rows = next_rows;
@@ -122,7 +143,7 @@ CsvBatchWriter::CsvBatchWriter(const std::filesystem::path& path, Schema schema)
 void CsvBatchWriter::Write(const Batch& batch) {
     batch.Validate();
     if (batch.GetSchema() != schema_) {
-        throw Error::Mismatch("batch_io", "batch schema mismatch");
+        throw Error::InconsistentData("batch_io", "batch schema mismatch");
     }
 
     const size_t column_count = schema_.columns.size();

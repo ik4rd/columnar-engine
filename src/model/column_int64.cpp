@@ -1,6 +1,6 @@
 #include "model/column_int64.h"
 
-#include "support/parsing.h"
+#include "common/parsing.h"
 
 void Int64Column::AppendFromString(const std::string& value) { AppendValue(ParseInt64(value)); }
 

@@ -2,10 +2,10 @@
 
 #include <utility>
 
+#include "common/error.h"
 #include "io/columnar_batch.h"
 #include "io/csv_batch.h"
 #include "model/schema_csv.h"
-#include "support/error.h"
 
 void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::filesystem::path& data_path,
                           const std::filesystem::path& output_path, size_t max_rows_per_group) {

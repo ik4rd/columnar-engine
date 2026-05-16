@@ -1,12 +1,13 @@
+#include "executor/query_parser.h"
+
 #include <array>
 #include <charconv>
 #include <utility>
 #include <vector>
 
-#include "executor/query_parser.h"
+#include "common/ascii.h"
+#include "common/error.h"
 #include "sql_parser/tokenizer.h"
-#include "support/ascii.h"
-#include "support/error.h"
 
 class TokenCursor {
    public:
@@ -190,9 +191,11 @@ static std::optional<size_t> ParseOptionalLimit(TokenCursor& cursor) {
 
     const Token& limit_token = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after LIMIT");
     size_t limit = 0;
+
     const std::string_view text = limit_token.GetText();
     const char* begin = text.data();
     const char* end = begin + text.size();
+
     if (const auto [ptr, ec] = std::from_chars(begin, end, limit); ec != std::errc() || ptr != end) {
         throw Error::InvalidArgument("query_parser", "invalid LIMIT value");
     }
@@ -216,8 +219,8 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
     }
 
     cursor.Consume(Tokens::CloseBracket, "expected ')' after aggregate arguments");
-    spec.output_name = FormatAggregateCall(spec.function_name, FormatColumnRef(spec.column), spec.distinct,
-                                           spec.argument_kind);
+    spec.output_name =
+        FormatAggregateCall(spec.function_name, FormatColumnRef(spec.column), spec.distinct, spec.argument_kind);
 
     return spec;
 }

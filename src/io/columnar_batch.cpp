@@ -7,7 +7,7 @@
 
 #include "io/columnar_batch.h"
 #include "io/stream.h"
-#include "support/error.h"
+#include "common/error.h"
 
 static constexpr std::string_view ColumnarMagic = "CLMN";
 
@@ -27,7 +27,7 @@ static void FlushWrite(const std::filesystem::path& path, std::ofstream& out) {
 }
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
-    const auto file_metadata = TryGetFileMetadata(path);
+    const auto file_metadata = GetFileMetadata(path);
 
     if (!file_metadata || !file_metadata->is_regular) {
         throw Error::NotFound("batch_io", "columnar file not found", path.string());
@@ -37,7 +37,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     constexpr uint64_t FooterSize = sizeof(uint64_t) + ColumnarMagic.size();
 
     if (file_size < FooterSize) {
-        throw Error::InvalidData("batch_io", "columnar file is too small", path.string());
+        throw Error::MalformedData("batch_io", "columnar file is too small", path.string());
     }
 
     InputFile file(path);
@@ -45,11 +45,11 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     const std::string magic_read = file.ReadStringAt(file_size - ColumnarMagic.size(), ColumnarMagic.size());
 
     if (magic_read != ColumnarMagic) {
-        throw Error::InvalidData("batch_io", "invalid columnar magic", path.string());
+        throw Error::MalformedData("batch_io", "invalid columnar magic", path.string());
     }
 
     if (metadata_size > file_size - FooterSize) {
-        throw Error::InvalidData("batch_io", "metadata size exceeds file size", path.string());
+        throw Error::MalformedData("batch_io", "metadata size exceeds file size", path.string());
     }
 
     return ReadMetadata(file.StreamAt(file_size - FooterSize - metadata_size));
@@ -58,7 +58,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
 ColumnarBatchReader::ColumnarBatchReader(const std::filesystem::path& path)
     : path_(path), input_(path), metadata_(ReadFileMetadata(path)) {
     if (metadata_.schema.columns.empty()) {
-        throw Error::InvalidData("batch_io", "columnar schema is empty", path.string());
+        throw Error::MalformedData("batch_io", "columnar schema is empty", path.string());
     }
 }
 
@@ -70,15 +70,13 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
     const auto& [row_count, row_group_columns] = metadata_.row_groups[next_group_++];
     Batch batch(metadata_.schema, row_count);
 
-    const auto& columns = batch.GetColumns();
-
-    if (row_group_columns.size() != columns.size()) {
-        throw Error::Mismatch("batch_io", "row group column count mismatch", path_.string());
+    if (row_group_columns.size() != batch.ColumnsCount()) {
+        throw Error::InconsistentData("batch_io", "row group column count mismatch", path_.string());
     }
 
-    for (size_t col = 0; col < columns.size(); ++col) {
+    for (size_t col = 0; col < batch.ColumnsCount(); ++col) {
         const auto& [offset, size] = row_group_columns[col];
-        columns[col]->ReadFrom(input_.StreamAt(offset), row_count, size);
+        batch.ReadColumnFrom(col, input_.StreamAt(offset), row_count, size);
     }
 
     return batch;
@@ -99,7 +97,7 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
 
     batch.Validate();
     if (batch.GetSchema() != metadata_.schema) {
-        throw Error::Mismatch("batch_io", "batch schema mismatch", path_.string());
+        throw Error::InconsistentData("batch_io", "batch schema mismatch", path_.string());
     }
 
     const size_t row_count = batch.RowsCount();
@@ -115,9 +113,9 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     group.row_count = row_count;
     group.columns.reserve(batch.ColumnsCount());
 
-    for (const auto& column : batch.GetColumns()) {
+    for (size_t column_index = 0; column_index < batch.ColumnsCount(); ++column_index) {
         const uint64_t offset = TellWrite(path_, out_);
-        column->WriteTo(out_);
+        batch.ColumnAt(column_index).WriteTo(out_);
         const uint64_t end = TellWrite(path_, out_);
         group.columns.push_back(ColumnChunkMetadata{offset, end - offset});
     }

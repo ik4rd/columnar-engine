@@ -4,12 +4,12 @@
 #include <unordered_set>
 #include <utility>
 
+#include "common/ascii.h"
+#include "common/error.h"
+#include "common/int128.h"
+#include "common/parsing.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
-#include "support/ascii.h"
-#include "support/error.h"
-#include "support/int128.h"
-#include "support/parsing.h"
 
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {
@@ -91,10 +91,7 @@ static std::string FormatAverage(const Int128 sum, const uint64_t count) {
 
 class CountAS final : public AggState {
    public:
-    void ConsumeValue(const std::string_view value) override {
-        (void)value;
-        ConsumeRow();
-    }
+    void ConsumeValue(const std::string_view) override { ConsumeRow(); }
     void ConsumeRow() override { ++count_; }
 
     std::string Finalize() const override { return std::to_string(count_); }
@@ -181,10 +178,7 @@ class DistinctAS final : public AggState {
     std::unordered_set<std::string> seen_;
 };
 
-static bool SupportsAnyType(const ColumnType type) {
-    (void)type;
-    return true;
-}
+static bool SupportsAnyType(const ColumnType) { return true; }
 
 static bool SupportsNumericType(const ColumnType type) {
     switch (type) {
@@ -203,10 +197,7 @@ static bool SupportsNumericType(const ColumnType type) {
     return false;
 }
 
-static std::unique_ptr<AggState> CreateCountState(const PlannedAgg& aggregate) {
-    (void)aggregate;
-    return std::make_unique<CountAS>();
-}
+static std::unique_ptr<AggState> CreateCountState(const PlannedAgg&) { return std::make_unique<CountAS>(); }
 
 static std::unique_ptr<AggState> CreateSumState(const PlannedAgg& aggregate) {
     return std::make_unique<SumAS>(aggregate.input_type);
@@ -243,40 +234,31 @@ AggRegistrar::AggRegistrar(const AggFuncDefinition& def) { AggRegistry::Instance
 
 [[maybe_unused]] static AggRegistrar register_count({
     .canonical_name = "COUNT",
-    .distinct = true,
-    .star = true,
+    .call_features = AggCallFeature::Distinct | AggCallFeature::Star,
     .supports_type = &SupportsAnyType,
     .factory = &CreateCountState,
 });
 
 [[maybe_unused]] static AggRegistrar register_sum({
     .canonical_name = "SUM",
-    .distinct = false,
-    .star = false,
     .supports_type = &SupportsNumericType,
     .factory = &CreateSumState,
 });
 
 [[maybe_unused]] static AggRegistrar register_avg({
     .canonical_name = "AVG",
-    .distinct = false,
-    .star = false,
     .supports_type = &SupportsNumericType,
     .factory = &CreateAvgState,
 });
 
 [[maybe_unused]] static AggRegistrar register_min({
     .canonical_name = "MIN",
-    .distinct = false,
-    .star = false,
     .supports_type = &SupportsAnyType,
     .factory = &CreateMinState,
 });
 
 [[maybe_unused]] static AggRegistrar register_max({
     .canonical_name = "MAX",
-    .distinct = false,
-    .star = false,
     .supports_type = &SupportsAnyType,
     .factory = &CreateMaxState,
 });
@@ -300,17 +282,20 @@ std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
     if (aggregate.function == nullptr || aggregate.function->factory == nullptr) {
         throw Error::Unsupported("executor", "aggregate is not registered");
     }
-    if (aggregate.distinct && !aggregate.function->distinct) {
+    if (aggregate.distinct && !HasAggCallFeature(aggregate.function->call_features, AggCallFeature::Distinct)) {
         throw Error::Unsupported("executor", "DISTINCT is not supported for aggregate '" +
                                                  std::string(aggregate.function->canonical_name) + "'");
     }
-    if (aggregate.argument_kind == AggArgumentKind::Star && !aggregate.function->star) {
+    if (aggregate.argument_kind == AggArgumentKind::Star &&
+        !HasAggCallFeature(aggregate.function->call_features, AggCallFeature::Star)) {
         throw Error::Unsupported(
             "executor", "aggregate '" + std::string(aggregate.function->canonical_name) + "' does not support '*'");
     }
+
     std::unique_ptr<AggState> state = aggregate.function->factory(aggregate);
     if (aggregate.distinct) {
         state = std::make_unique<DistinctAS>(std::move(state));
     }
+
     return state;
 }

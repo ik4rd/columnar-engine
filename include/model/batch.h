@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <iosfwd>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "model/column.h"
@@ -24,16 +27,14 @@ class Batch {
     size_t RowsCount() const;
 
     void Reserve(size_t n) const;
+    void AppendValueFromString(size_t column_index, const std::string& value) const;
+    void ReadColumnFrom(size_t column_index, std::istream& in, uint32_t row_count, uint64_t size) const;
 
     const Column& ColumnAt(size_t i) const;
-    Column& ColumnAt(size_t i);
-
-    const std::vector<std::unique_ptr<Column>>& GetColumns() const { return columns_; }
-    std::vector<std::unique_ptr<Column>>& GetColumns() { return columns_; }
 
     void Validate() const;
 
    private:
     Schema schema_;
-    std::vector<std::unique_ptr<Column>> columns_;
+    std::vector<std::unique_ptr<MutableColumn>> columns_;
 };

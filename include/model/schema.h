@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 enum class ColumnType : uint8_t {
@@ -18,7 +19,10 @@ enum class ColumnType : uint8_t {
 
 struct ColumnSchema {
     std::string name;
-    ColumnType type = ColumnType::String;
+    ColumnType type;
+
+    ColumnSchema(std::string column_name, const ColumnType column_type)
+        : name(std::move(column_name)), type(column_type) {}
 
     bool operator==(const ColumnSchema& other) const = default;
 };

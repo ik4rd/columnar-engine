@@ -5,7 +5,7 @@
 
 #include "gtest/gtest.h"
 #include "io/file.h"
-#include "support/error.h"
+#include "common/error.h"
 #include "testing/temp_file.h"
 
 TEST(fileio, write_and_read_roundtrip) {
@@ -41,7 +41,7 @@ TEST(fileio, metadata_for_file) {
 
     WriteFileBytes(temp.Path(), payload);
 
-    const auto metadata = TryGetFileMetadata(temp.Path());
+    const auto metadata = GetFileMetadata(temp.Path());
     ASSERT_TRUE(metadata.has_value());
     EXPECT_TRUE(metadata->is_regular);
     EXPECT_FALSE(metadata->is_directory);
@@ -50,7 +50,7 @@ TEST(fileio, metadata_for_file) {
 
 TEST(fileio, metadata_for_missing_file) {
     const auto missing = UniqueTempPath("fileio_missing");
-    const auto metadata = TryGetFileMetadata(missing);
+    const auto metadata = GetFileMetadata(missing);
 
     EXPECT_FALSE(metadata.has_value());
 }

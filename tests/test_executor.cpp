@@ -69,6 +69,43 @@ TEST(executor, groups_rows_and_orders_by_aggregate_descending) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, encodes_multicolumn_group_keys_with_length_prefix) {
+    const TempFile schema_file("executor_schema");
+    const TempFile data_file("executor_data");
+    const TempFile columnar_file("executor_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"KeyLeft", "string"},
+                                      {"KeyRight", "string"},
+                                      {"Value", "int64"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"ab", "c", "1"},
+                                    {"a", "bc", "2"},
+                                    {"ab", "c", "3"},
+                                    {"a|", "bc", "4"},
+                                    {"a|", "bc", "5"},
+                                });
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    Executor executor;
+    executor.RegisterTable("events", columnar_file.Path());
+
+    auto result = executor.Execute("SELECT KeyLeft, KeyRight, COUNT(*) FROM events GROUP BY KeyLeft, KeyRight;");
+    ASSERT_TRUE(result.has_value()) << result.error().what();
+
+    EXPECT_EQ(BatchColumnNames(result.value()), (std::vector<std::string>{"KeyLeft", "KeyRight", "COUNT(*)"}));
+    auto actual_rows = BatchRows(result.value());
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"a", "bc", "1"},
+        {"a|", "bc", "2"},
+        {"ab", "c", "2"},
+    };
+    std::ranges::sort(actual_rows);
+    std::ranges::sort(expected_rows);
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
 TEST(executor, supports_from_with_as_alias_and_qualified_columns) {
     const Batch batch = BuildHitsTable(
         "SELECT h.AdvEngineID, COUNT(*) FROM hits AS h WHERE h.AdvEngineID <> 0 GROUP BY h.AdvEngineID ORDER BY "

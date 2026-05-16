@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "support/ascii.h"
+#include "common/ascii.h"
 #include "sql_parser/tokenizer.h"
 
 static const std::unordered_map<std::string, Tokens> kKeywords = {
@@ -120,11 +120,11 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
 }
 
 Expected<TokenPtr> MakeUnexpectedCharacter(const char ch, const size_t offset) {
-    return tl::unexpected(Error::InvalidData("tokenizer_factory", "unexpected character '" + DescribeCharacter(ch) +
+    return tl::unexpected(Error::MalformedData("tokenizer_factory", "unexpected character '" + DescribeCharacter(ch) +
                                                                       "' at position " + std::to_string(offset)));
 }
 
 Expected<TokenPtr> MakeUnterminatedString(const size_t offset) {
     return tl::unexpected(
-        Error::InvalidData("tokenizer_factory", "unterminated string literal at position " + std::to_string(offset)));
+        Error::MalformedData("tokenizer_factory", "unterminated string literal at position " + std::to_string(offset)));
 }

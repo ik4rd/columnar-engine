@@ -1,6 +1,6 @@
 #include "model/column_int16.h"
 
-#include "support/parsing.h"
+#include "common/parsing.h"
 
 void Int16Column::AppendFromString(const std::string& value) { AppendValue(ParseInt16(value)); }
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "model/fixed_column.h"
-#include "support/int128.h"
+#include "common/int128.h"
 
 class Int128Column final : public FixedColumn<Int128Column, Int128, ColumnType::Int128> {
    public:

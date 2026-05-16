@@ -5,41 +5,29 @@
 #include <vector>
 
 #include "io/csv.h"
-#include "support/error.h"
-#include "support/parsing.h"
+#include "common/error.h"
+#include "common/parsing.h"
 
 static bool CanParseAs(const ColumnType type, const std::string& value) {
-    try {
-        switch (type) {
-            case ColumnType::Boolean:
-                static_cast<void>(ParseBoolean(value));
-                return true;
-            case ColumnType::Int16:
-                static_cast<void>(ParseInt16(value));
-                return true;
-            case ColumnType::Int32:
-                static_cast<void>(ParseInt32(value));
-                return true;
-            case ColumnType::Int64:
-                static_cast<void>(ParseInt64(value));
-                return true;
-            case ColumnType::Int128:
-                static_cast<void>(ParseInt128(value));
-                return true;
-            case ColumnType::Date:
-                static_cast<void>(ParseDate(value));
-                return true;
-            case ColumnType::Timestamp:
-                static_cast<void>(ParseTimestamp(value));
-                return true;
-            case ColumnType::Character:
-                static_cast<void>(ParseCharacter(value));
-                return true;
-            case ColumnType::String:
-                return true;
-        }
-    } catch (const Error&) {
-        return false;
+    switch (type) {
+        case ColumnType::Boolean:
+            return TryParseBoolean(value).has_value();
+        case ColumnType::Int16:
+            return TryParseInt16(value).has_value();
+        case ColumnType::Int32:
+            return TryParseInt32(value).has_value();
+        case ColumnType::Int64:
+            return TryParseInt64(value).has_value();
+        case ColumnType::Int128:
+            return TryParseInt128(value).has_value();
+        case ColumnType::Date:
+            return TryParseDate(value).has_value();
+        case ColumnType::Timestamp:
+            return TryParseTimestamp(value).has_value();
+        case ColumnType::Character:
+            return TryParseCharacter(value).has_value();
+        case ColumnType::String:
+            return true;
     }
 
     throw Error::Unsupported("schema", "unknown column type");
@@ -81,7 +69,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
             row.pop_back();
         }
         if (row.size() != 2) {
-            throw Error::InvalidData("schema", "schema csv must have 2 columns", path.string());
+            throw Error::MalformedData("schema", "schema csv must have 2 columns", path.string());
         }
         schema.columns.push_back(ColumnSchema{
             row[0],
@@ -90,7 +78,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (schema.columns.empty()) {
-        throw Error::InvalidData("schema", "schema csv is empty", path.string());
+        throw Error::MalformedData("schema", "schema csv is empty", path.string());
     }
 
     return schema;
@@ -106,7 +94,7 @@ Schema InferSchemaCsv(const std::filesystem::path& path) {
         if (values_by_column.empty()) {
             values_by_column.resize(row.size());
         } else if (row.size() != values_by_column.size()) {
-            throw Error::InvalidData("schema", "csv rows have inconsistent column count", path.string());
+            throw Error::MalformedData("schema", "csv rows have inconsistent column count", path.string());
         }
 
         for (size_t i = 0; i < row.size(); ++i) {
@@ -115,7 +103,7 @@ Schema InferSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (values_by_column.empty()) {
-        throw Error::InvalidData("schema", "csv is empty", path.string());
+        throw Error::MalformedData("schema", "csv is empty", path.string());
     }
 
     Schema schema;

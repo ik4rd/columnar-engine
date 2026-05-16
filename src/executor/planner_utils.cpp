@@ -1,7 +1,7 @@
 #include "executor/planner_utils.h"
 
-#include "support/ascii.h"
-#include "support/error.h"
+#include "common/ascii.h"
+#include "common/error.h"
 
 size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);
@@ -21,14 +21,12 @@ void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
     if (column.qualifier.empty()) {
         return;
     }
-
     if (SameQualifier(column.qualifier, query.table_name)) {
         return;
     }
     if (!query.table_alias.empty() && SameQualifier(column.qualifier, query.table_alias)) {
         return;
     }
-
     throw Error::InvalidArgument("query_planner", "unknown table qualifier '" + column.qualifier + "'");
 }
 
@@ -67,7 +65,9 @@ std::string NormalizeLiteral(const QueryLiteral& literal, const ColumnType type)
     }
 }
 
-bool SameColumnName(const std::string_view lhs, const std::string_view rhs) { return ToLowerAscii(lhs) == ToLowerAscii(rhs); }
+bool SameColumnName(const std::string_view lhs, const std::string_view rhs) {
+    return ToLowerAscii(lhs) == ToLowerAscii(rhs);
+}
 
 bool SameColumnRef(const ColumnRef& lhs, const ColumnRef& rhs) {
     if (!SameColumnName(lhs.name, rhs.name)) {
@@ -83,11 +83,9 @@ bool SameSelectItem(const SelectItemSpec& lhs, const SelectItemSpec& rhs) {
     if (lhs.kind != rhs.kind) {
         return false;
     }
-
     if (lhs.kind == SelectItemKind::GroupKey) {
         return SameColumnRef(lhs.column, rhs.column);
     }
-
     return ToLowerAscii(lhs.aggregate.output_name) == ToLowerAscii(rhs.aggregate.output_name);
 }
 

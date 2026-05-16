@@ -109,9 +109,9 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
 TEST(sql_tokenizer, rejects_invalid_input) {
     const auto unterminated = TokenizeSql("SELECT 'oops");
     ASSERT_FALSE(unterminated.has_value());
-    EXPECT_EQ(unterminated.error().GetCode(), Error::Code::InvalidData);
+    EXPECT_EQ(unterminated.error().GetCode(), Error::Code::MalformedData);
 
     const auto invalid_character = TokenizeSql("SELECT @oops");
     ASSERT_FALSE(invalid_character.has_value());
-    EXPECT_EQ(invalid_character.error().GetCode(), Error::Code::InvalidData);
+    EXPECT_EQ(invalid_character.error().GetCode(), Error::Code::MalformedData);
 }

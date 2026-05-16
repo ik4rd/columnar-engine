@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "io/csv_batch.h"
-#include "support/ascii.h"
+#include "common/ascii.h"
 
 std::string BatchToString(const Batch& batch) {
     std::vector<std::vector<std::string>> rows;

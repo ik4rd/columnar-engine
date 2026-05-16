@@ -9,7 +9,7 @@
 #include "io/file.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
-#include "support/error.h"
+#include "common/error.h"
 
 void ConfigureInferSchemaCommand(argparse::ArgumentParser& command) {
     command.add_description("Infer a schema from a CSV file.");

@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 #include "model/batch.h"
-#include "support/error.h"
+#include "common/error.h"
 #include "tl/expected.hpp"
 
 using ExecuteExpected = tl::expected<Batch, Error>;

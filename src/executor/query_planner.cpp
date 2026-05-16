@@ -5,8 +5,8 @@
 #include "executor/operator_utils.h"
 #include "executor/planner_utils.h"
 #include "io/columnar_batch.h"
-#include "support/ascii.h"
-#include "support/error.h"
+#include "common/ascii.h"
+#include "common/error.h"
 
 static std::optional<size_t> TryFindColumnIndex(const Schema& schema, const std::string_view column_name) {
     for (size_t i = 0; i < schema.columns.size(); ++i) {
@@ -161,11 +161,12 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
         const AggSpec& aggregate = item.aggregate;
         const AggFuncDefinition& function = ResolveAggFunc(aggregate.function_name);
 
-        if (aggregate.distinct && !function.distinct) {
+        if (aggregate.distinct && !HasAggCallFeature(function.call_features, AggCallFeature::Distinct)) {
             throw Error::InvalidArgument("query_planner",
                                          std::string(function.canonical_name) + " does not support DISTINCT");
         }
-        if (aggregate.argument_kind == AggArgumentKind::Star && !function.star) {
+        if (aggregate.argument_kind == AggArgumentKind::Star &&
+            !HasAggCallFeature(function.call_features, AggCallFeature::Star)) {
             throw Error::InvalidArgument("query_planner",
                                          std::string(function.canonical_name) + " does not support '*'");
         }

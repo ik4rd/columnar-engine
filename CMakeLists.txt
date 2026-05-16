@@ -15,6 +15,7 @@ include(cmake/sanitizers.cmake)
 
 set(COLUMNAR_INCLUDE_DIRS
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/third-party
 )
 
 add_compile_options(-Wall -Wextra -Werror -Wpedantic -O2)

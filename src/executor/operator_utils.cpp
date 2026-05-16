@@ -2,9 +2,9 @@
 
 #include <string>
 
-#include "support/ascii.h"
-#include "support/error.h"
-#include "support/parsing.h"
+#include "common/ascii.h"
+#include "common/error.h"
+#include "common/parsing.h"
 
 template <typename T>
 static bool EvaluateComparison(const T left, const T right, const ComparisonKind kind) {

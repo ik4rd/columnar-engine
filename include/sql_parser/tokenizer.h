@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-#include "support/error.h"
+#include "common/error.h"
 #include "tl/expected.hpp"
 
 enum class Tokens {
@@ -91,217 +91,57 @@ class IOperatorToken : public Command {
     ~IOperatorToken() override = default;
 };
 
-class TSelectToken : public Command {
+template <typename BaseToken, Tokens TokenType>
+class TypedToken : public BaseToken {
    public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
+    using BaseToken::BaseToken;
+
+    Tokens GetType() const noexcept override { return TokenType; }
 };
 
-class TCreateToken : public Command {
-   public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
+using TSelectToken = TypedToken<Command, Tokens::Select>;
+using TCreateToken = TypedToken<Command, Tokens::Create>;
+using TFromToken = TypedToken<Command, Tokens::From>;
+using TLimitToken = TypedToken<Command, Tokens::Limit>;
+using TOrderToken = TypedToken<Command, Tokens::Order>;
+using TWhereToken = TypedToken<Command, Tokens::Where>;
+using TGroupToken = TypedToken<Command, Tokens::Group>;
 
-class TFromToken : public Command {
-   public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
+using TSumToken = TypedToken<IOperatorToken, Tokens::Sum>;
+using TMinToken = TypedToken<IOperatorToken, Tokens::Min>;
+using TMaxToken = TypedToken<IOperatorToken, Tokens::Max>;
+using TCountToken = TypedToken<IOperatorToken, Tokens::Count>;
+using TDistinctToken = TypedToken<IOperatorToken, Tokens::Distinct>;
+using TAvgToken = TypedToken<IOperatorToken, Tokens::Avg>;
+using TLengthToken = TypedToken<IOperatorToken, Tokens::Length>;
+using TPlusToken = TypedToken<IOperatorToken, Tokens::Plus>;
+using TMinusToken = TypedToken<IOperatorToken, Tokens::Minus>;
 
-class TLimitToken : public Command {
+class TNameToken : public TypedToken<Token, Tokens::NameToken> {
    public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
-
-class TOrderToken : public Command {
-   public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
-
-class TWhereToken : public Command {
-   public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
-
-class TGroupToken : public Command {
-   public:
-    using Command::Command;
-    Tokens GetType() const noexcept override;
-};
-
-class TSumToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TMinToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TMaxToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TCountToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TDistinctToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TAvgToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TLengthToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TPlusToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TMinusToken : public IOperatorToken {
-   public:
-    using IOperatorToken::IOperatorToken;
-    Tokens GetType() const noexcept override;
-};
-
-class TNameToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
+    using TypedToken::TypedToken;
 
     std::string_view GetName() const noexcept;
 };
 
-class TNumericLiteralToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TStringLiteralToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TAsToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TAndToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TByToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TOpenBracketToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TCommaToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TCloseBracketToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TAsteriskToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TDotToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TSemicolonToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TEqualToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TNotEqualToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TLessToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TLessOrEqualToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TGreaterToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TGreaterOrEqualToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
-
-class TEndOfInputToken : public Token {
-   public:
-    using Token::Token;
-    Tokens GetType() const noexcept override;
-};
+using TNumericLiteralToken = TypedToken<Token, Tokens::NumericLiteral>;
+using TStringLiteralToken = TypedToken<Token, Tokens::StringLiteral>;
+using TAsToken = TypedToken<Token, Tokens::As>;
+using TAndToken = TypedToken<Token, Tokens::And>;
+using TByToken = TypedToken<Token, Tokens::By>;
+using TOpenBracketToken = TypedToken<Token, Tokens::OpenBracket>;
+using TCommaToken = TypedToken<Token, Tokens::Comma>;
+using TCloseBracketToken = TypedToken<Token, Tokens::CloseBracket>;
+using TAsteriskToken = TypedToken<Token, Tokens::Asterisk>;
+using TDotToken = TypedToken<Token, Tokens::Dot>;
+using TSemicolonToken = TypedToken<Token, Tokens::Semicolon>;
+using TEqualToken = TypedToken<Token, Tokens::Equal>;
+using TNotEqualToken = TypedToken<Token, Tokens::NotEqual>;
+using TLessToken = TypedToken<Token, Tokens::Less>;
+using TLessOrEqualToken = TypedToken<Token, Tokens::LessOrEqual>;
+using TGreaterToken = TypedToken<Token, Tokens::Greater>;
+using TGreaterOrEqualToken = TypedToken<Token, Tokens::GreaterOrEqual>;
+using TEndOfInputToken = TypedToken<Token, Tokens::EndOfInput>;
 
 class Tokenizer {
    public:

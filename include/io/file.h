@@ -15,7 +15,7 @@ struct FileMetadata {
     std::filesystem::file_time_type last_write_time;
 };
 
-std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path);
+std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path);
 
 bool FileExists(const std::filesystem::path& path);
 void EnsureParentDirectory(const std::filesystem::path& path);

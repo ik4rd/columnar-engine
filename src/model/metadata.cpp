@@ -3,7 +3,7 @@
 #include <limits>
 #include <string>
 
-#include "support/error.h"
+#include "common/error.h"
 #include "io/stream.h"
 
 static ColumnType ColumnTypeFromByte(const uint8_t type_byte) {
@@ -20,7 +20,7 @@ static ColumnType ColumnTypeFromByte(const uint8_t type_byte) {
             return static_cast<ColumnType>(type_byte);
     }
 
-    throw Error::InvalidData("columnar", "unknown column type in metadata");
+    throw Error::MalformedData("columnar", "unknown column type in metadata");
 }
 
 ColumnarMetadata ReadMetadata(std::istream& in) {
@@ -49,7 +49,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
         const uint32_t columns_in_group = ReadStream<uint32_t>(in);
         if (columns_in_group != column_count) {
-            throw Error::Mismatch("columnar", "row group column count mismatch");
+            throw Error::InconsistentData("columnar", "row group column count mismatch");
         }
 
         group.columns.reserve(columns_in_group);

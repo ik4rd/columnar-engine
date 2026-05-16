@@ -3,9 +3,9 @@
 
 #include "io/file.h"
 #include "io/stream.h"
-#include "support/error.h"
+#include "common/error.h"
 
-std::optional<FileMetadata> TryGetFileMetadata(const std::filesystem::path& path) {
+std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
         if (ec) {

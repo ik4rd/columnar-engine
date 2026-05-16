@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "io/file.h"
-#include "support/error.h"
+#include "common/error.h"
 
 class CsvCharReader {
    public:
@@ -81,7 +81,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
                 return false;
             }
             if (in_quotes) {
-                throw Error::InvalidData("csv", "unexpected EOF inside quoted field");
+                throw Error::MalformedData("csv", "unexpected EOF inside quoted field");
             }
             return true;
         }

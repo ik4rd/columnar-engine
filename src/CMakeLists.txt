@@ -14,9 +14,9 @@ add_library(columnar_engine_core
         io/batch.cpp
         io/file.cpp
         io/stream.cpp
-        support/error.cpp
-        support/ascii.cpp
-        support/parsing.cpp
+        common/error.cpp
+        common/ascii.cpp
+        common/parsing.cpp
 )
 
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})

@@ -9,8 +9,8 @@
 #include "io/file.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
-#include "support/error.h"
-#include "support/parsing.h"
+#include "common/error.h"
+#include "common/parsing.h"
 #include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
@@ -109,7 +109,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
         }
     }
 
-    const auto file_info = TryGetFileMetadata(columnar_file.Path());
+    const auto file_info = GetFileMetadata(columnar_file.Path());
     ASSERT_TRUE(file_info.has_value());
     EXPECT_TRUE(file_info->is_regular);
     EXPECT_LT(expected_offset, file_info->size);

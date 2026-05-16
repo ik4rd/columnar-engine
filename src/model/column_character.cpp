@@ -1,6 +1,6 @@
 #include "model/column_character.h"
 
-#include "support/parsing.h"
+#include "common/parsing.h"
 
 void CharacterColumn::AppendFromString(const std::string& value) { AppendValue(ParseCharacter(value)); }
 
