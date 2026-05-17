@@ -227,8 +227,12 @@ class AggOperator final : public Operator {
 class GroupAggOperator final : public Operator {
    public:
     GroupAggOperator(std::unique_ptr<Operator> child, std::vector<PlannedGroupKey> group_keys,
-                     const std::vector<PlannedAgg>& aggregates, std::vector<PlannedSelectItem> select_items)
-        : child_(std::move(child)), group_key_encoder_(std::move(group_keys)), select_items_(std::move(select_items)) {
+                     const std::vector<PlannedAgg>& aggregates, std::vector<PlannedSelectItem> select_items,
+                     const bool sort_by_group_keys)
+        : child_(std::move(child)),
+          group_key_encoder_(std::move(group_keys)),
+          select_items_(std::move(select_items)),
+          sort_by_group_keys_(sort_by_group_keys) {
         bindings_.reserve(aggregates.size());
 
         for (const auto& aggregate : aggregates) {
@@ -285,6 +289,10 @@ class GroupAggOperator final : public Operator {
             rows.push_back(MaterializeRow(group));
         }
 
+        if (sort_by_group_keys_) {
+            SortRowsBySelectedGroupKeys(rows);
+        }
+
         Batch result(schema, rows.size());
 
         for (const auto& row : rows) {
@@ -333,12 +341,39 @@ class GroupAggOperator final : public Operator {
         return row;
     }
 
+    void SortRowsBySelectedGroupKeys(std::vector<std::vector<std::string>>& rows) const {
+        std::vector<size_t> group_key_columns;
+
+        for (size_t i = 0; i < select_items_.size(); ++i) {
+            if (select_items_[i].kind == SelectItemKind::GroupKey) {
+                group_key_columns.push_back(i);
+            }
+        }
+
+        if (group_key_columns.empty()) {
+            return;
+        }
+
+        std::ranges::sort(rows, [&](const auto& lhs, const auto& rhs) {
+            for (const size_t column : group_key_columns) {
+                const std::strong_ordering comparison =
+                    CompareValues(select_items_[column].output_type, lhs[column], rhs[column]);
+                if (comparison != 0) {
+                    return comparison < 0;
+                }
+            }
+
+            return false;
+        });
+    }
+
     std::unique_ptr<Operator> child_;
     GroupKeyEncoder group_key_encoder_;
     std::vector<GroupAggBinding> bindings_;
     std::vector<PlannedSelectItem> select_items_;
     std::unordered_map<std::string, size_t> group_indexes_;
     std::vector<GroupState> groups_;
+    bool sort_by_group_keys_ = false;
     bool returned_ = false;
 };
 
@@ -358,17 +393,6 @@ class RowOrdering {
                 order.value_type, lhs.values[order.result_column_index], rhs.values[order.result_column_index]);
             if (comparison != 0) {
                 return order.descending ? comparison > 0 : comparison < 0;
-            }
-        }
-
-        for (size_t i = 0; i < select_items_.size(); ++i) {
-            if (select_items_[i].kind != SelectItemKind::GroupKey) {
-                continue;
-            }
-            const std::strong_ordering comparison =
-                CompareValues(select_items_[i].output_type, lhs.values[i], rhs.values[i]);
-            if (comparison != 0) {
-                return comparison > 0;
             }
         }
 
@@ -466,7 +490,7 @@ class TopKOperator final : public Operator {
         returned_ = true;
 
         std::optional<Schema> schema;
-        std::vector<SortedRow> top_rows;
+        std::vector<SortedRow> rows;
         size_t ordinal = 0;
 
         while (auto batch = child_->Next()) {
@@ -474,20 +498,13 @@ class TopKOperator final : public Operator {
                 schema = batch->GetSchema();
             }
 
+            rows.reserve(rows.size() + batch->RowsCount());
+
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                SortedRow candidate{
+                rows.push_back(SortedRow{
                     .values = MaterializeBatchRow(*batch, row),
                     .ordinal = ordinal++,
-                };
-
-                if (top_rows.size() < limit_) {
-                    top_rows.push_back(std::move(candidate));
-                    std::ranges::push_heap(top_rows, ordering_);
-                } else if (ordering_(candidate, top_rows.front())) {
-                    std::ranges::pop_heap(top_rows, ordering_);
-                    top_rows.back() = std::move(candidate);
-                    std::ranges::push_heap(top_rows, ordering_);
-                }
+                });
             }
         }
 
@@ -495,9 +512,12 @@ class TopKOperator final : public Operator {
             return std::nullopt;
         }
 
-        std::ranges::sort(top_rows, ordering_);
+        std::ranges::sort(rows, ordering_);
+        if (rows.size() > limit_) {
+            rows.resize(limit_);
+        }
 
-        return BuildBatchFromSortedRows(*schema, top_rows);
+        return BuildBatchFromSortedRows(*schema, rows);
     }
 
    private:
@@ -555,7 +575,7 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
 
     if (!planned.group_keys.empty()) {
         root = std::make_unique<GroupAggOperator>(std::move(root), planned.group_keys, planned.aggregates,
-                                                  planned.select_items);
+                                                  planned.select_items, planned.order_by.empty());
     } else {
         root = std::make_unique<AggOperator>(std::move(root), planned.aggregates);
     }
