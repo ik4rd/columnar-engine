@@ -350,7 +350,7 @@ std::string DateToString(const int32_t value) {
 }
 
 std::string TimestampToString(const int64_t value) {
-    const std::chrono::sys_time timestamp{std::chrono::microseconds{value}};
+    const std::chrono::sys_time<std::chrono::microseconds> timestamp{std::chrono::microseconds{value}};
     const auto day_point = std::chrono::floor<std::chrono::days>(timestamp);
     const std::chrono::hh_mm_ss tod{timestamp - day_point};
 
