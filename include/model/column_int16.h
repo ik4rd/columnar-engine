@@ -1,0 +1,10 @@
+#pragma once
+
+#include "model/fixed_column.h"
+
+class Int16Column final : public FixedColumn<Int16Column, int16_t, ColumnType::Int16> {
+   public:
+    using FixedColumn::FixedColumn;
+
+    static const char* ModuleName() { return "column_int16"; }
+};
