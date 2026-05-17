@@ -57,7 +57,8 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
         status = "recorded";
     } else if (std::filesystem::exists(ref_path)) {
         const std::string expected_result = ReadTextFile(ref_path);
-        if (actual_result == expected_result || EqualWithLimitTies(query_sql, result_batch.GetSchema(), actual_result, expected_result) ||
+        if (actual_result == expected_result ||
+            EqualWithLimitTies(query_sql, result_batch.GetSchema(), actual_result, expected_result) ||
             (compare_unordered && EqualAsRowMultisets(actual_result, expected_result))) {
             status = "passed";
         } else {
