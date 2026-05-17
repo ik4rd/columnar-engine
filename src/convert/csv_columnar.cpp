@@ -10,7 +10,7 @@
 void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::filesystem::path& data_path,
                           const std::filesystem::path& output_path, size_t max_rows_per_group) {
     if (max_rows_per_group == 0) {
-        throw Error::InvalidArgument("columnar", "row group size must be > 0");
+        throw Error::InvalidArgument("convert", "row group size must be > 0");
     }
 
     const Schema schema = ReadSchemaCsv(schema_path);

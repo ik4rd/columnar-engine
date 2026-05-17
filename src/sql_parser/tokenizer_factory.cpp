@@ -7,7 +7,7 @@
 #include "common/ascii.h"
 #include "sql_parser/tokenizer.h"
 
-static const std::unordered_map<std::string, Tokens> kKeywords = {
+static const std::unordered_map<std::string, Tokens> Keywords = {
     {"AS", Tokens::As},       {"AND", Tokens::And},       {"AVG", Tokens::Avg},           {"BY", Tokens::By},
     {"COUNT", Tokens::Count}, {"CREATE", Tokens::Create}, {"DISTINCT", Tokens::Distinct}, {"FROM", Tokens::From},
     {"GROUP", Tokens::Group}, {"LENGTH", Tokens::Length}, {"LIMIT", Tokens::Limit},       {"MAX", Tokens::Max},
@@ -36,10 +36,12 @@ static std::string DescribeCharacter(const char ch) {
 
 Tokens ResolveIdentifierType(const std::string_view text) {
     const std::string upper = ToUpperAscii(text);
-    const auto it = kKeywords.find(upper);
-    if (it != kKeywords.end()) {
+    const auto it = Keywords.find(upper);
+
+    if (it != Keywords.end()) {
         return it->second;
     }
+
     return Tokens::NameToken;
 }
 
@@ -116,15 +118,16 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
         case Tokens::EndOfInput:
             return std::make_shared<TEndOfInputToken>(std::move(text), offset);
     }
+
     return nullptr;
 }
 
 Expected<TokenPtr> MakeUnexpectedCharacter(const char ch, const size_t offset) {
-    return tl::unexpected(Error::MalformedData("tokenizer_factory", "unexpected character '" + DescribeCharacter(ch) +
-                                                                      "' at position " + std::to_string(offset)));
+    return tl::unexpected(Error::MalformedData(
+        "sql_parser", "unexpected character '" + DescribeCharacter(ch) + "' at position " + std::to_string(offset)));
 }
 
 Expected<TokenPtr> MakeUnterminatedString(const size_t offset) {
     return tl::unexpected(
-        Error::MalformedData("tokenizer_factory", "unterminated string literal at position " + std::to_string(offset)));
+        Error::MalformedData("sql_parser", "unterminated string literal at position " + std::to_string(offset)));
 }

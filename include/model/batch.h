@@ -20,7 +20,6 @@ class Batch {
     Batch& operator=(Batch&& other) noexcept = default;
     ~Batch() = default;
 
-   public:
     const Schema& GetSchema() const { return schema_; }
 
     size_t ColumnsCount() const;

@@ -34,7 +34,8 @@ std::unique_ptr<MutableColumn> CreateColumn(const ColumnType type) {
         case ColumnType::Character:
             return std::make_unique<CharacterColumn>();
     }
-    throw Error::Unsupported("column", "unsupported column type");
+
+    throw Error::Unsupported("model", "unsupported column type");
 }
 
 Column::Column(const ColumnType type) : type_(type) {}

@@ -3,14 +3,13 @@
 #include <optional>
 #include <utility>
 
-#include "io/file.h"
 #include "common/error.h"
+#include "io/file.h"
 
 class CsvCharReader {
    public:
     explicit CsvCharReader(std::istream& in) : buffer_(in.rdbuf()) {}
 
-   public:
     std::optional<char> Read() const {
         const Traits::int_type next = buffer_->sbumpc();
         if (Traits::eq_int_type(next, Traits::eof())) {
@@ -76,12 +75,13 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
 
     while (true) {
         const std::optional<char> next = input.Read();
+
         if (!next.has_value()) {
             if (!saw_data) {
                 return false;
             }
             if (in_quotes) {
-                throw Error::MalformedData("csv", "unexpected EOF inside quoted field");
+                throw Error::MalformedData("io", "unexpected EOF inside quoted field");
             }
             return true;
         }
@@ -178,18 +178,21 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
                 *out_ << ch;
             }
         }
+
         *out_ << '"';
     }
+
     *out_ << '\n';
+
     if (!*out_) {
-        throw Error::Io("csv", "failed to write csv row");
+        throw Error::Io("io", "failed to write csv row");
     }
 }
 
 void CsvWriter::Flush() const {
     out_->flush();
     if (!*out_) {
-        throw Error::Io("csv", "failed to write csv");
+        throw Error::Io("io", "failed to write csv");
     }
 }
 

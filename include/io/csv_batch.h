@@ -16,7 +16,6 @@ class CsvBatchReader final : public BatchReader {
     CsvBatchReader& operator=(CsvBatchReader&&) noexcept = default;
     ~CsvBatchReader() override = default;
 
-   public:
     std::optional<Batch> ReadNext() override;
 
     const Schema& GetSchema() const { return schema_; }
@@ -39,7 +38,6 @@ class CsvBatchWriter final : public BatchWriter {
     CsvBatchWriter& operator=(CsvBatchWriter&&) noexcept = default;
     ~CsvBatchWriter() override = default;
 
-   public:
     void Write(const Batch& batch) override;
     void Flush() override;
 

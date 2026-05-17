@@ -17,26 +17,31 @@ static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view 
         case ColumnType::Boolean: {
             const bool left = ParseBoolean(std::string(candidate));
             const bool right = ParseBoolean(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Int16: {
             const int16_t left = ParseInt16(std::string(candidate));
             const int16_t right = ParseInt16(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Int32: {
             const int32_t left = ParseInt32(std::string(candidate));
             const int32_t right = ParseInt32(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Int64: {
             const int64_t left = ParseInt64(std::string(candidate));
             const int64_t right = ParseInt64(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Int128: {
             const Int128 left = ParseInt128(std::string(candidate));
             const Int128 right = ParseInt128(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::String:
@@ -44,19 +49,23 @@ static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view 
         case ColumnType::Date: {
             const int32_t left = ParseDate(std::string(candidate));
             const int32_t right = ParseDate(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Timestamp: {
             const int64_t left = ParseTimestamp(std::string(candidate));
             const int64_t right = ParseTimestamp(std::string(current));
+
             return is_min ? left < right : left > right;
         }
         case ColumnType::Character: {
             const char left = ParseCharacter(std::string(candidate));
             const char right = ParseCharacter(std::string(current));
+
             return is_min ? left < right : left > right;
         }
     }
+
     throw Error::Unsupported("executor", "unsupported column type in comparison");
 }
 
@@ -79,6 +88,7 @@ static Int128 ParseToInt128(const ColumnType type, const std::string_view value)
         case ColumnType::Timestamp:
             break;
     }
+
     throw Error::Unsupported("executor", "unsupported numeric conversion");
 }
 
@@ -104,7 +114,6 @@ class SumAS final : public AggState {
    public:
     explicit SumAS(const ColumnType type) : type_(type) {}
 
-   public:
     void ConsumeValue(const std::string_view value) override { sum_ += ParseToInt128(type_, value); }
     void ConsumeRow() override { throw Error::InvalidState("executor", "SUM requires a value"); }
 
@@ -119,7 +128,6 @@ class AvgAS final : public AggState {
    public:
     explicit AvgAS(const ColumnType type) : type_(type) {}
 
-   public:
     void ConsumeValue(const std::string_view value) override {
         sum_ += ParseToInt128(type_, value);
         ++count_;
@@ -138,7 +146,6 @@ class ExtremumAS final : public AggState {
    public:
     ExtremumAS(const ColumnType type, const bool is_min) : type_(type), is_min_(is_min) {}
 
-   public:
     void ConsumeValue(const std::string_view value) override {
         if (!extremum_.has_value()) {
             extremum_ = std::string(value);
@@ -163,7 +170,6 @@ class DistinctAS final : public AggState {
    public:
     explicit DistinctAS(std::unique_ptr<AggState> nested) : nested_(std::move(nested)) {}
 
-   public:
     void ConsumeValue(const std::string_view value) override {
         if (seen_.insert(std::string(value)).second) {
             nested_->ConsumeValue(value);
@@ -194,6 +200,7 @@ static bool SupportsNumericType(const ColumnType type) {
         case ColumnType::Timestamp:
             return false;
     }
+
     return false;
 }
 
@@ -282,10 +289,12 @@ std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
     if (aggregate.function == nullptr || aggregate.function->factory == nullptr) {
         throw Error::Unsupported("executor", "aggregate is not registered");
     }
+
     if (aggregate.distinct && !HasAggCallFeature(aggregate.function->call_features, AggCallFeature::Distinct)) {
         throw Error::Unsupported("executor", "DISTINCT is not supported for aggregate '" +
                                                  std::string(aggregate.function->canonical_name) + "'");
     }
+
     if (aggregate.argument_kind == AggArgumentKind::Star &&
         !HasAggCallFeature(aggregate.function->call_features, AggCallFeature::Star)) {
         throw Error::Unsupported(

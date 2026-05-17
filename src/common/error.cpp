@@ -84,5 +84,6 @@ std::string_view Error::CodeToString(const Code code) noexcept {
         case Code::IoFailure:
             return "io_failure";
     }
+
     return "unknown";
 }

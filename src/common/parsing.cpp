@@ -27,12 +27,12 @@ bool TryParseInteger(const std::string_view value, T& result) {
 template <std::integral T>
 T ParseInteger(const std::string& value, const std::string_view type_name) {
     if (value.empty()) {
-        throw Error::MalformedData("parsing", "empty value for " + std::string(type_name));
+        throw Error::MalformedData("common", "empty value for " + std::string(type_name));
     }
 
     T result = 0;
     if (!TryParseInteger(std::string_view(value), result)) {
-        throw Error::MalformedData("parsing", "invalid " + std::string(type_name) + " value");
+        throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
     }
 
     return result;
@@ -78,7 +78,7 @@ static bool TryParseDatePoint(const std::string_view value, std::chrono::sys_day
 static std::chrono::sys_days ParseDatePoint(const std::string_view value, const std::string_view type_name) {
     std::chrono::sys_days result{};
     if (!TryParseDatePoint(value, result)) {
-        throw Error::MalformedData("parsing", "invalid " + std::string(type_name) + " value");
+        throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
     }
     return result;
 }
@@ -104,7 +104,7 @@ std::optional<bool> TryParseBoolean(const std::string_view value) {
 bool ParseBoolean(const std::string& value) {
     const std::optional<bool> result = TryParseBoolean(value);
     if (!result.has_value()) {
-        throw Error::MalformedData("parsing", "invalid bool value");
+        throw Error::MalformedData("common", "invalid bool value");
     }
     return *result;
 }
@@ -179,6 +179,7 @@ std::optional<Int128> TryParseInt128(const std::string_view value) {
     if (!negative) {
         return static_cast<Int128>(magnitude);
     }
+
     if (magnitude == negative_limit) {
         return -static_cast<Int128>(positive_limit) - 1;
     }
@@ -188,12 +189,12 @@ std::optional<Int128> TryParseInt128(const std::string_view value) {
 
 Int128 ParseInt128(const std::string& value) {
     if (value.empty()) {
-        throw Error::MalformedData("parsing", "empty value for int128");
+        throw Error::MalformedData("common", "empty value for int128");
     }
 
     const std::optional<Int128> result = TryParseInt128(value);
     if (!result.has_value()) {
-        throw Error::MalformedData("parsing", "invalid int128 value");
+        throw Error::MalformedData("common", "invalid int128 value");
     }
 
     return *result;
@@ -221,7 +222,7 @@ int32_t ParseDate(const std::string& value) {
 
     if (days_since_epoch < std::numeric_limits<int32_t>::min() ||
         days_since_epoch > std::numeric_limits<int32_t>::max()) {
-        throw Error::Overflow("parsing", "date value exceeds supported range");
+        throw Error::Overflow("common", "date value exceeds supported range");
     }
 
     return days_since_epoch;
@@ -240,6 +241,7 @@ std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
     if (value[10] != ' ' && value[10] != 'T') {
         return std::nullopt;
     }
+
     if (value[13] != ':' || value[16] != ':') {
         return std::nullopt;
     }
@@ -289,7 +291,7 @@ std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
 int64_t ParseTimestamp(const std::string& value) {
     const std::optional<int64_t> result = TryParseTimestamp(value);
     if (!result.has_value()) {
-        throw Error::MalformedData("parsing", "invalid timestamp value");
+        throw Error::MalformedData("common", "invalid timestamp value");
     }
     return *result;
 }
@@ -304,7 +306,7 @@ std::optional<char> TryParseCharacter(const std::string_view value) {
 char ParseCharacter(const std::string& value) {
     const std::optional<char> result = TryParseCharacter(value);
     if (!result.has_value()) {
-        throw Error::MalformedData("parsing", "invalid char value");
+        throw Error::MalformedData("common", "invalid char value");
     }
     return *result;
 }
@@ -332,6 +334,7 @@ std::string Int128ToString(const Int128 value) {
         out.push_back(static_cast<char>('0' + magnitude % 10));
         magnitude /= 10;
     }
+
     if (negative) {
         out.push_back('-');
     }
@@ -372,34 +375,44 @@ std::string TimestampToString(const int64_t value) {
 
 ColumnType ParseColumnType(const std::string_view input) {
     const std::string lowered = ToLowerAscii(input);
+
     if (lowered == "bool") {
         return ColumnType::Boolean;
     }
+
     if (lowered == "int16") {
         return ColumnType::Int16;
     }
+
     if (lowered == "int32") {
         return ColumnType::Int32;
     }
+
     if (lowered == "int64") {
         return ColumnType::Int64;
     }
+
     if (lowered == "int128") {
         return ColumnType::Int128;
     }
+
     if (lowered == "string") {
         return ColumnType::String;
     }
+
     if (lowered == "date") {
         return ColumnType::Date;
     }
+
     if (lowered == "timestamp") {
         return ColumnType::Timestamp;
     }
+
     if (lowered == "char") {
         return ColumnType::Character;
     }
-    throw Error::Unsupported("parsing", "unknown column type");
+
+    throw Error::Unsupported("common", "unknown column type");
 }
 
 std::string ColumnTypeToString(const ColumnType type) {
@@ -423,5 +436,6 @@ std::string ColumnTypeToString(const ColumnType type) {
         case ColumnType::Character:
             return "char";
     }
-    throw Error::Unsupported("parsing", "unknown column type");
+
+    throw Error::Unsupported("common", "unknown column type");
 }

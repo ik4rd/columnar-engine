@@ -10,7 +10,7 @@
 
 static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     if (add > std::numeric_limits<uint64_t>::max() - current) {
-        throw Error::Overflow("batch_io", "batch byte size overflow");
+        throw Error::Overflow("io", "batch byte size overflow");
     }
     return current + add;
 }
@@ -34,7 +34,7 @@ static uint64_t EstimateValueBytes(const ColumnType type, const std::string_view
         case ColumnType::String:
             return value.size();
     }
-    throw Error::Unsupported("batch_io", "unsupported column type");
+    throw Error::Unsupported("io", "unsupported column type");
 }
 
 static uint64_t EstimateRowBytes(const Schema& schema, const std::vector<std::string>& row) {
@@ -47,13 +47,15 @@ static uint64_t EstimateRowBytes(const Schema& schema, const std::vector<std::st
 
 static void ValidateSizing(const BatchSizing& sizing) {
     if (sizing.max_rows && *sizing.max_rows == 0) {
-        throw Error::InvalidArgument("batch_io", "max rows must be > 0");
+        throw Error::InvalidArgument("io", "max rows must be > 0");
     }
+
     if (sizing.max_values && *sizing.max_values == 0) {
-        throw Error::InvalidArgument("batch_io", "max values must be > 0");
+        throw Error::InvalidArgument("io", "max values must be > 0");
     }
+
     if (sizing.max_bytes && *sizing.max_bytes == 0) {
-        throw Error::InvalidArgument("batch_io", "max bytes must be > 0");
+        throw Error::InvalidArgument("io", "max bytes must be > 0");
     }
 }
 
@@ -62,6 +64,7 @@ static void ReserveForSizing(Batch& batch, const BatchSizing& sizing, const size
         batch.Reserve(*sizing.max_rows);
         return;
     }
+
     if (sizing.max_values && column_count > 0) {
         batch.Reserve(std::max<size_t>(1, *sizing.max_values / column_count));
     }
@@ -70,7 +73,7 @@ static void ReserveForSizing(Batch& batch, const BatchSizing& sizing, const size
 CsvBatchReader::CsvBatchReader(const std::filesystem::path& path, Schema schema, BatchSizing sizing)
     : csv_reader_(path), schema_(std::move(schema)), sizing_(std::move(sizing)) {
     if (schema_.columns.empty()) {
-        throw Error::InvalidArgument("batch_io", "schema has no columns");
+        throw Error::InvalidArgument("io", "schema has no columns");
     }
     ValidateSizing(sizing_);
 }
@@ -103,7 +106,7 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
         }
 
         if (row.size() != column_count) {
-            throw Error::InconsistentData("batch_io", "data csv column count mismatch");
+            throw Error::InconsistentData("io", "data csv column count mismatch");
         }
 
         const size_t next_rows = rows + 1;
@@ -136,14 +139,14 @@ std::optional<Batch> CsvBatchReader::ReadNext() {
 CsvBatchWriter::CsvBatchWriter(const std::filesystem::path& path, Schema schema)
     : csv_writer_(path), schema_(std::move(schema)) {
     if (schema_.columns.empty()) {
-        throw Error::InvalidArgument("batch_io", "schema has no columns");
+        throw Error::InvalidArgument("io", "schema has no columns");
     }
 }
 
 void CsvBatchWriter::Write(const Batch& batch) {
     batch.Validate();
     if (batch.GetSchema() != schema_) {
-        throw Error::InconsistentData("batch_io", "batch schema mismatch");
+        throw Error::InconsistentData("io", "batch schema mismatch");
     }
 
     const size_t column_count = schema_.columns.size();
@@ -155,6 +158,7 @@ void CsvBatchWriter::Write(const Batch& batch) {
         for (size_t col = 0; col < column_count; ++col) {
             row[col] = batch.ColumnAt(col).ValueAsString(row_index);
         }
+
         csv_writer_.WriteRow(row);
     }
 }
@@ -179,6 +183,7 @@ void AppendBatchRows(const Batch& batch, std::vector<std::vector<std::string>>& 
 
 void WriteBatchCsv(const std::filesystem::path& path, const Batch& batch) {
     CsvBatchWriter writer(path, batch.GetSchema());
+
     writer.Write(batch);
     writer.Flush();
 }

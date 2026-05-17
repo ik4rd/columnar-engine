@@ -32,7 +32,6 @@ class InputFile {
     InputFile& operator=(InputFile&&) noexcept = default;
     ~InputFile() = default;
 
-   public:
     void ReadAt(char* dst, size_t size, uint64_t offset);
     std::string ReadStringAt(uint64_t offset, size_t size);
     std::istream& StreamAt(uint64_t offset);

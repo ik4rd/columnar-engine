@@ -1,3 +1,5 @@
+#include "io/columnar_batch.h"
+
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -5,16 +7,15 @@
 #include <string_view>
 #include <utility>
 
-#include "io/columnar_batch.h"
-#include "io/stream.h"
 #include "common/error.h"
+#include "io/stream.h"
 
 static constexpr std::string_view ColumnarMagic = "CLMN";
 
 static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out) {
     const auto pos = out.tellp();
     if (pos == -1) {
-        throw Error::PathIo("batch_io", path, "tell file");
+        throw Error::PathIo("io", path, "tell file");
     }
     return pos;
 }
@@ -22,7 +23,7 @@ static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out)
 static void FlushWrite(const std::filesystem::path& path, std::ofstream& out) {
     out.flush();
     if (!out) {
-        throw Error::PathIo("batch_io", path, "write file");
+        throw Error::PathIo("io", path, "write file");
     }
 }
 
@@ -30,14 +31,14 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     const auto file_metadata = GetFileMetadata(path);
 
     if (!file_metadata || !file_metadata->is_regular) {
-        throw Error::NotFound("batch_io", "columnar file not found", path.string());
+        throw Error::NotFound("io", "columnar file not found", path.string());
     }
 
     const uint64_t file_size = file_metadata->size;
     constexpr uint64_t FooterSize = sizeof(uint64_t) + ColumnarMagic.size();
 
     if (file_size < FooterSize) {
-        throw Error::MalformedData("batch_io", "columnar file is too small", path.string());
+        throw Error::MalformedData("io", "columnar file is too small", path.string());
     }
 
     InputFile file(path);
@@ -45,11 +46,11 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
     const std::string magic_read = file.ReadStringAt(file_size - ColumnarMagic.size(), ColumnarMagic.size());
 
     if (magic_read != ColumnarMagic) {
-        throw Error::MalformedData("batch_io", "invalid columnar magic", path.string());
+        throw Error::MalformedData("io", "invalid columnar magic", path.string());
     }
 
     if (metadata_size > file_size - FooterSize) {
-        throw Error::MalformedData("batch_io", "metadata size exceeds file size", path.string());
+        throw Error::MalformedData("io", "metadata size exceeds file size", path.string());
     }
 
     return ReadMetadata(file.StreamAt(file_size - FooterSize - metadata_size));
@@ -58,7 +59,7 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
 ColumnarBatchReader::ColumnarBatchReader(const std::filesystem::path& path)
     : path_(path), input_(path), metadata_(ReadFileMetadata(path)) {
     if (metadata_.schema.columns.empty()) {
-        throw Error::MalformedData("batch_io", "columnar schema is empty", path.string());
+        throw Error::MalformedData("io", "columnar schema is empty", path.string());
     }
 }
 
@@ -71,7 +72,7 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
     Batch batch(metadata_.schema, row_count);
 
     if (row_group_columns.size() != batch.ColumnsCount()) {
-        throw Error::InconsistentData("batch_io", "row group column count mismatch", path_.string());
+        throw Error::InconsistentData("io", "row group column count mismatch", path_.string());
     }
 
     for (size_t col = 0; col < batch.ColumnsCount(); ++col) {
@@ -85,19 +86,19 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
 ColumnarBatchWriter::ColumnarBatchWriter(const std::filesystem::path& path, Schema schema)
     : path_(path), out_(OpenOutputFile(path)) {
     if (schema.columns.empty()) {
-        throw Error::InvalidArgument("batch_io", "schema has no columns", path.string());
+        throw Error::InvalidArgument("io", "schema has no columns", path.string());
     }
     metadata_.schema = std::move(schema);
 }
 
 void ColumnarBatchWriter::Write(const Batch& batch) {
     if (finalized_) {
-        throw Error::InvalidState("batch_io", "writer already finalized", path_.string());
+        throw Error::InvalidState("io", "writer already finalized", path_.string());
     }
 
     batch.Validate();
     if (batch.GetSchema() != metadata_.schema) {
-        throw Error::InconsistentData("batch_io", "batch schema mismatch", path_.string());
+        throw Error::InconsistentData("io", "batch schema mismatch", path_.string());
     }
 
     const size_t row_count = batch.RowsCount();
@@ -105,8 +106,9 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     if (row_count == 0) {
         return;
     }
+
     if (row_count > std::numeric_limits<uint32_t>::max()) {
-        throw Error::Overflow("batch_io", "row group exceeds supported size", path_.string());
+        throw Error::Overflow("io", "row group exceeds supported size", path_.string());
     }
 
     RowGroupMetadata group;
@@ -116,7 +118,9 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     for (size_t column_index = 0; column_index < batch.ColumnsCount(); ++column_index) {
         const uint64_t offset = TellWrite(path_, out_);
         batch.ColumnAt(column_index).WriteTo(out_);
+
         const uint64_t end = TellWrite(path_, out_);
+
         group.columns.push_back(ColumnChunkMetadata{offset, end - offset});
     }
 
@@ -127,7 +131,7 @@ void ColumnarBatchWriter::Flush() { FlushWrite(path_, out_); }
 
 void ColumnarBatchWriter::Finalize() && {
     if (finalized_) {
-        throw Error::InvalidState("batch_io", "writer already finalized", path_.string());
+        throw Error::InvalidState("io", "writer already finalized", path_.string());
     }
 
     const uint64_t metadata_start = TellWrite(path_, out_);
@@ -139,5 +143,6 @@ void ColumnarBatchWriter::Finalize() && {
     WriteBytes(out_, ColumnarMagic);
 
     FlushWrite(path_, out_);
+
     finalized_ = true;
 }

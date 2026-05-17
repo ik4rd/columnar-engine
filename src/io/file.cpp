@@ -1,15 +1,16 @@
+#include "io/file.h"
+
 #include <iterator>
 #include <utility>
 
-#include "io/file.h"
-#include "io/stream.h"
 #include "common/error.h"
+#include "io/stream.h"
 
 std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     std::error_code ec;
     if (!std::filesystem::exists(path, ec)) {
         if (ec) {
-            throw Error::PathIo("fileio", path, "check existence");
+            throw Error::PathIo("io", path, "check existence");
         }
         return std::nullopt;
     }
@@ -17,7 +18,7 @@ std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     FileMetadata metadata;
     const auto status = std::filesystem::status(path, ec);
     if (ec) {
-        throw Error::PathIo("fileio", path, "read status");
+        throw Error::PathIo("io", path, "read status");
     }
 
     metadata.is_regular = std::filesystem::is_regular_file(status);
@@ -25,13 +26,13 @@ std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path) {
     if (metadata.is_regular) {
         metadata.size = std::filesystem::file_size(path, ec);
         if (ec) {
-            throw Error::PathIo("fileio", path, "read file size");
+            throw Error::PathIo("io", path, "read file size");
         }
     }
 
     metadata.last_write_time = std::filesystem::last_write_time(path, ec);
     if (ec) {
-        throw Error::PathIo("fileio", path, "read last write time");
+        throw Error::PathIo("io", path, "read last write time");
     }
 
     return metadata;
@@ -41,8 +42,9 @@ bool FileExists(const std::filesystem::path& path) {
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
     if (ec) {
-        throw Error::PathIo("fileio", path, "check existence");
+        throw Error::PathIo("io", path, "check existence");
     }
+
     return exists;
 }
 
@@ -55,14 +57,14 @@ void EnsureParentDirectory(const std::filesystem::path& path) {
     std::error_code ec;
     std::filesystem::create_directories(parent, ec);
     if (ec) {
-        throw Error::PathIo("fileio", path, "create parent directories");
+        throw Error::PathIo("io", path, "create parent directories");
     }
 }
 
 std::ifstream OpenInputFile(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        throw Error::PathIo("fileio", path, "open for read");
+        throw Error::PathIo("io", path, "open for read");
     }
     return file;
 }
@@ -70,7 +72,7 @@ std::ifstream OpenInputFile(const std::filesystem::path& path) {
 void SeekInputFile(std::istream& in, const std::filesystem::path& path, const uint64_t offset) {
     in.seekg(static_cast<std::streamoff>(offset));
     if (!in) {
-        throw Error::PathIo("fileio", path, "seek for read");
+        throw Error::PathIo("io", path, "seek for read");
     }
 }
 
@@ -81,7 +83,7 @@ void InputFile::ReadAt(char* dst, const size_t size, const uint64_t offset) {
     try {
         ReadBytes(in_, dst, size);
     } catch (const Error&) {
-        throw Error::PathIo("fileio", path_, "read file");
+        throw Error::PathIo("io", path_, "read file");
     }
 }
 
@@ -99,7 +101,7 @@ std::istream& InputFile::StreamAt(const uint64_t offset) {
 std::ofstream OpenOutputFile(const std::filesystem::path& path, const FileOpenMode mode) {
     std::ofstream file(path, std::ios::binary | (mode == FileOpenMode::Append ? std::ios::app : std::ios::trunc));
     if (!file.is_open()) {
-        throw Error::PathIo("fileio", path, mode == FileOpenMode::Append ? "open for append" : "open for write");
+        throw Error::PathIo("io", path, mode == FileOpenMode::Append ? "open for append" : "open for write");
     }
     return file;
 }
@@ -112,13 +114,14 @@ std::string ReadTextFile(const std::filesystem::path& path) {
 std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     std::ifstream file = OpenInputFile(path);
     file.seekg(0, std::ios::end);
+
     if (!file) {
-        throw Error::PathIo("fileio", path, "read file size");
+        throw Error::PathIo("io", path, "read file size");
     }
 
     const auto end_pos = file.tellg();
     if (end_pos < 0) {
-        throw Error::PathIo("fileio", path, "read file size");
+        throw Error::PathIo("io", path, "read file size");
     }
 
     std::vector<uint8_t> data(end_pos);
@@ -130,7 +133,7 @@ std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& path) {
     file.read(reinterpret_cast<char*>(data.data()), data.size());
 
     if (!file) {
-        throw Error::PathIo("fileio", path, "read file");
+        throw Error::PathIo("io", path, "read file");
     }
 
     return data;
@@ -141,13 +144,13 @@ void WriteFileBytes(const std::filesystem::path& path, const std::span<const uin
     if (!bytes.empty()) {
         file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         if (!file) {
-            throw Error::PathIo("fileio", path, "write file");
+            throw Error::PathIo("io", path, "write file");
         }
     }
 
     file.flush();
     if (!file) {
-        throw Error::PathIo("fileio", path, "write file");
+        throw Error::PathIo("io", path, "write file");
     }
 }
 

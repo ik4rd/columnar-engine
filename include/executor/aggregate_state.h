@@ -15,7 +15,6 @@ class AggState {
     AggState& operator=(AggState&&) noexcept = default;
     virtual ~AggState() = default;
 
-   public:
     virtual void ConsumeValue(std::string_view value) = 0;
     virtual void ConsumeRow() = 0;
     virtual std::string Finalize() const = 0;

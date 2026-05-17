@@ -16,7 +16,6 @@ class Column {
     Column& operator=(Column&&) noexcept = default;
     virtual ~Column() = default;
 
-   public:
     ColumnType Type() const { return type_; }
 
     virtual size_t Size() const = 0;
@@ -37,7 +36,6 @@ class MutableColumn : public Column {
     using Column::Column;
     ~MutableColumn() override = default;
 
-   public:
     virtual void Reserve(size_t n) = 0;
     virtual void Clear() = 0;
     virtual void AppendFromString(const std::string& value) = 0;

@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "io/csv.h"
 #include "common/error.h"
 #include "common/parsing.h"
+#include "io/csv.h"
 
 static bool CanParseAs(const ColumnType type, const std::string& value) {
     switch (type) {
@@ -30,7 +30,7 @@ static bool CanParseAs(const ColumnType type, const std::string& value) {
             return true;
     }
 
-    throw Error::Unsupported("schema", "unknown column type");
+    throw Error::Unsupported("model", "unknown column type");
 }
 
 static ColumnType InferColumnType(const std::vector<std::string>& values) {
@@ -41,12 +41,14 @@ static ColumnType InferColumnType(const std::vector<std::string>& values) {
 
     for (const ColumnType type : InferenceOrder) {
         bool matches = true;
+
         for (const auto& value : values) {
             if (!CanParseAs(type, value)) {
                 matches = false;
                 break;
             }
         }
+
         if (matches) {
             return type;
         }
@@ -65,12 +67,15 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
         if (row.size() == 1 && row[0].empty()) {
             continue;
         }
+
         while (row.size() > 2 && row.back().empty()) {
             row.pop_back();
         }
+
         if (row.size() != 2) {
-            throw Error::MalformedData("schema", "schema csv must have 2 columns", path.string());
+            throw Error::MalformedData("model", "schema csv must have 2 columns", path.string());
         }
+
         schema.columns.push_back(ColumnSchema{
             row[0],
             ParseColumnType(row[1]),
@@ -78,7 +83,7 @@ Schema ReadSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (schema.columns.empty()) {
-        throw Error::MalformedData("schema", "schema csv is empty", path.string());
+        throw Error::MalformedData("model", "schema csv is empty", path.string());
     }
 
     return schema;
@@ -94,7 +99,7 @@ Schema InferSchemaCsv(const std::filesystem::path& path) {
         if (values_by_column.empty()) {
             values_by_column.resize(row.size());
         } else if (row.size() != values_by_column.size()) {
-            throw Error::MalformedData("schema", "csv rows have inconsistent column count", path.string());
+            throw Error::MalformedData("model", "csv rows have inconsistent column count", path.string());
         }
 
         for (size_t i = 0; i < row.size(); ++i) {
@@ -103,7 +108,7 @@ Schema InferSchemaCsv(const std::filesystem::path& path) {
     }
 
     if (values_by_column.empty()) {
-        throw Error::MalformedData("schema", "csv is empty", path.string());
+        throw Error::MalformedData("model", "csv is empty", path.string());
     }
 
     Schema schema;

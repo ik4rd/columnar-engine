@@ -5,8 +5,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "model/batch.h"
 #include "common/error.h"
+#include "model/batch.h"
 #include "tl/expected.hpp"
 
 using ExecuteExpected = tl::expected<Batch, Error>;
@@ -15,7 +15,6 @@ class Executor {
    public:
     Executor() = default;
 
-   public:
     void RegisterTable(const std::string& name, std::filesystem::path path);
     ExecuteExpected Execute(std::string_view query) const;
 

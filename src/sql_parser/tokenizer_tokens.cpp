@@ -75,6 +75,7 @@ std::string_view TokenTypeToString(const Tokens type) noexcept {
         case Tokens::EndOfInput:
             return "end_of_input";
     }
+
     return "unknown";
 }
 

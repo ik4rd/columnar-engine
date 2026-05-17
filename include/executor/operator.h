@@ -15,7 +15,6 @@ class Operator {
     Operator& operator=(Operator&&) noexcept = default;
     virtual ~Operator() = default;
 
-   public:
     virtual std::optional<Batch> Next() = 0;
 };
 

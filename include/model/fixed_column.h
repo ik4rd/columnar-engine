@@ -2,9 +2,9 @@
 
 #include <vector>
 
+#include "common/error.h"
 #include "io/stream.h"
 #include "model/column.h"
-#include "common/error.h"
 
 template <class ColumnImpl, std::integral T, ColumnType TypeValue>
 class FixedColumn : public MutableColumn {
@@ -16,7 +16,6 @@ class FixedColumn : public MutableColumn {
     FixedColumn& operator=(FixedColumn&&) noexcept = default;
     ~FixedColumn() override = default;
 
-   public:
     size_t Size() const override { return values_.size(); }
     void Reserve(const size_t n) override { values_.reserve(n); }
     void Clear() override { values_.clear(); }
@@ -50,6 +49,5 @@ class FixedColumn : public MutableColumn {
         return values_[row];
     }
 
-   protected:
     std::vector<T> values_;
 };

@@ -5,12 +5,14 @@
 
 size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);
+
     for (size_t i = 0; i < schema.columns.size(); ++i) {
         if (ToLowerAscii(schema.columns[i].name) == needle) {
             return i;
         }
     }
-    throw Error::InvalidArgument("query_planner", "unknown column '" + std::string(column_name) + "'");
+
+    throw Error::InvalidArgument("executor", "unknown column '" + std::string(column_name) + "'");
 }
 
 static bool SameQualifier(const std::string_view lhs, const std::string_view rhs) {
@@ -21,18 +23,21 @@ void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
     if (column.qualifier.empty()) {
         return;
     }
+
     if (SameQualifier(column.qualifier, query.table_name)) {
         return;
     }
+
     if (!query.table_alias.empty() && SameQualifier(column.qualifier, query.table_alias)) {
         return;
     }
-    throw Error::InvalidArgument("query_planner", "unknown table qualifier '" + column.qualifier + "'");
+
+    throw Error::InvalidArgument("executor", "unknown table qualifier '" + column.qualifier + "'");
 }
 
 static std::string UnescapeSqlString(const std::string_view text) {
     if (text.size() < 2 || text.front() != '\'' || text.back() != '\'') {
-        throw Error::InvalidArgument("query_planner", "invalid string literal");
+        throw Error::InvalidArgument("executor", "invalid string literal");
     }
 
     std::string result;
@@ -44,6 +49,7 @@ static std::string UnescapeSqlString(const std::string_view text) {
             ++i;
             continue;
         }
+
         result.push_back(text[i]);
     }
 
@@ -61,7 +67,7 @@ std::string NormalizeLiteral(const QueryLiteral& literal, const ColumnType type)
             }
             return literal.text;
         default:
-            throw Error::InvalidArgument("query_planner", "unsupported literal type");
+            throw Error::InvalidArgument("executor", "unsupported literal type");
     }
 }
 
@@ -73,9 +79,11 @@ bool SameColumnRef(const ColumnRef& lhs, const ColumnRef& rhs) {
     if (!SameColumnName(lhs.name, rhs.name)) {
         return false;
     }
+
     if (lhs.qualifier.empty() || rhs.qualifier.empty()) {
         return true;
     }
+
     return SameQualifier(lhs.qualifier, rhs.qualifier);
 }
 
@@ -83,9 +91,11 @@ bool SameSelectItem(const SelectItemSpec& lhs, const SelectItemSpec& rhs) {
     if (lhs.kind != rhs.kind) {
         return false;
     }
+
     if (lhs.kind == SelectItemKind::GroupKey) {
         return SameColumnRef(lhs.column, rhs.column);
     }
+
     return ToLowerAscii(lhs.aggregate.output_name) == ToLowerAscii(rhs.aggregate.output_name);
 }
 

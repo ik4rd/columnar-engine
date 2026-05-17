@@ -162,6 +162,17 @@ TEST(executor, supports_select_alias_order_by_alias_and_limit) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, supports_order_by_limit_top_k_in_result_order) {
+    const Batch batch =
+        BuildHitsTable("SELECT RegionID, COUNT(*) FROM hits GROUP BY RegionID ORDER BY RegionID ASC LIMIT 2;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "COUNT(*)"}));
+    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
+                                    {"10", "2"},
+                                    {"20", "2"},
+                                }));
+}
+
 TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
     const Batch batch = BuildHitsTable(
         "SELECT RegionID, SUM(AdvEngineID), COUNT(*) AS c, AVG(ResolutionWidth), COUNT(DISTINCT UserID) "

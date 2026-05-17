@@ -13,10 +13,9 @@ class TokenCursor {
    public:
     explicit TokenCursor(std::vector<TokenPtr> tokens) : tokens_(std::move(tokens)) {}
 
-   public:
     const Token& Peek(const size_t lookahead = 0) const {
         if (pos_ + lookahead >= tokens_.size()) {
-            throw Error::InvalidArgument("query_parser", "unexpected end of query");
+            throw Error::InvalidArgument("executor", "unexpected end of query");
         }
         return *tokens_[pos_ + lookahead];
     }
@@ -27,7 +26,7 @@ class TokenCursor {
 
     const Token& Consume(const Tokens type, const std::string_view message) {
         if (!Match(type)) {
-            throw Error::InvalidArgument("query_parser", std::string(message));
+            throw Error::InvalidArgument("executor", std::string(message));
         }
         return *tokens_[pos_++];
     }
@@ -42,7 +41,7 @@ class TokenCursor {
 
     const Token& ConsumeFunctionToken(const std::string_view message) {
         if (pos_ >= tokens_.size()) {
-            throw Error::InvalidArgument("query_parser", std::string(message));
+            throw Error::InvalidArgument("executor", std::string(message));
         }
 
         const Tokens type = tokens_[pos_]->GetType();
@@ -61,7 +60,7 @@ class TokenCursor {
             case Tokens::Greater:
             case Tokens::GreaterOrEqual:
             case Tokens::EndOfInput:
-                throw Error::InvalidArgument("query_parser", std::string(message));
+                throw Error::InvalidArgument("executor", std::string(message));
             default:
                 break;
         }
@@ -89,7 +88,7 @@ static ComparisonKind ComparisonKindFromToken(const Tokens type) {
         case Tokens::GreaterOrEqual:
             return ComparisonKind::GreaterOrEqual;
         default:
-            throw Error::InvalidArgument("query_parser", "expected comparison operator in WHERE");
+            throw Error::InvalidArgument("executor", "expected comparison operator in WHERE");
     }
 }
 
@@ -164,7 +163,7 @@ static QueryValue ParseFilterValue(TokenCursor& cursor, const std::string_view m
                 .kind = LiteralKind::Identifier,
             });
         default:
-            throw Error::InvalidArgument("query_parser", std::string(message));
+            throw Error::InvalidArgument("executor", std::string(message));
     }
 }
 
@@ -172,6 +171,7 @@ static std::string FormatAggregateCall(const std::string_view function_name, con
                                        const bool distinct, const AggArgumentKind argument_kind) {
     std::string output(function_name);
     output += '(';
+
     if (argument_kind == AggArgumentKind::Star) {
         output += '*';
     } else {
@@ -180,7 +180,9 @@ static std::string FormatAggregateCall(const std::string_view function_name, con
         }
         output += column_name;
     }
+
     output += ')';
+
     return output;
 }
 
@@ -197,7 +199,7 @@ static std::optional<size_t> ParseOptionalLimit(TokenCursor& cursor) {
     const char* end = begin + text.size();
 
     if (const auto [ptr, ec] = std::from_chars(begin, end, limit); ec != std::errc() || ptr != end) {
-        throw Error::InvalidArgument("query_parser", "invalid LIMIT value");
+        throw Error::InvalidArgument("executor", "invalid LIMIT value");
     }
 
     return limit;
@@ -248,19 +250,23 @@ static std::string ParseSelectItemAlias(TokenCursor& cursor) {
     if (cursor.TryConsume(Tokens::As)) {
         return std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
     }
+
     if (cursor.Match(Tokens::NameToken)) {
         return std::string(cursor.Consume(Tokens::NameToken, "expected alias").GetText());
     }
+
     return {};
 }
 
 static SelectItemSpec ParseSelectItem(TokenCursor& cursor) {
     SelectItemSpec item = ParseSelectExpression(cursor);
+
     if (const std::string alias = ParseSelectItemAlias(cursor); !alias.empty()) {
         item.output_name = alias;
     } else if (item.kind == SelectItemKind::Aggregate) {
         item.output_name = item.aggregate.output_name;
     }
+
     return item;
 }
 
@@ -303,6 +309,7 @@ Query ParseQuery(const std::string_view query) {
 
     cursor.Consume(Tokens::From, "expected FROM");
     query_ast.table_name = std::string(cursor.Consume(Tokens::NameToken, "expected table name").GetText());
+
     if (cursor.TryConsume(Tokens::As)) {
         query_ast.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
     } else if (cursor.Match(Tokens::NameToken)) {
@@ -325,6 +332,7 @@ Query ParseQuery(const std::string_view query) {
     if (cursor.TryConsume(Tokens::Group)) {
         cursor.Consume(Tokens::By, "expected BY after GROUP");
         query_ast.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
+
         while (cursor.TryConsume(Tokens::Comma)) {
             query_ast.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
         }
@@ -333,6 +341,7 @@ Query ParseQuery(const std::string_view query) {
     if (cursor.TryConsume(Tokens::Order)) {
         cursor.Consume(Tokens::By, "expected BY after ORDER");
         query_ast.order_by.push_back(ParseOrderByItem(cursor));
+
         while (cursor.TryConsume(Tokens::Comma)) {
             query_ast.order_by.push_back(ParseOrderByItem(cursor));
         }

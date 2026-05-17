@@ -20,7 +20,7 @@ static ColumnType ColumnTypeFromByte(const uint8_t type_byte) {
             return static_cast<ColumnType>(type_byte);
     }
 
-    throw Error::MalformedData("columnar", "unknown column type in metadata");
+    throw Error::MalformedData("model", "unknown column type in metadata");
 }
 
 ColumnarMetadata ReadMetadata(std::istream& in) {
@@ -34,6 +34,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
         std::string name(name_size, '\0');
 
         ReadBytes(in, name.data(), name.size());
+
         const uint8_t type_byte = ReadStream<uint8_t>(in);
         const ColumnType type = ColumnTypeFromByte(type_byte);
 
@@ -49,7 +50,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
         const uint32_t columns_in_group = ReadStream<uint32_t>(in);
         if (columns_in_group != column_count) {
-            throw Error::InconsistentData("columnar", "row group column count mismatch");
+            throw Error::InconsistentData("model", "row group column count mismatch");
         }
 
         group.columns.reserve(columns_in_group);
@@ -58,6 +59,7 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
             ColumnChunkMetadata chunk;
             chunk.offset = ReadStream<uint64_t>(in);
             chunk.size = ReadStream<uint64_t>(in);
+
             group.columns.push_back(chunk);
         }
 
@@ -69,22 +71,23 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
 
 void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     if (metadata.schema.columns.size() > std::numeric_limits<uint32_t>::max()) {
-        throw Error::Overflow("columnar", "too many columns for metadata");
+        throw Error::Overflow("model", "too many columns for metadata");
     }
 
     WriteStream<uint32_t>(out, metadata.schema.columns.size());
 
     for (const auto& [name, type] : metadata.schema.columns) {
         if (name.size() > std::numeric_limits<uint32_t>::max()) {
-            throw Error::Overflow("columnar", "column name too long");
+            throw Error::Overflow("model", "column name too long");
         }
+
         WriteStream<uint32_t>(out, name.size());
         WriteBytes(out, name);
         WriteStream<uint8_t>(out, static_cast<uint8_t>(type));
     }
 
     if (metadata.row_groups.size() > std::numeric_limits<uint32_t>::max()) {
-        throw Error::Overflow("columnar", "too many row groups for metadata");
+        throw Error::Overflow("model", "too many row groups for metadata");
     }
 
     WriteStream<uint32_t>(out, metadata.row_groups.size());
@@ -92,6 +95,7 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     for (const auto& [row_count, columns] : metadata.row_groups) {
         WriteStream<uint32_t>(out, row_count);
         WriteStream<uint32_t>(out, columns.size());
+
         for (const auto& [offset, size] : columns) {
             WriteStream<uint64_t>(out, offset);
             WriteStream<uint64_t>(out, size);
