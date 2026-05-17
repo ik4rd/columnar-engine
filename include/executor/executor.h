@@ -16,8 +16,10 @@ class Executor {
     Executor() = default;
 
     void RegisterTable(const std::string& name, std::filesystem::path path);
+    void SetUnsupportedFallbackEnabled(bool enabled);
     ExecuteExpected Execute(std::string_view query) const;
 
    private:
     std::unordered_map<std::string, std::filesystem::path> tables_;
+    bool unsupported_fallback_enabled_ = false;
 };

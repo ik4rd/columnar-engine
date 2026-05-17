@@ -36,6 +36,8 @@ std::string_view TokenTypeToString(const Tokens type) noexcept {
             return "length";
         case Tokens::Where:
             return "where";
+        case Tokens::Having:
+            return "having";
         case Tokens::By:
             return "by";
         case Tokens::Group:
@@ -44,6 +46,24 @@ std::string_view TokenTypeToString(const Tokens type) noexcept {
             return "order";
         case Tokens::Limit:
             return "limit";
+        case Tokens::Offset:
+            return "offset";
+        case Tokens::Like:
+            return "like";
+        case Tokens::Not:
+            return "not";
+        case Tokens::In:
+            return "in";
+        case Tokens::Case:
+            return "case";
+        case Tokens::When:
+            return "when";
+        case Tokens::Then:
+            return "then";
+        case Tokens::Else:
+            return "else";
+        case Tokens::End:
+            return "end";
         case Tokens::Plus:
             return "plus";
         case Tokens::Minus:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,10 +42,61 @@ struct QueryValue {
     QueryLiteral literal;
 };
 
-struct FilterSpec {
-    QueryValue left;
+enum class ExprKind {
+    Column,
+    Literal,
+    Binary,
+    Function,
+    Star,
+    Case,
+};
+
+enum class BinaryOp {
+    Add,
+    Subtract,
+};
+
+struct ExprSpec;
+using ExprPtr = std::shared_ptr<ExprSpec>;
+
+struct PredicateSpec;
+using PredicatePtr = std::shared_ptr<PredicateSpec>;
+
+struct CaseSpec {
+    PredicatePtr condition;
+    ExprPtr then_expr;
+    ExprPtr else_expr;
+};
+
+struct ExprSpec {
+    ExprKind kind = ExprKind::Literal;
+    ColumnRef column;
+    QueryLiteral literal;
+    BinaryOp binary_op = BinaryOp::Add;
+    ExprPtr left;
+    ExprPtr right;
+    std::string function_name;
+    std::vector<ExprPtr> arguments;
+    CaseSpec case_spec;
+    std::string output_name;
+};
+
+enum class PredicateKind {
+    Comparison,
+    And,
+    Like,
+    NotLike,
+    In,
+};
+
+struct PredicateSpec {
+    PredicateKind kind = PredicateKind::Comparison;
+    ExprPtr left;
     ComparisonKind comparison = ComparisonKind::Equal;
-    QueryValue right;
+    ExprPtr right;
+    std::vector<ExprPtr> values;
+    PredicatePtr lhs;
+    PredicatePtr rhs;
 };
 
 enum class AggArgumentKind {
@@ -57,6 +109,7 @@ struct AggSpec {
     bool distinct = false;
     AggArgumentKind argument_kind = AggArgumentKind::Column;
     ColumnRef column;
+    ExprPtr argument;
     std::string output_name;
 };
 
@@ -68,6 +121,7 @@ enum class SelectItemKind {
 struct SelectItemSpec {
     SelectItemKind kind = SelectItemKind::GroupKey;
     ColumnRef column;
+    ExprPtr expression;
     AggSpec aggregate;
     std::string output_name;
 };
@@ -81,8 +135,10 @@ struct Query {
     std::string table_name;
     std::string table_alias;
     std::vector<SelectItemSpec> select_items;
-    std::vector<ColumnRef> group_by;
-    std::optional<FilterSpec> filter;
+    std::vector<ExprPtr> group_by;
+    PredicatePtr filter;
+    PredicatePtr having;
     std::vector<OrderBySpec> order_by;
     std::optional<size_t> limit;
+    size_t offset = 0;
 };

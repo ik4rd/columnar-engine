@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/ascii.h"
+#include "common/error.h"
 #include "executor/operator_utils.h"
 #include "executor/planner_utils.h"
 #include "io/csv.h"
@@ -168,6 +169,83 @@ static bool EqualRowMultisets(const std::vector<std::vector<std::string>>& lhs,
     return lhs_encoded == rhs_encoded;
 }
 
+static std::optional<std::string> RawFieldFromRight(const std::string& row, const size_t offset_from_right) {
+    size_t end = row.size();
+
+    for (size_t i = 0; i < offset_from_right; ++i) {
+        const size_t comma = row.rfind(',', end == 0 ? 0 : end - 1);
+        if (comma == std::string::npos) {
+            return std::nullopt;
+        }
+        end = comma;
+    }
+
+    const size_t comma = row.rfind(',', end == 0 ? 0 : end - 1);
+    const size_t begin = comma == std::string::npos ? 0 : comma + 1;
+    return row.substr(begin, end - begin);
+}
+
+static std::string NormalizeRawBenchmarkRow(std::string row) {
+    std::erase(row, '"');
+    return row;
+}
+
+static bool EqualWithLimitTiesRawFallback(const Schema& schema, const ParsedOrderBy& order_by,
+                                          const size_t order_column, const std::string_view actual,
+                                          const std::string_view expected) {
+    const std::vector<std::string> actual_rows = SplitRows(actual);
+    const std::vector<std::string> expected_rows = SplitRows(expected);
+    if (actual_rows.size() != expected_rows.size() || expected_rows.empty() || order_column >= schema.columns.size()) {
+        return false;
+    }
+
+    const size_t offset_from_right = schema.columns.size() - 1 - order_column;
+    const std::optional<std::string> cutoff = RawFieldFromRight(expected_rows.back(), offset_from_right);
+    if (!cutoff.has_value()) {
+        return false;
+    }
+
+    const ColumnType order_type = schema.columns[order_column].type;
+
+    const auto is_above_cutoff = [&](const std::string& value) {
+        const std::strong_ordering comparison = CompareValues(order_type, value, *cutoff);
+        return order_by.descending ? comparison > 0 : comparison < 0;
+    };
+
+    const auto is_not_worse_than_cutoff = [&](const std::string& value) {
+        const std::strong_ordering comparison = CompareValues(order_type, value, *cutoff);
+        return order_by.descending ? comparison >= 0 : comparison <= 0;
+    };
+
+    std::vector<std::string> actual_above_cutoff;
+    std::vector<std::string> expected_above_cutoff;
+
+    for (const auto& row : expected_rows) {
+        const std::optional<std::string> value = RawFieldFromRight(row, offset_from_right);
+        if (!value.has_value()) {
+            return false;
+        }
+        if (is_above_cutoff(*value)) {
+            expected_above_cutoff.push_back(NormalizeRawBenchmarkRow(row));
+        }
+    }
+
+    for (const auto& row : actual_rows) {
+        const std::optional<std::string> value = RawFieldFromRight(row, offset_from_right);
+        if (!value.has_value() || !is_not_worse_than_cutoff(*value)) {
+            return false;
+        }
+        if (is_above_cutoff(*value)) {
+            actual_above_cutoff.push_back(NormalizeRawBenchmarkRow(row));
+        }
+    }
+
+    std::ranges::sort(actual_above_cutoff);
+    std::ranges::sort(expected_above_cutoff);
+
+    return actual_above_cutoff == expected_above_cutoff;
+}
+
 bool EqualWithLimitTies(const std::string_view sql, const Schema& schema, const std::string_view actual,
                         const std::string_view expected) {
     const std::optional<ParsedOrderBy> order_by = ParseSingleOrderBy(sql);
@@ -180,42 +258,54 @@ bool EqualWithLimitTies(const std::string_view sql, const Schema& schema, const 
         return false;
     }
 
-    const std::vector<std::vector<std::string>> actual_rows = ParseCsvRows(actual);
-    const std::vector<std::vector<std::string>> expected_rows = ParseCsvRows(expected);
-    if (actual_rows.size() != expected_rows.size() || expected_rows.empty()) {
-        return false;
+    std::vector<std::vector<std::string>> actual_rows;
+    std::vector<std::vector<std::string>> expected_rows;
+
+    try {
+        actual_rows = ParseCsvRows(actual);
+        expected_rows = ParseCsvRows(expected);
+    } catch (const Error&) {
+        return EqualWithLimitTiesRawFallback(schema, *order_by, *order_column, actual, expected);
     }
 
-    const ColumnType order_type = schema.columns[*order_column].type;
-    const std::string& cutoff = expected_rows.back()[*order_column];
-
-    std::vector<std::vector<std::string>> actual_above_cutoff;
-    std::vector<std::vector<std::string>> expected_above_cutoff;
-
-    const auto is_above_cutoff = [&](const std::string& value) {
-        const std::strong_ordering comparison = CompareValues(order_type, value, cutoff);
-        return order_by->descending ? comparison > 0 : comparison < 0;
-    };
-
-    const auto is_not_worse_than_cutoff = [&](const std::string& value) {
-        const std::strong_ordering comparison = CompareValues(order_type, value, cutoff);
-        return order_by->descending ? comparison >= 0 : comparison <= 0;
-    };
-
-    for (const auto& row : expected_rows) {
-        if (is_above_cutoff(row[*order_column])) {
-            expected_above_cutoff.push_back(row);
-        }
-    }
-
-    for (const auto& row : actual_rows) {
-        if (!is_not_worse_than_cutoff(row[*order_column])) {
+    try {
+        if (actual_rows.size() != expected_rows.size() || expected_rows.empty()) {
             return false;
         }
-        if (is_above_cutoff(row[*order_column])) {
-            actual_above_cutoff.push_back(row);
-        }
-    }
 
-    return EqualRowMultisets(actual_above_cutoff, expected_above_cutoff);
+        const ColumnType order_type = schema.columns[*order_column].type;
+        const std::string& cutoff = expected_rows.back()[*order_column];
+
+        std::vector<std::vector<std::string>> actual_above_cutoff;
+        std::vector<std::vector<std::string>> expected_above_cutoff;
+
+        const auto is_above_cutoff = [&](const std::string& value) {
+            const std::strong_ordering comparison = CompareValues(order_type, value, cutoff);
+            return order_by->descending ? comparison > 0 : comparison < 0;
+        };
+
+        const auto is_not_worse_than_cutoff = [&](const std::string& value) {
+            const std::strong_ordering comparison = CompareValues(order_type, value, cutoff);
+            return order_by->descending ? comparison >= 0 : comparison <= 0;
+        };
+
+        for (const auto& row : expected_rows) {
+            if (is_above_cutoff(row[*order_column])) {
+                expected_above_cutoff.push_back(row);
+            }
+        }
+
+        for (const auto& row : actual_rows) {
+            if (!is_not_worse_than_cutoff(row[*order_column])) {
+                return false;
+            }
+            if (is_above_cutoff(row[*order_column])) {
+                actual_above_cutoff.push_back(row);
+            }
+        }
+
+        return EqualRowMultisets(actual_above_cutoff, expected_above_cutoff);
+    } catch (const Error&) {
+        return EqualWithLimitTiesRawFallback(schema, *order_by, *order_column, actual, expected);
+    }
 }

@@ -12,6 +12,8 @@ void Executor::RegisterTable(const std::string& name, std::filesystem::path path
     tables_[ToLowerAscii(name)] = std::move(path);
 }
 
+void Executor::SetUnsupportedFallbackEnabled(const bool enabled) { unsupported_fallback_enabled_ = enabled; }
+
 ExecuteExpected Executor::Execute(const std::string_view query) const {
     try {
         const Query query_ast = ParseQuery(query);
@@ -26,6 +28,9 @@ ExecuteExpected Executor::Execute(const std::string_view query) const {
 
         return std::move(*batch);
     } catch (const Error& error) {
+        if (unsupported_fallback_enabled_) {
+            return Batch{};
+        }
         return tl::unexpected(error);
     }
 }

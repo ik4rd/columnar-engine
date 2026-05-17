@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "executor/aggregate_function.h"
@@ -16,11 +18,13 @@ struct PlannedAgg {
     AggArgumentKind argument_kind = AggArgumentKind::Column;
     size_t column_index = 0;
     ColumnType input_type = ColumnType::String;
+    ExprPtr argument;
     std::string output_name;
 };
 
 struct PlannedGroupKey {
     size_t column_index = 0;
+    ExprPtr expression;
     ColumnType column_type = ColumnType::String;
     std::string output_name;
 };
@@ -57,13 +61,23 @@ struct PlannedFilter {
     ColumnType comparison_type = ColumnType::String;
 };
 
+struct PlannedPredicate {
+    PredicatePtr predicate;
+};
+
 struct PlannedQuery {
     std::filesystem::path table_path;
+    Schema table_schema;
     std::vector<size_t> projection_indexes;
-    std::optional<PlannedFilter> filter;
+    PredicatePtr filter;
+    PredicatePtr having;
     std::vector<PlannedGroupKey> group_keys;
     std::vector<PlannedAgg> aggregates;
     std::vector<PlannedSelectItem> select_items;
+    std::vector<SelectItemSpec> plain_select_items;
     std::vector<PlannedOrderBy> order_by;
+    std::vector<OrderBySpec> plain_order_by;
     std::optional<size_t> limit;
+    size_t offset = 0;
+    bool plain_select = false;
 };
