@@ -1,5 +1,3 @@
-/* (What is this? — Чтение/запись CSV) */
-
 #pragma once
 
 #include <filesystem>
@@ -18,13 +16,11 @@ class CsvReader {
     CsvReader& operator=(CsvReader&& other) noexcept;
     ~CsvReader() = default;
 
-   public:
     bool ReadRow(std::vector<std::string>& row) const;
 
    private:
     void RebindAfterMove(bool uses_owned_stream, std::istream* source_stream) noexcept;
 
-   private:
     std::ifstream owned_in_;
     std::istream* in_ = nullptr;
 };
@@ -39,14 +35,12 @@ class CsvWriter {
     CsvWriter& operator=(CsvWriter&& other) noexcept;
     ~CsvWriter() = default;
 
-   public:
     void WriteRow(const std::vector<std::string>& row) const;
     void Flush() const;
 
    private:
     void RebindAfterMove(bool uses_owned_stream, std::ostream* source_stream) noexcept;
 
-   private:
     std::ofstream owned_out_;
     std::ostream* out_ = nullptr;
 };

@@ -1,5 +1,3 @@
-/* (What is this? — Модуль временного файла) */
-
 #pragma once
 
 #include <chrono>
@@ -35,7 +33,6 @@ class TempFile {
     }
     ~TempFile() { Remove(); }
 
-   public:
     const std::filesystem::path& Path() const { return path_; }
 
    private:
@@ -47,6 +44,5 @@ class TempFile {
         std::filesystem::remove(path_, ec);
     }
 
-   private:
     std::filesystem::path path_;
 };

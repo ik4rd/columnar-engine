@@ -2,15 +2,16 @@
 #include <string>
 #include <vector>
 
-#include "columnar_batch_io.h"
-#include "csv_columnar.h"
-#include "csv.h"
-#include "error.h"
-#include "fileio.h"
+#include "convert/csv_columnar.h"
 #include "gtest/gtest.h"
-#include "parsing.h"
-#include "schema.h"
-#include "temp_file.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/file.h"
+#include "model/schema.h"
+#include "model/schema_csv.h"
+#include "common/error.h"
+#include "common/parsing.h"
+#include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
     const TempFile schema_in("schema_in");
@@ -108,7 +109,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
         }
     }
 
-    const auto file_info = TryGetFileMetadata(columnar_file.Path());
+    const auto file_info = GetFileMetadata(columnar_file.Path());
     ASSERT_TRUE(file_info.has_value());
     EXPECT_TRUE(file_info->is_regular);
     EXPECT_LT(expected_offset, file_info->size);
@@ -194,4 +195,15 @@ TEST(columnar, infer_schema_from_csv_is_convert_compatible) {
     ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
 
     EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
+}
+
+TEST(columnar, schema_rows_with_trailing_empty_columns_are_accepted) {
+    const TempFile schema_in("schema_trailing_empty");
+    const TempFile data_in("data_trailing_empty");
+    const TempFile columnar_file("columnar_trailing_empty");
+
+    WriteRows(schema_in.Path(), {{"id", "int64", ""}, {"name", "string", ""}});
+    WriteRows(data_in.Path(), {{"1", "alpha"}, {"2", "beta"}});
+
+    EXPECT_NO_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 2));
 }

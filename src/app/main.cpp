@@ -3,12 +3,13 @@
 #include <stdexcept>
 #include <vector>
 
-#include "csv_batch_io.h"
-#include "csv_columnar.h"
-#include "error.h"
-#include "executor.h"
-#include "fileio.h"
-#include "schema.h"
+#include "convert/csv_columnar.h"
+#include "executor/executor.h"
+#include "io/csv_batch.h"
+#include "io/file.h"
+#include "model/schema.h"
+#include "model/schema_csv.h"
+#include "common/error.h"
 
 void ConfigureInferSchemaCommand(argparse::ArgumentParser& command) {
     command.add_description("Infer a schema from a CSV file.");
@@ -21,7 +22,7 @@ void ConfigureConvertCommand(argparse::ArgumentParser& command) {
     command.add_argument("--schema").required();
     command.add_argument("--input").required();
     command.add_argument("--output").required();
-    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(50000);
+    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(size_t{50000});
 }
 
 void ConfigureRoundtripCommand(argparse::ArgumentParser& command) {
@@ -43,27 +44,34 @@ void ConfigureRunQueryCommand(argparse::ArgumentParser& command) {
 int RunInferSchema(const argparse::ArgumentParser& command) {
     const auto input_path = std::filesystem::path(command.get<std::string>("--input"));
     const auto output_path = std::filesystem::path(command.get<std::string>("--output"));
+
     EnsureParentDirectory(output_path);
     WriteSchemaCsv(output_path, InferSchemaCsv(input_path));
+
     return 0;
 }
 
 int RunConvert(const argparse::ArgumentParser& command) {
     const auto output_path = std::filesystem::path(command.get<std::string>("--output"));
+
     EnsureParentDirectory(output_path);
     ConvertCsvToColumnar(std::filesystem::path(command.get<std::string>("--schema")),
                          std::filesystem::path(command.get<std::string>("--input")), output_path,
                          command.get<size_t>("--row-group-size"));
+
     return 0;
 }
 
 int RunRoundtrip(const argparse::ArgumentParser& command) {
     const auto schema_output_path = std::filesystem::path(command.get<std::string>("--schema-output"));
     const auto csv_output_path = std::filesystem::path(command.get<std::string>("--csv-output"));
+
     EnsureParentDirectory(schema_output_path);
     EnsureParentDirectory(csv_output_path);
+
     ConvertColumnarToCsv(std::filesystem::path(command.get<std::string>("--input")), schema_output_path,
                          csv_output_path);
+
     return 0;
 }
 
@@ -117,12 +125,15 @@ int main(const int argc, char** argv) {
         if (program.is_subcommand_used("infer-schema")) {
             return RunInferSchema(infer_schema_command);
         }
+
         if (program.is_subcommand_used("convert")) {
             return RunConvert(convert_command);
         }
+
         if (program.is_subcommand_used("roundtrip")) {
             return RunRoundtrip(roundtrip_command);
         }
+
         if (program.is_subcommand_used("run-query")) {
             return RunQuery(run_query_command);
         }

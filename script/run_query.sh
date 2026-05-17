@@ -29,7 +29,7 @@ columnar_path=${columnar_path}
 query_file=${query_file}
 message=Add SQL text to benchmarks/queries/query_${query_num}.sql
 EOF
-  exit 0
+  return 0 2>/dev/null
 fi
 
 if [[ ! -x "${binary}" ]]; then

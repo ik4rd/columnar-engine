@@ -1,12 +1,10 @@
-/* (What is this? — Сериализация метаданных) */
-
 #pragma once
 
 #include <cstdint>
 #include <iosfwd>
 #include <vector>
 
-#include "schema.h"
+#include "model/schema.h"
 
 struct ColumnChunkMetadata {
     uint64_t offset = 0;

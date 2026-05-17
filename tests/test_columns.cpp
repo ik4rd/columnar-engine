@@ -2,12 +2,12 @@
 #include <string>
 #include <vector>
 
-#include "column.h"
-#include "column_int64.h"
-#include "column_string.h"
-#include "error.h"
+#include "model/column.h"
+#include "model/column_int64.h"
+#include "model/column_string.h"
+#include "common/error.h"
 #include "gtest/gtest.h"
-#include "parsing.h"
+#include "common/parsing.h"
 
 static void ExpectColumnRoundtrip(const ColumnType type, const std::vector<std::string>& values,
                                   const std::vector<std::string>& expected_values = {}) {

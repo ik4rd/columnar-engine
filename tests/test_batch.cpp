@@ -1,18 +1,50 @@
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
-#include "columnar_batch_io.h"
-#include "csv.h"
-#include "csv_batch_io.h"
-#include "error.h"
 #include "gtest/gtest.h"
-#include "temp_file.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/csv_batch.h"
+#include "common/error.h"
+#include "testing/temp_file.h"
 
 static_assert(std::is_copy_constructible_v<Batch>);
 static_assert(std::is_copy_assignable_v<Batch>);
 static_assert(std::is_move_constructible_v<Batch>);
 static_assert(std::is_move_assignable_v<Batch>);
+
+TEST(batch, usage_example_csv_to_columnar_roundtrip) {
+    Schema schema;
+    schema.columns = {
+        {"id", ColumnType::Int64},
+        {"name", ColumnType::String},
+    };
+
+    const TempFile csv_file("batch_usage_csv");
+    const TempFile columnar_file("batch_usage_columnar");
+    WriteRows(csv_file.Path(), {
+                                   {"1", "alpha"},
+                                   {"2", "beta"},
+                               });
+
+    CsvBatchReader csv_reader(csv_file.Path(), schema, {});
+    ColumnarBatchWriter columnar_writer(columnar_file.Path(), schema);
+
+    while (auto batch = csv_reader.ReadNext()) {
+        columnar_writer.Write(*batch);
+    }
+    std::move(columnar_writer).Finalize();
+
+    ColumnarBatchReader columnar_reader(columnar_file.Path());
+    auto batch = columnar_reader.ReadNext();
+    ASSERT_TRUE(batch.has_value());
+    EXPECT_EQ(batch->RowsCount(), 2u);
+    EXPECT_EQ(batch->ColumnAt(0).ValueAsString(0), "1");
+    EXPECT_EQ(batch->ColumnAt(1).ValueAsString(1), "beta");
+    EXPECT_FALSE(columnar_reader.ReadNext().has_value());
+}
 
 TEST(batch, csv_reader_respects_max_rows) {
     Schema schema;
@@ -57,10 +89,10 @@ TEST(batch, write_batch_csv_writes_single_batch) {
     };
 
     Batch batch(schema);
-    batch.ColumnAt(0).AppendFromString("1");
-    batch.ColumnAt(1).AppendFromString("alpha");
-    batch.ColumnAt(0).AppendFromString("2");
-    batch.ColumnAt(1).AppendFromString("be,ta");
+    batch.AppendValueFromString(0, "1");
+    batch.AppendValueFromString(1, "alpha");
+    batch.AppendValueFromString(0, "2");
+    batch.AppendValueFromString(1, "be,ta");
 
     const TempFile data_out("batch_write_csv");
     WriteBatchCsv(data_out.Path(), batch);
@@ -97,7 +129,7 @@ TEST(batch, columnar_roundtrip) {
     while (auto batch = csv_reader.ReadNext()) {
         columnar_writer.Write(*batch);
     }
-    columnar_writer.Finalize();
+    std::move(columnar_writer).Finalize();
 
     ColumnarBatchReader columnar_reader(columnar_file.Path());
     EXPECT_EQ(columnar_reader.GetMetadata().row_groups.size(), 2u);
@@ -118,9 +150,9 @@ TEST(batch, validate_detects_row_count_mismatch) {
     };
 
     Batch batch(schema);
-    batch.ColumnAt(0).AppendFromString("1");
-    batch.ColumnAt(0).AppendFromString("2");
-    batch.ColumnAt(1).AppendFromString("alpha");
+    batch.AppendValueFromString(0, "1");
+    batch.AppendValueFromString(0, "2");
+    batch.AppendValueFromString(1, "alpha");
 
     EXPECT_THROW(batch.Validate(), Error);
 }
@@ -133,12 +165,12 @@ TEST(batch, copy_is_deep) {
     };
 
     Batch original(schema);
-    original.ColumnAt(0).AppendFromString("1");
-    original.ColumnAt(1).AppendFromString("alpha");
+    original.AppendValueFromString(0, "1");
+    original.AppendValueFromString(1, "alpha");
 
     Batch copied = original;
-    copied.ColumnAt(0).AppendFromString("2");
-    copied.ColumnAt(1).AppendFromString("beta");
+    copied.AppendValueFromString(0, "2");
+    copied.AppendValueFromString(1, "beta");
 
     EXPECT_EQ(original.RowsCount(), 1u);
     EXPECT_EQ(original.ColumnAt(0).ValueAsString(0), "1");
@@ -237,9 +269,9 @@ TEST(batch, columnar_writer_rejects_after_finalize) {
 
     const TempFile columnar_file("batch_finalize_columnar");
     ColumnarBatchWriter writer(columnar_file.Path(), schema);
-    writer.Finalize();
+    std::move(writer).Finalize();
 
     Batch batch(schema);
     EXPECT_THROW(writer.Write(batch), Error);
-    EXPECT_THROW(writer.Finalize(), Error);
+    EXPECT_THROW(std::move(writer).Finalize(), Error);
 }

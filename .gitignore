@@ -104,7 +104,6 @@ examples/out_columnar
 # benchmarks
 benchmarks/hits_sample.csv
 benchmarks/hits_sample_new.csv
-benchmarks/schema_sample.csv
 benchmarks/schema_sample_new.csv
 benchmarks/hits_sample.columnar
 benchmarks/benchmark_csv_to_columnar
