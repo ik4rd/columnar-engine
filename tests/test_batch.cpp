@@ -3,11 +3,11 @@
 #include <utility>
 #include <vector>
 
-#include "io/columnar_batch_io.h"
-#include "io/csv.h"
-#include "io/csv_batch_io.h"
-#include "support/error.h"
 #include "gtest/gtest.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/csv_batch.h"
+#include "common/error.h"
 #include "testing/temp_file.h"
 
 static_assert(std::is_copy_constructible_v<Batch>);
@@ -89,10 +89,10 @@ TEST(batch, write_batch_csv_writes_single_batch) {
     };
 
     Batch batch(schema);
-    batch.ColumnAt(0).AppendFromString("1");
-    batch.ColumnAt(1).AppendFromString("alpha");
-    batch.ColumnAt(0).AppendFromString("2");
-    batch.ColumnAt(1).AppendFromString("be,ta");
+    batch.AppendValueFromString(0, "1");
+    batch.AppendValueFromString(1, "alpha");
+    batch.AppendValueFromString(0, "2");
+    batch.AppendValueFromString(1, "be,ta");
 
     const TempFile data_out("batch_write_csv");
     WriteBatchCsv(data_out.Path(), batch);
@@ -150,9 +150,9 @@ TEST(batch, validate_detects_row_count_mismatch) {
     };
 
     Batch batch(schema);
-    batch.ColumnAt(0).AppendFromString("1");
-    batch.ColumnAt(0).AppendFromString("2");
-    batch.ColumnAt(1).AppendFromString("alpha");
+    batch.AppendValueFromString(0, "1");
+    batch.AppendValueFromString(0, "2");
+    batch.AppendValueFromString(1, "alpha");
 
     EXPECT_THROW(batch.Validate(), Error);
 }
@@ -165,12 +165,12 @@ TEST(batch, copy_is_deep) {
     };
 
     Batch original(schema);
-    original.ColumnAt(0).AppendFromString("1");
-    original.ColumnAt(1).AppendFromString("alpha");
+    original.AppendValueFromString(0, "1");
+    original.AppendValueFromString(1, "alpha");
 
     Batch copied = original;
-    copied.ColumnAt(0).AppendFromString("2");
-    copied.ColumnAt(1).AppendFromString("beta");
+    copied.AppendValueFromString(0, "2");
+    copied.AppendValueFromString(1, "beta");
 
     EXPECT_EQ(original.RowsCount(), 1u);
     EXPECT_EQ(original.ColumnAt(0).ValueAsString(0), "1");

@@ -1,18 +1,21 @@
+#include "executor/query_parser.h"
+
 #include <array>
 #include <charconv>
 #include <utility>
+#include <vector>
 
-#include "executor/executor.h"
-#include "support/ascii.h"
+#include "common/ascii.h"
+#include "common/error.h"
+#include "sql_parser/tokenizer.h"
 
 class TokenCursor {
    public:
     explicit TokenCursor(std::vector<TokenPtr> tokens) : tokens_(std::move(tokens)) {}
 
-   public:
     const Token& Peek(const size_t lookahead = 0) const {
         if (pos_ + lookahead >= tokens_.size()) {
-            throw Error::InvalidArgument("query_parser", "unexpected end of query");
+            throw Error::InvalidArgument("executor", "unexpected end of query");
         }
         return *tokens_[pos_ + lookahead];
     }
@@ -23,7 +26,7 @@ class TokenCursor {
 
     const Token& Consume(const Tokens type, const std::string_view message) {
         if (!Match(type)) {
-            throw Error::InvalidArgument("query_parser", std::string(message));
+            throw Error::InvalidArgument("executor", std::string(message));
         }
         return *tokens_[pos_++];
     }
@@ -38,7 +41,7 @@ class TokenCursor {
 
     const Token& ConsumeFunctionToken(const std::string_view message) {
         if (pos_ >= tokens_.size()) {
-            throw Error::InvalidArgument("query_parser", std::string(message));
+            throw Error::InvalidArgument("executor", std::string(message));
         }
 
         const Tokens type = tokens_[pos_]->GetType();
@@ -57,7 +60,7 @@ class TokenCursor {
             case Tokens::Greater:
             case Tokens::GreaterOrEqual:
             case Tokens::EndOfInput:
-                throw Error::InvalidArgument("query_parser", std::string(message));
+                throw Error::InvalidArgument("executor", std::string(message));
             default:
                 break;
         }
@@ -85,7 +88,7 @@ static ComparisonKind ComparisonKindFromToken(const Tokens type) {
         case Tokens::GreaterOrEqual:
             return ComparisonKind::GreaterOrEqual;
         default:
-            throw Error::InvalidArgument("query_parser", "expected comparison operator in WHERE");
+            throw Error::InvalidArgument("executor", "expected comparison operator in WHERE");
     }
 }
 
@@ -110,6 +113,79 @@ static ColumnRef ParseColumnRef(TokenCursor& cursor, const std::string_view mess
     return column;
 }
 
+static QueryValue QueryColumnValue(ColumnRef column) {
+    return QueryValue{
+        .kind = QueryValueKind::Column,
+        .column = std::move(column),
+        .literal = {},
+    };
+}
+
+static QueryValue QueryLiteralValue(QueryLiteral literal) {
+    return QueryValue{
+        .kind = QueryValueKind::Literal,
+        .column = {},
+        .literal = std::move(literal),
+    };
+}
+
+static QueryValue ParseFilterValue(TokenCursor& cursor, const std::string_view message,
+                                   const bool bare_identifier_is_column) {
+    if (cursor.TryConsume(Tokens::Minus)) {
+        const Token& literal = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after '-'");
+        return QueryLiteralValue(QueryLiteral{
+            .text = "-" + std::string(literal.GetText()),
+            .kind = LiteralKind::Numeric,
+        });
+    }
+
+    const Token& token = cursor.Peek();
+    switch (token.GetType()) {
+        case Tokens::NumericLiteral:
+            cursor.Consume(Tokens::NumericLiteral, message);
+            return QueryLiteralValue(QueryLiteral{
+                .text = std::string(token.GetText()),
+                .kind = LiteralKind::Numeric,
+            });
+        case Tokens::StringLiteral:
+            cursor.Consume(Tokens::StringLiteral, message);
+            return QueryLiteralValue(QueryLiteral{
+                .text = std::string(token.GetText()),
+                .kind = LiteralKind::String,
+            });
+        case Tokens::NameToken:
+            if (bare_identifier_is_column || cursor.Match(Tokens::Dot, 1)) {
+                return QueryColumnValue(ParseColumnRef(cursor, message));
+            }
+            cursor.Consume(Tokens::NameToken, message);
+            return QueryLiteralValue(QueryLiteral{
+                .text = std::string(token.GetText()),
+                .kind = LiteralKind::Identifier,
+            });
+        default:
+            throw Error::InvalidArgument("executor", std::string(message));
+    }
+}
+
+static std::string FormatAggregateCall(const std::string_view function_name, const std::string_view column_name,
+                                       const bool distinct, const AggArgumentKind argument_kind) {
+    std::string output(function_name);
+    output += '(';
+
+    if (argument_kind == AggArgumentKind::Star) {
+        output += '*';
+    } else {
+        if (distinct) {
+            output += "DISTINCT ";
+        }
+        output += column_name;
+    }
+
+    output += ')';
+
+    return output;
+}
+
 static std::optional<size_t> ParseOptionalLimit(TokenCursor& cursor) {
     if (!cursor.TryConsume(Tokens::Limit)) {
         return std::nullopt;
@@ -117,11 +193,13 @@ static std::optional<size_t> ParseOptionalLimit(TokenCursor& cursor) {
 
     const Token& limit_token = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after LIMIT");
     size_t limit = 0;
+
     const std::string_view text = limit_token.GetText();
     const char* begin = text.data();
     const char* end = begin + text.size();
+
     if (const auto [ptr, ec] = std::from_chars(begin, end, limit); ec != std::errc() || ptr != end) {
-        throw Error::InvalidArgument("query_parser", "invalid LIMIT value");
+        throw Error::InvalidArgument("executor", "invalid LIMIT value");
     }
 
     return limit;
@@ -131,27 +209,20 @@ static AggSpec ParseAggregate(TokenCursor& cursor) {
     const Token& function_token = cursor.ConsumeFunctionToken("expected aggregate function");
 
     AggSpec spec;
-    spec.function = &ResolveAggFunc(function_token.GetText());
+    spec.function_name = ToUpperAscii(function_token.GetText());
 
     cursor.Consume(Tokens::OpenBracket, "expected '(' after aggregate function");
 
     if (cursor.TryConsume(Tokens::Asterisk)) {
-        if (!spec.function->star) {
-            throw Error::InvalidArgument("query_parser",
-                                         std::string(spec.function->canonical_name) + " does not support '*'");
-        }
-        spec.star = true;
+        spec.argument_kind = AggArgumentKind::Star;
     } else {
         spec.distinct = cursor.TryConsume(Tokens::Distinct);
-        if (spec.distinct && !spec.function->distinct) {
-            throw Error::InvalidArgument("query_parser",
-                                         std::string(spec.function->canonical_name) + " does not support DISTINCT");
-        }
         spec.column = ParseColumnRef(cursor, "expected column name in aggregate");
     }
 
     cursor.Consume(Tokens::CloseBracket, "expected ')' after aggregate arguments");
-    spec.output_name = FormatAgg(*spec.function, FormatColumnRef(spec.column), spec.distinct, spec.star);
+    spec.output_name =
+        FormatAggregateCall(spec.function_name, FormatColumnRef(spec.column), spec.distinct, spec.argument_kind);
 
     return spec;
 }
@@ -179,19 +250,23 @@ static std::string ParseSelectItemAlias(TokenCursor& cursor) {
     if (cursor.TryConsume(Tokens::As)) {
         return std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
     }
+
     if (cursor.Match(Tokens::NameToken)) {
         return std::string(cursor.Consume(Tokens::NameToken, "expected alias").GetText());
     }
+
     return {};
 }
 
 static SelectItemSpec ParseSelectItem(TokenCursor& cursor) {
     SelectItemSpec item = ParseSelectExpression(cursor);
+
     if (const std::string alias = ParseSelectItemAlias(cursor); !alias.empty()) {
         item.output_name = alias;
     } else if (item.kind == SelectItemKind::Aggregate) {
         item.output_name = item.aggregate.output_name;
     }
+
     return item;
 }
 
@@ -216,7 +291,7 @@ static OrderBySpec ParseOrderByItem(TokenCursor& cursor) {
     };
 }
 
-ParsedQuery ParseQuery(const std::string_view query) {
+Query ParseQuery(const std::string_view query) {
     auto tokenized = TokenizeSql(query);
     if (!tokenized.has_value()) {
         throw tokenized.error();
@@ -224,74 +299,57 @@ ParsedQuery ParseQuery(const std::string_view query) {
 
     TokenCursor cursor(std::move(tokenized.value()));
 
-    ParsedQuery parsed;
+    Query query_ast;
     cursor.Consume(Tokens::Select, "expected SELECT");
 
-    parsed.select_items.push_back(ParseSelectItem(cursor));
+    query_ast.select_items.push_back(ParseSelectItem(cursor));
     while (cursor.TryConsume(Tokens::Comma)) {
-        parsed.select_items.push_back(ParseSelectItem(cursor));
+        query_ast.select_items.push_back(ParseSelectItem(cursor));
     }
 
     cursor.Consume(Tokens::From, "expected FROM");
-    parsed.table_name = std::string(cursor.Consume(Tokens::NameToken, "expected table name").GetText());
+    query_ast.table_name = std::string(cursor.Consume(Tokens::NameToken, "expected table name").GetText());
+
     if (cursor.TryConsume(Tokens::As)) {
-        parsed.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
+        query_ast.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected alias after AS").GetText());
     } else if (cursor.Match(Tokens::NameToken)) {
-        parsed.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected table alias").GetText());
+        query_ast.table_alias = std::string(cursor.Consume(Tokens::NameToken, "expected table alias").GetText());
     }
 
     if (cursor.TryConsume(Tokens::Where)) {
         FilterSpec filter;
-        filter.column = ParseColumnRef(cursor, "expected column name after WHERE");
+        filter.left = ParseFilterValue(cursor, "expected left operand after WHERE", true);
 
         const Tokens comparison_token = cursor.Peek().GetType();
         filter.comparison = ComparisonKindFromToken(comparison_token);
 
         cursor.Consume(comparison_token, "expected comparison operator in WHERE");
+        filter.right = ParseFilterValue(cursor, "expected right operand after comparison operator", false);
 
-        if (cursor.TryConsume(Tokens::Minus)) {
-            const Token& literal = cursor.Consume(Tokens::NumericLiteral, "expected numeric literal after '-'");
-            filter.literal =
-                ParsedLiteral{.text = "-" + std::string(literal.GetText()), .token_type = Tokens::NumericLiteral};
-        } else {
-            const Token& literal = cursor.Peek();
-            switch (literal.GetType()) {
-                case Tokens::NumericLiteral:
-                case Tokens::StringLiteral:
-                case Tokens::NameToken:
-                    filter.literal = ParsedLiteral{
-                        .text = std::string(literal.GetText()),
-                        .token_type = literal.GetType(),
-                    };
-                    cursor.Consume(literal.GetType(), "expected literal after comparison operator");
-                    break;
-                default:
-                    throw Error::InvalidArgument("query_parser", "unsupported literal in WHERE");
-            }
-        }
-
-        parsed.filter = std::move(filter);
+        query_ast.filter = std::move(filter);
     }
 
     if (cursor.TryConsume(Tokens::Group)) {
         cursor.Consume(Tokens::By, "expected BY after GROUP");
-        parsed.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
+        query_ast.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
+
         while (cursor.TryConsume(Tokens::Comma)) {
-            parsed.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
+            query_ast.group_by.push_back(ParseColumnRef(cursor, "expected column name in GROUP BY"));
         }
     }
 
     if (cursor.TryConsume(Tokens::Order)) {
         cursor.Consume(Tokens::By, "expected BY after ORDER");
-        parsed.order_by.push_back(ParseOrderByItem(cursor));
+        query_ast.order_by.push_back(ParseOrderByItem(cursor));
+
         while (cursor.TryConsume(Tokens::Comma)) {
-            parsed.order_by.push_back(ParseOrderByItem(cursor));
+            query_ast.order_by.push_back(ParseOrderByItem(cursor));
         }
     }
 
-    parsed.limit = ParseOptionalLimit(cursor);
+    query_ast.limit = ParseOptionalLimit(cursor);
     cursor.TryConsume(Tokens::Semicolon);
     cursor.Consume(Tokens::EndOfInput, "unexpected trailing tokens");
 
-    return parsed;
+    return query_ast;
 }

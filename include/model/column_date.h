@@ -7,7 +7,4 @@ class DateColumn final : public FixedColumn<DateColumn, int32_t, ColumnType::Dat
     using FixedColumn::FixedColumn;
 
     static const char* ModuleName() { return "column_date"; }
-
-    void AppendFromString(const std::string& value) override;
-    std::string ValueAsString(size_t row) const override;
 };

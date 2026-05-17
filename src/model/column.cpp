@@ -11,9 +11,9 @@
 #include "model/column_int64.h"
 #include "model/column_string.h"
 #include "model/column_timestamp.h"
-#include "support/error.h"
+#include "common/error.h"
 
-std::unique_ptr<Column> CreateColumn(const ColumnType type) {
+std::unique_ptr<MutableColumn> CreateColumn(const ColumnType type) {
     switch (type) {
         case ColumnType::Int64:
             return std::make_unique<Int64Column>();
@@ -34,7 +34,8 @@ std::unique_ptr<Column> CreateColumn(const ColumnType type) {
         case ColumnType::Character:
             return std::make_unique<CharacterColumn>();
     }
-    throw Error::Unsupported("column", "unsupported column type");
+
+    throw Error::Unsupported("model", "unsupported column type");
 }
 
 Column::Column(const ColumnType type) : type_(type) {}

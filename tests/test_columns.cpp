@@ -5,9 +5,9 @@
 #include "model/column.h"
 #include "model/column_int64.h"
 #include "model/column_string.h"
-#include "support/error.h"
+#include "common/error.h"
 #include "gtest/gtest.h"
-#include "support/parsing.h"
+#include "common/parsing.h"
 
 static void ExpectColumnRoundtrip(const ColumnType type, const std::vector<std::string>& values,
                                   const std::vector<std::string>& expected_values = {}) {

@@ -1,39 +1,43 @@
 #include "executor/planner_utils.h"
 
-#include "support/ascii.h"
+#include "common/ascii.h"
+#include "common/error.h"
 
 size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);
+
     for (size_t i = 0; i < schema.columns.size(); ++i) {
         if (ToLowerAscii(schema.columns[i].name) == needle) {
             return i;
         }
     }
-    throw Error::InvalidArgument("query_planner", "unknown column '" + std::string(column_name) + "'");
+
+    throw Error::InvalidArgument("executor", "unknown column '" + std::string(column_name) + "'");
 }
 
 static bool SameQualifier(const std::string_view lhs, const std::string_view rhs) {
     return ToLowerAscii(lhs) == ToLowerAscii(rhs);
 }
 
-void ValidateColumnQualifier(const ParsedQuery& parsed, const ColumnRef& column) {
+void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
     if (column.qualifier.empty()) {
         return;
     }
 
-    if (SameQualifier(column.qualifier, parsed.table_name)) {
-        return;
-    }
-    if (!parsed.table_alias.empty() && SameQualifier(column.qualifier, parsed.table_alias)) {
+    if (SameQualifier(column.qualifier, query.table_name)) {
         return;
     }
 
-    throw Error::InvalidArgument("query_planner", "unknown table qualifier '" + column.qualifier + "'");
+    if (!query.table_alias.empty() && SameQualifier(column.qualifier, query.table_alias)) {
+        return;
+    }
+
+    throw Error::InvalidArgument("executor", "unknown table qualifier '" + column.qualifier + "'");
 }
 
 static std::string UnescapeSqlString(const std::string_view text) {
     if (text.size() < 2 || text.front() != '\'' || text.back() != '\'') {
-        throw Error::InvalidArgument("query_planner", "invalid string literal");
+        throw Error::InvalidArgument("executor", "invalid string literal");
     }
 
     std::string result;
@@ -45,36 +49,41 @@ static std::string UnescapeSqlString(const std::string_view text) {
             ++i;
             continue;
         }
+
         result.push_back(text[i]);
     }
 
     return result;
 }
 
-std::string NormalizeLiteral(const ParsedLiteral& literal, const ColumnType type) {
-    switch (literal.token_type) {
-        case Tokens::StringLiteral:
+std::string NormalizeLiteral(const QueryLiteral& literal, const ColumnType type) {
+    switch (literal.kind) {
+        case LiteralKind::String:
             return UnescapeSqlString(literal.text);
-        case Tokens::NumericLiteral:
-        case Tokens::NameToken:
-            if (type == ColumnType::String && literal.token_type == Tokens::NameToken) {
+        case LiteralKind::Numeric:
+        case LiteralKind::Identifier:
+            if (type == ColumnType::String && literal.kind == LiteralKind::Identifier) {
                 return literal.text;
             }
             return literal.text;
         default:
-            throw Error::InvalidArgument("query_planner", "unsupported literal type");
+            throw Error::InvalidArgument("executor", "unsupported literal type");
     }
 }
 
-bool SameColumnName(const std::string_view lhs, const std::string_view rhs) { return ToLowerAscii(lhs) == ToLowerAscii(rhs); }
+bool SameColumnName(const std::string_view lhs, const std::string_view rhs) {
+    return ToLowerAscii(lhs) == ToLowerAscii(rhs);
+}
 
 bool SameColumnRef(const ColumnRef& lhs, const ColumnRef& rhs) {
     if (!SameColumnName(lhs.name, rhs.name)) {
         return false;
     }
+
     if (lhs.qualifier.empty() || rhs.qualifier.empty()) {
         return true;
     }
+
     return SameQualifier(lhs.qualifier, rhs.qualifier);
 }
 

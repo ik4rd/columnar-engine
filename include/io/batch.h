@@ -21,7 +21,6 @@ class BatchReader {
     BatchReader& operator=(BatchReader&&) noexcept = default;
     virtual ~BatchReader() = default;
 
-   public:
     virtual std::optional<Batch> ReadNext() = 0;
 };
 
@@ -34,7 +33,6 @@ class BatchWriter {
     BatchWriter& operator=(BatchWriter&&) noexcept = default;
     virtual ~BatchWriter() = default;
 
-   public:
     virtual void Write(const Batch& batch) = 0;
     virtual void Flush() = 0;
 };

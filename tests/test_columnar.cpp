@@ -2,14 +2,15 @@
 #include <string>
 #include <vector>
 
-#include "io/columnar_batch_io.h"
 #include "convert/csv_columnar.h"
-#include "io/csv.h"
-#include "support/error.h"
-#include "io/fileio.h"
 #include "gtest/gtest.h"
-#include "support/parsing.h"
+#include "io/columnar_batch.h"
+#include "io/csv.h"
+#include "io/file.h"
 #include "model/schema.h"
+#include "model/schema_csv.h"
+#include "common/error.h"
+#include "common/parsing.h"
 #include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
@@ -108,7 +109,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
         }
     }
 
-    const auto file_info = TryGetFileMetadata(columnar_file.Path());
+    const auto file_info = GetFileMetadata(columnar_file.Path());
     ASSERT_TRUE(file_info.has_value());
     EXPECT_TRUE(file_info->is_regular);
     EXPECT_LT(expected_offset, file_info->size);

@@ -1,64 +1,86 @@
-#include "support/parsing.h"
+#include "common/parsing.h"
 
 #include <charconv>
 #include <chrono>
+#include <concepts>
 #include <iomanip>
 #include <limits>
+#include <optional>
 #include <sstream>
 
-#include "support/ascii.h"
-#include "support/error.h"
+#include "common/ascii.h"
+#include "common/error.h"
+
+template <std::integral T>
+bool TryParseInteger(const std::string_view value, T& result) {
+    if (value.empty()) {
+        return false;
+    }
+
+    const char* begin = value.data();
+    const char* end = begin + value.size();
+    const auto [ptr, ec] = std::from_chars(begin, end, result);
+
+    return ec == std::errc() && ptr == end;
+}
 
 template <std::integral T>
 T ParseInteger(const std::string& value, const std::string_view type_name) {
     if (value.empty()) {
-        throw Error::InvalidData("parsing", "empty value for " + std::string(type_name));
+        throw Error::MalformedData("common", "empty value for " + std::string(type_name));
     }
 
     T result = 0;
-    const char* begin = value.data();
-    const char* end = begin + value.size();
-
-    if (const auto [ptr, ec] = std::from_chars(begin, end, result); ec != std::errc() || ptr != end) {
-        throw Error::InvalidData("parsing", "invalid " + std::string(type_name) + " value");
+    if (!TryParseInteger(std::string_view(value), result)) {
+        throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
     }
 
     return result;
 }
 
-static unsigned ParseUnsignedPart(const std::string_view input, const size_t offset, const size_t length,
-                                  const std::string_view type_name) {
-    unsigned value = 0;
+static bool TryParseUnsignedPart(const std::string_view input, const size_t offset, const size_t length,
+                                 unsigned& value) {
     const char* begin = input.data() + offset;
     const char* end = begin + length;
-
-    if (const auto [ptr, ec] = std::from_chars(begin, end, value); ec != std::errc() || ptr != end) {
-        throw Error::InvalidData("parsing", "invalid " + std::string(type_name) + " value");
-    }
-
-    return value;
+    const auto [ptr, ec] = std::from_chars(begin, end, value);
+    return ec == std::errc() && ptr == end;
 }
 
-static std::chrono::sys_days ParseDatePoint(const std::string_view value, const std::string_view type_name) {
+static bool TryParseDatePoint(const std::string_view value, std::chrono::sys_days& result) {
     if (value.size() != 10 || value[4] != '-' || value[7] != '-') {
-        throw Error::InvalidData("parsing", "invalid " + std::string(type_name) + " value");
+        return false;
     }
 
-    const int year = static_cast<int>(ParseUnsignedPart(value, 0, 4, type_name));
-    const unsigned month = ParseUnsignedPart(value, 5, 2, type_name);
-    const unsigned day = ParseUnsignedPart(value, 8, 2, type_name);
+    unsigned year = 0;
+    unsigned month = 0;
+    unsigned day = 0;
+
+    if (!TryParseUnsignedPart(value, 0, 4, year) || !TryParseUnsignedPart(value, 5, 2, month) ||
+        !TryParseUnsignedPart(value, 8, 2, day)) {
+        return false;
+    }
 
     const std::chrono::year_month_day ymd{
-        std::chrono::year{year},
+        std::chrono::year{static_cast<int>(year)},
         std::chrono::month{month},
         std::chrono::day{day},
     };
 
     if (!ymd.ok()) {
-        throw Error::InvalidData("parsing", "invalid " + std::string(type_name) + " value");
+        return false;
     }
 
-    return std::chrono::sys_days{ymd};
+    result = std::chrono::sys_days{ymd};
+
+    return true;
+}
+
+static std::chrono::sys_days ParseDatePoint(const std::string_view value, const std::string_view type_name) {
+    std::chrono::sys_days result{};
+    if (!TryParseDatePoint(value, result)) {
+        throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
+    }
+    return result;
 }
 
 static std::string FormatDateParts(const std::chrono::year_month_day ymd) {
@@ -68,7 +90,7 @@ static std::string FormatDateParts(const std::chrono::year_month_day ymd) {
     return out.str();
 }
 
-bool ParseBoolean(const std::string& value) {
+std::optional<bool> TryParseBoolean(const std::string_view value) {
     const std::string lowered = ToLowerAscii(value);
     if (lowered == "true" || lowered == "1") {
         return true;
@@ -76,18 +98,50 @@ bool ParseBoolean(const std::string& value) {
     if (lowered == "false" || lowered == "0") {
         return false;
     }
-    throw Error::InvalidData("parsing", "invalid bool value");
+    return std::nullopt;
+}
+
+bool ParseBoolean(const std::string& value) {
+    const std::optional<bool> result = TryParseBoolean(value);
+    if (!result.has_value()) {
+        throw Error::MalformedData("common", "invalid bool value");
+    }
+    return *result;
+}
+
+std::optional<int16_t> TryParseInt16(const std::string_view value) {
+    int16_t result = 0;
+    if (!TryParseInteger(value, result)) {
+        return std::nullopt;
+    }
+    return result;
 }
 
 int16_t ParseInt16(const std::string& value) { return ParseInteger<int16_t>(value, "int16"); }
 
+std::optional<int32_t> TryParseInt32(const std::string_view value) {
+    int32_t result = 0;
+    if (!TryParseInteger(value, result)) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 int32_t ParseInt32(const std::string& value) { return ParseInteger<int32_t>(value, "int32"); }
+
+std::optional<int64_t> TryParseInt64(const std::string_view value) {
+    int64_t result = 0;
+    if (!TryParseInteger(value, result)) {
+        return std::nullopt;
+    }
+    return result;
+}
 
 int64_t ParseInt64(const std::string& value) { return ParseInteger<int64_t>(value, "int64"); }
 
-Int128 ParseInt128(const std::string& value) {
+std::optional<Int128> TryParseInt128(const std::string_view value) {
     if (value.empty()) {
-        throw Error::InvalidData("parsing", "empty value for int128");
+        return std::nullopt;
     }
 
     size_t pos = 0;
@@ -99,7 +153,7 @@ Int128 ParseInt128(const std::string& value) {
     }
 
     if (pos == value.size()) {
-        throw Error::InvalidData("parsing", "invalid int128 value");
+        return std::nullopt;
     }
 
     const UInt128 positive_limit = ~UInt128{0} >> 1;
@@ -111,24 +165,55 @@ Int128 ParseInt128(const std::string& value) {
     for (; pos < value.size(); ++pos) {
         const char ch = value[pos];
         if (ch < '0' || ch > '9') {
-            throw Error::InvalidData("parsing", "invalid int128 value");
+            return std::nullopt;
         }
 
         const auto digit = static_cast<UInt128>(ch - '0');
         if (magnitude > (limit - digit) / 10) {
-            throw Error::InvalidData("parsing", "invalid int128 value");
+            return std::nullopt;
         }
+
         magnitude = magnitude * 10 + digit;
     }
 
     if (!negative) {
         return static_cast<Int128>(magnitude);
     }
+
     if (magnitude == negative_limit) {
         return -static_cast<Int128>(positive_limit) - 1;
     }
 
     return -static_cast<Int128>(magnitude);
+}
+
+Int128 ParseInt128(const std::string& value) {
+    if (value.empty()) {
+        throw Error::MalformedData("common", "empty value for int128");
+    }
+
+    const std::optional<Int128> result = TryParseInt128(value);
+    if (!result.has_value()) {
+        throw Error::MalformedData("common", "invalid int128 value");
+    }
+
+    return *result;
+}
+
+std::optional<int32_t> TryParseDate(const std::string_view value) {
+    std::chrono::sys_days day_point{};
+    if (!TryParseDatePoint(value, day_point)) {
+        return std::nullopt;
+    }
+
+    const auto days_since_epoch = day_point.time_since_epoch().count();
+
+    if (days_since_epoch < std::numeric_limits<int32_t>::min() ||
+        days_since_epoch > std::numeric_limits<int32_t>::max()) {
+        return std::nullopt;
+    }
+
+    return days_since_epoch;
 }
 
 int32_t ParseDate(const std::string& value) {
@@ -137,47 +222,60 @@ int32_t ParseDate(const std::string& value) {
 
     if (days_since_epoch < std::numeric_limits<int32_t>::min() ||
         days_since_epoch > std::numeric_limits<int32_t>::max()) {
-        throw Error::Overflow("parsing", "date value exceeds supported range");
+        throw Error::Overflow("common", "date value exceeds supported range");
     }
 
     return days_since_epoch;
 }
 
-int64_t ParseTimestamp(const std::string& value) {
+std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
     if (value.size() < 19) {
-        throw Error::InvalidData("parsing", "invalid timestamp value");
+        return std::nullopt;
     }
 
-    const auto day_point = ParseDatePoint(std::string_view(value).substr(0, 10), "timestamp");
+    std::chrono::sys_days day_point{};
+    if (!TryParseDatePoint(value.substr(0, 10), day_point)) {
+        return std::nullopt;
+    }
 
     if (value[10] != ' ' && value[10] != 'T') {
-        throw Error::InvalidData("parsing", "invalid timestamp value");
-    }
-    if (value[13] != ':' || value[16] != ':') {
-        throw Error::InvalidData("parsing", "invalid timestamp value");
+        return std::nullopt;
     }
 
-    const unsigned hour = ParseUnsignedPart(value, 11, 2, "timestamp");
-    const unsigned minute = ParseUnsignedPart(value, 14, 2, "timestamp");
-    const unsigned second = ParseUnsignedPart(value, 17, 2, "timestamp");
+    if (value[13] != ':' || value[16] != ':') {
+        return std::nullopt;
+    }
+
+    unsigned hour = 0;
+    unsigned minute = 0;
+    unsigned second = 0;
+
+    if (!TryParseUnsignedPart(value, 11, 2, hour) || !TryParseUnsignedPart(value, 14, 2, minute) ||
+        !TryParseUnsignedPart(value, 17, 2, second)) {
+        return std::nullopt;
+    }
 
     if (hour > 23 || minute > 59 || second > 59) {
-        throw Error::InvalidData("parsing", "invalid timestamp value");
+        return std::nullopt;
     }
 
     int64_t microseconds = 0;
 
     if (value.size() > 19) {
         if (value[19] != '.') {
-            throw Error::InvalidData("parsing", "invalid timestamp value");
+            return std::nullopt;
         }
 
         const size_t digits = value.size() - 20;
         if (digits == 0 || digits > 6) {
-            throw Error::InvalidData("parsing", "invalid timestamp value");
+            return std::nullopt;
         }
 
-        const auto fractional = ParseUnsignedPart(value, 20, digits, "timestamp");
+        unsigned fractional = 0;
+        if (!TryParseUnsignedPart(value, 20, digits, fractional)) {
+            return std::nullopt;
+        }
+
         microseconds = static_cast<int64_t>(fractional);
         for (size_t i = digits; i < 6; ++i) {
             microseconds *= 10;
@@ -190,11 +288,27 @@ int64_t ParseTimestamp(const std::string& value) {
     return std::chrono::duration_cast<std::chrono::microseconds>(timestamp.time_since_epoch()).count();
 }
 
-char ParseCharacter(const std::string& value) {
+int64_t ParseTimestamp(const std::string& value) {
+    const std::optional<int64_t> result = TryParseTimestamp(value);
+    if (!result.has_value()) {
+        throw Error::MalformedData("common", "invalid timestamp value");
+    }
+    return *result;
+}
+
+std::optional<char> TryParseCharacter(const std::string_view value) {
     if (value.size() != 1) {
-        throw Error::InvalidData("parsing", "invalid char value");
+        return std::nullopt;
     }
     return value[0];
+}
+
+char ParseCharacter(const std::string& value) {
+    const std::optional<char> result = TryParseCharacter(value);
+    if (!result.has_value()) {
+        throw Error::MalformedData("common", "invalid char value");
+    }
+    return *result;
 }
 
 std::string BooleanToString(const bool value) { return value ? "true" : "false"; }
@@ -220,6 +334,7 @@ std::string Int128ToString(const Int128 value) {
         out.push_back(static_cast<char>('0' + magnitude % 10));
         magnitude /= 10;
     }
+
     if (negative) {
         out.push_back('-');
     }
@@ -235,9 +350,9 @@ std::string DateToString(const int32_t value) {
 }
 
 std::string TimestampToString(const int64_t value) {
-    const std::chrono::sys_time<std::chrono::microseconds> timestamp{std::chrono::microseconds{value}};
+    const std::chrono::sys_time timestamp{std::chrono::microseconds{value}};
     const auto day_point = std::chrono::floor<std::chrono::days>(timestamp);
-    const std::chrono::hh_mm_ss<std::chrono::microseconds> tod{timestamp - day_point};
+    const std::chrono::hh_mm_ss tod{timestamp - day_point};
 
     std::ostringstream out;
     out << FormatDateParts(std::chrono::year_month_day{day_point}) << ' ' << std::setfill('0') << std::setw(2)
@@ -260,34 +375,44 @@ std::string TimestampToString(const int64_t value) {
 
 ColumnType ParseColumnType(const std::string_view input) {
     const std::string lowered = ToLowerAscii(input);
+
     if (lowered == "bool") {
         return ColumnType::Boolean;
     }
+
     if (lowered == "int16") {
         return ColumnType::Int16;
     }
+
     if (lowered == "int32") {
         return ColumnType::Int32;
     }
+
     if (lowered == "int64") {
         return ColumnType::Int64;
     }
+
     if (lowered == "int128") {
         return ColumnType::Int128;
     }
+
     if (lowered == "string") {
         return ColumnType::String;
     }
+
     if (lowered == "date") {
         return ColumnType::Date;
     }
+
     if (lowered == "timestamp") {
         return ColumnType::Timestamp;
     }
+
     if (lowered == "char") {
         return ColumnType::Character;
     }
-    throw Error::Unsupported("parsing", "unknown column type");
+
+    throw Error::Unsupported("common", "unknown column type");
 }
 
 std::string ColumnTypeToString(const ColumnType type) {
@@ -311,5 +436,6 @@ std::string ColumnTypeToString(const ColumnType type) {
         case ColumnType::Character:
             return "char";
     }
-    throw Error::Unsupported("parsing", "unknown column type");
+
+    throw Error::Unsupported("common", "unknown column type");
 }

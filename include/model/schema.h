@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 enum class ColumnType : uint8_t {
@@ -19,7 +19,10 @@ enum class ColumnType : uint8_t {
 
 struct ColumnSchema {
     std::string name;
-    ColumnType type = ColumnType::String;
+    ColumnType type;
+
+    ColumnSchema(std::string column_name, const ColumnType column_type)
+        : name(std::move(column_name)), type(column_type) {}
 
     bool operator==(const ColumnSchema& other) const = default;
 };
@@ -29,7 +32,3 @@ struct Schema {
 
     bool operator==(const Schema& other) const = default;
 };
-
-Schema ReadSchemaCsv(const std::filesystem::path& path);
-Schema InferSchemaCsv(const std::filesystem::path& path);
-void WriteSchemaCsv(const std::filesystem::path& path, const Schema& schema);

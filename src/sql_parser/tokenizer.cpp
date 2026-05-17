@@ -129,23 +129,28 @@ Expected<TokenPtr> Tokenizer::GetNext() {
                 ++pos_;
                 return MakeToken(Tokens::LessOrEqual, "<=", start);
             }
+
             if (pos_ < query_.size() && query_[pos_] == '>') {
                 ++pos_;
                 return MakeToken(Tokens::NotEqual, "<>", start);
             }
+
             return MakeToken(Tokens::Less, "<", start);
         case '>':
             ++pos_;
+
             if (pos_ < query_.size() && query_[pos_] == '=') {
                 ++pos_;
                 return MakeToken(Tokens::GreaterOrEqual, ">=", start);
             }
+
             return MakeToken(Tokens::Greater, ">", start);
         case '!':
             if (pos_ + 1 < query_.size() && query_[pos_ + 1] == '=') {
                 pos_ += 2;
                 return MakeToken(Tokens::NotEqual, "!=", start);
             }
+
             return MakeUnexpectedCharacter(ch, start);
         default:
             return MakeUnexpectedCharacter(ch, start);
@@ -165,6 +170,7 @@ Expected<std::vector<TokenPtr>> TokenizeSql(const std::string_view input) {
         }
 
         tokens.push_back(token.value());
+
         if (token.value()->GetType() == Tokens::EndOfInput) {
             break;
         }

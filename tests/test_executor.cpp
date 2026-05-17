@@ -69,6 +69,43 @@ TEST(executor, groups_rows_and_orders_by_aggregate_descending) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, encodes_multicolumn_group_keys_with_length_prefix) {
+    const TempFile schema_file("executor_schema");
+    const TempFile data_file("executor_data");
+    const TempFile columnar_file("executor_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"KeyLeft", "string"},
+                                      {"KeyRight", "string"},
+                                      {"Value", "int64"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"ab", "c", "1"},
+                                    {"a", "bc", "2"},
+                                    {"ab", "c", "3"},
+                                    {"a|", "bc", "4"},
+                                    {"a|", "bc", "5"},
+                                });
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    Executor executor;
+    executor.RegisterTable("events", columnar_file.Path());
+
+    auto result = executor.Execute("SELECT KeyLeft, KeyRight, COUNT(*) FROM events GROUP BY KeyLeft, KeyRight;");
+    ASSERT_TRUE(result.has_value()) << result.error().what();
+
+    EXPECT_EQ(BatchColumnNames(result.value()), (std::vector<std::string>{"KeyLeft", "KeyRight", "COUNT(*)"}));
+    auto actual_rows = BatchRows(result.value());
+    auto expected_rows = std::vector<std::vector<std::string>>{
+        {"a", "bc", "1"},
+        {"a|", "bc", "2"},
+        {"ab", "c", "2"},
+    };
+    std::ranges::sort(actual_rows);
+    std::ranges::sort(expected_rows);
+    EXPECT_EQ(actual_rows, expected_rows);
+}
+
 TEST(executor, supports_from_with_as_alias_and_qualified_columns) {
     const Batch batch = BuildHitsTable(
         "SELECT h.AdvEngineID, COUNT(*) FROM hits AS h WHERE h.AdvEngineID <> 0 GROUP BY h.AdvEngineID ORDER BY "
@@ -103,6 +140,13 @@ TEST(executor, supports_from_with_bare_alias) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, supports_column_to_column_filter) {
+    const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits h WHERE h.AdvEngineID > h.SearchEngineID;");
+
+    EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
+    EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"3"});
+}
+
 TEST(executor, supports_select_alias_order_by_alias_and_limit) {
     const Batch batch = BuildHitsTable(
         "SELECT RegionID, COUNT(DISTINCT UserID) AS u FROM hits GROUP BY RegionID ORDER BY u DESC LIMIT 2;");
@@ -118,14 +162,24 @@ TEST(executor, supports_select_alias_order_by_alias_and_limit) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, supports_order_by_limit_top_k_in_result_order) {
+    const Batch batch =
+        BuildHitsTable("SELECT RegionID, COUNT(*) FROM hits GROUP BY RegionID ORDER BY RegionID ASC LIMIT 2;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "COUNT(*)"}));
+    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
+                                    {"10", "2"},
+                                    {"20", "2"},
+                                }));
+}
+
 TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
     const Batch batch = BuildHitsTable(
         "SELECT RegionID, SUM(AdvEngineID), COUNT(*) AS c, AVG(ResolutionWidth), COUNT(DISTINCT UserID) "
         "FROM hits GROUP BY RegionID ORDER BY c DESC LIMIT 2;");
 
-    EXPECT_EQ(BatchColumnNames(batch),
-              (std::vector<std::string>{"RegionID", "SUM(AdvEngineID)", "c", "AVG(ResolutionWidth)",
-                                        "COUNT(DISTINCT UserID)"}));
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "SUM(AdvEngineID)", "c",
+                                                                 "AVG(ResolutionWidth)", "COUNT(DISTINCT UserID)"}));
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"10", "3", "2", "200", "2"},

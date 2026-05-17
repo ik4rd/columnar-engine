@@ -11,7 +11,7 @@
 #include <ostream>
 #include <string_view>
 
-#include "support/error.h"
+#include "common/error.h"
 
 void ReadBytes(std::istream& in, char* dst, size_t size);
 void WriteBytes(std::ostream& out, std::string_view bytes);

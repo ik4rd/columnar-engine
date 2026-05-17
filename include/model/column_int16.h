@@ -7,7 +7,4 @@ class Int16Column final : public FixedColumn<Int16Column, int16_t, ColumnType::I
     using FixedColumn::FixedColumn;
 
     static const char* ModuleName() { return "column_int16"; }
-
-    void AppendFromString(const std::string& value) override;
-    std::string ValueAsString(size_t row) const override;
 };
