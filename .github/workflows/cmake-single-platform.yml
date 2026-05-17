@@ -35,6 +35,7 @@ jobs:
           ./tests/test_columnar
           ./tests/test_columns
           ./tests/test_csv
+          ./tests/test_executor
           ./tests/test_fileio
           ./tests/test_stream
           ./tests/test_tokenizer
