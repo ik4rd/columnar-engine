@@ -7,7 +7,4 @@ class BooleanColumn final : public FixedColumn<BooleanColumn, uint8_t, ColumnTyp
     using FixedColumn::FixedColumn;
 
     static const char* ModuleName() { return "column_boolean"; }
-
-    void AppendFromString(const std::string& value) override;
-    std::string ValueAsString(size_t row) const override;
 };

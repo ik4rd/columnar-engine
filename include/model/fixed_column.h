@@ -5,6 +5,7 @@
 #include "common/error.h"
 #include "io/stream.h"
 #include "model/column.h"
+#include "model/column_traits.h"
 
 template <class ColumnImpl, std::integral T, ColumnType TypeValue>
 class FixedColumn : public MutableColumn {
@@ -19,6 +20,12 @@ class FixedColumn : public MutableColumn {
     size_t Size() const override { return values_.size(); }
     void Reserve(const size_t n) override { values_.reserve(n); }
     void Clear() override { values_.clear(); }
+    void AppendFromString(const std::string& value) override {
+        AppendValue(ColumnValueTraits<TypeValue>::Parse(value));
+    }
+    std::string ValueAsString(const size_t row) const override {
+        return ColumnValueTraits<TypeValue>::ToString(ValueAt(row));
+    }
 
     std::unique_ptr<Column> Clone() const override {
         return std::make_unique<ColumnImpl>(static_cast<const ColumnImpl&>(*this));

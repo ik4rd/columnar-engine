@@ -1,15 +1,7 @@
 add_library(columnar_engine_core
         model/batch.cpp
         model/column.cpp
-        model/column_boolean.cpp
-        model/column_character.cpp
-        model/column_date.cpp
-        model/column_int16.cpp
-        model/column_int32.cpp
-        model/column_int128.cpp
-        model/column_int64.cpp
         model/column_string.cpp
-        model/column_timestamp.cpp
         model/metadata.cpp
         io/batch.cpp
         io/file.cpp

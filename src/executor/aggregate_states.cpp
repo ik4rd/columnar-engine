@@ -10,63 +10,16 @@
 #include "common/parsing.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
+#include "model/column_traits.h"
 
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {
-    switch (type) {
-        case ColumnType::Boolean: {
-            const bool left = ParseBoolean(std::string(candidate));
-            const bool right = ParseBoolean(std::string(current));
+    return VisitColumnType(type, [&]<ColumnType TypeValue>() {
+        const auto left = ColumnValueTraits<TypeValue>::Parse(std::string(candidate));
+        const auto right = ColumnValueTraits<TypeValue>::Parse(std::string(current));
 
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Int16: {
-            const int16_t left = ParseInt16(std::string(candidate));
-            const int16_t right = ParseInt16(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Int32: {
-            const int32_t left = ParseInt32(std::string(candidate));
-            const int32_t right = ParseInt32(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Int64: {
-            const int64_t left = ParseInt64(std::string(candidate));
-            const int64_t right = ParseInt64(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Int128: {
-            const Int128 left = ParseInt128(std::string(candidate));
-            const Int128 right = ParseInt128(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::String:
-            return is_min ? candidate < current : candidate > current;
-        case ColumnType::Date: {
-            const int32_t left = ParseDate(std::string(candidate));
-            const int32_t right = ParseDate(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Timestamp: {
-            const int64_t left = ParseTimestamp(std::string(candidate));
-            const int64_t right = ParseTimestamp(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-        case ColumnType::Character: {
-            const char left = ParseCharacter(std::string(candidate));
-            const char right = ParseCharacter(std::string(current));
-
-            return is_min ? left < right : left > right;
-        }
-    }
-
-    throw Error::Unsupported("executor", "unsupported column type in comparison");
+        return is_min ? left < right : left > right;
+    });
 }
 
 static Int128 ParseToInt128(const ColumnType type, const std::string_view value) {
