@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "common/int128.h"
 #include "model/schema.h"
 
 class Column {
@@ -20,6 +21,7 @@ class Column {
 
     virtual size_t Size() const = 0;
     virtual std::string ValueAsString(size_t row) const = 0;
+    virtual Int128 ValueAsInt128(size_t row) const;
     virtual std::unique_ptr<Column> Clone() const = 0;
 
     virtual void WriteTo(std::ostream& out) const = 0;

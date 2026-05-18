@@ -12,6 +12,8 @@
 #include "executor/aggregate_state.h"
 #include "model/column_traits.h"
 
+void AggState::ConsumeInt128(const Int128 value) { ConsumeValue(Int128ToString(value)); }
+
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {
     return VisitColumnType(type, [&]<ColumnType TypeValue>() {
@@ -55,6 +57,7 @@ static std::string FormatAverage(const Int128 sum, const uint64_t count) {
 class CountAS final : public AggState {
    public:
     void ConsumeValue(const std::string_view) override { ConsumeRow(); }
+    void ConsumeInt128(const Int128) override { ConsumeRow(); }
     void ConsumeRow() override { ++count_; }
 
     std::string Finalize() const override { return std::to_string(count_); }
@@ -68,6 +71,7 @@ class SumAS final : public AggState {
     explicit SumAS(const ColumnType type) : type_(type) {}
 
     void ConsumeValue(const std::string_view value) override { sum_ += ParseToInt128(type_, value); }
+    void ConsumeInt128(const Int128 value) override { sum_ += value; }
     void ConsumeRow() override { throw Error::InvalidState("executor", "SUM requires a value"); }
 
     std::string Finalize() const override { return Int128ToString(sum_); }
@@ -83,6 +87,10 @@ class AvgAS final : public AggState {
 
     void ConsumeValue(const std::string_view value) override {
         sum_ += ParseToInt128(type_, value);
+        ++count_;
+    }
+    void ConsumeInt128(const Int128 value) override {
+        sum_ += value;
         ++count_;
     }
     void ConsumeRow() override { throw Error::InvalidState("executor", "AVG requires a value"); }

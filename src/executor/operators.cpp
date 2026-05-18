@@ -17,6 +17,37 @@
 #include "io/columnar_batch.h"
 #include "io/file.h"
 
+class MetadataCountOperator final : public Operator {
+   public:
+    MetadataCountOperator(std::filesystem::path path, std::string output_name)
+        : path_(std::move(path)), output_name_(std::move(output_name)) {}
+
+    std::optional<Batch> Next() override {
+        if (returned_) {
+            return std::nullopt;
+        }
+
+        returned_ = true;
+
+        const ColumnarMetadata metadata = ColumnarBatchReader(path_).GetMetadata();
+        uint64_t rows = 0;
+
+        for (const auto& row_group : metadata.row_groups) {
+            rows += row_group.row_count;
+        }
+
+        Batch result(Schema{{ColumnSchema(output_name_, ColumnType::Int64)}}, 1);
+        result.AppendValueFromString(0, std::to_string(rows));
+
+        return result;
+    }
+
+   private:
+    std::filesystem::path path_;
+    std::string output_name_;
+    bool returned_ = false;
+};
+
 class ScanOperator final : public Operator {
    public:
     ScanOperator(std::filesystem::path path, std::vector<size_t> projection_indexes)
@@ -163,7 +194,7 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
         int64_t micros = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
 
         if (part == "MINUTE") {
-            micros = (micros / 60000000) * 60000000;
+            micros = micros / 60000000 * 60000000;
             return TimestampToString(micros);
         }
 
@@ -172,8 +203,37 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
 
     if (name == "REGEXP_REPLACE") {
         const std::string source = EvalExpr(expr.arguments.at(0), batch, row);
-        const std::regex pattern(EvalExpr(expr.arguments.at(1), batch, row));
+        const std::string pattern_text = EvalExpr(expr.arguments.at(1), batch, row);
         std::string replacement = EvalExpr(expr.arguments.at(2), batch, row);
+
+        if (pattern_text == R"(^https?://(?:www\.)?([^/]+)/.*$)" && replacement == R"(\1)") {
+            std::string_view rest = source;
+            if (rest.starts_with("http://")) {
+                rest.remove_prefix(7);
+            } else if (rest.starts_with("https://")) {
+                rest.remove_prefix(8);
+            } else {
+                return source;
+            }
+
+            if (rest.starts_with("www.")) {
+                rest.remove_prefix(4);
+            }
+
+            const size_t slash = rest.find('/');
+            if (slash == std::string_view::npos || slash == 0) {
+                return source;
+            }
+
+            const std::string_view suffix = rest.substr(slash + 1);
+            if (suffix.find('\n') != std::string_view::npos || suffix.find('\r') != std::string_view::npos) {
+                return source;
+            }
+
+            return std::string(rest.substr(0, slash));
+        }
+
+        const std::regex pattern(pattern_text);
 
         for (size_t pos = 0; (pos = replacement.find("\\1", pos)) != std::string::npos;) {
             replacement.replace(pos, 2, "$1");
@@ -214,25 +274,176 @@ static std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_
     return {};
 }
 
-static bool LikeMatches(const std::string& value, const std::string& pattern) {
-    std::string regex_pattern = "^";
+static bool LikeMatchesPercentOnly(const std::string_view value, const std::string_view pattern) {
+    std::vector<std::string_view> segments;
 
-    for (const char ch : pattern) {
-        if (ch == '%') {
-            regex_pattern += ".*";
-        } else if (ch == '_') {
-            regex_pattern += '.';
-        } else {
-            if (std::string_view(".^$|()[]{}*+?\\").find(ch) != std::string_view::npos) {
-                regex_pattern.push_back('\\');
-            }
-            regex_pattern.push_back(ch);
+    for (size_t pos = 0; pos < pattern.size();) {
+        while (pos < pattern.size() && pattern[pos] == '%') {
+            ++pos;
+        }
+
+        const size_t start = pos;
+        while (pos < pattern.size() && pattern[pos] != '%') {
+            ++pos;
+        }
+
+        if (start != pos) {
+            segments.push_back(pattern.substr(start, pos - start));
         }
     }
 
-    regex_pattern += "$";
+    if (segments.empty()) {
+        return true;
+    }
 
-    return std::regex_match(value, std::regex(regex_pattern));
+    size_t value_pos = 0;
+    size_t segment_index = 0;
+
+    if (pattern.front() != '%') {
+        if (!value.starts_with(segments.front())) {
+            return false;
+        }
+        value_pos = segments.front().size();
+        segment_index = 1;
+    }
+
+    for (; segment_index < segments.size(); ++segment_index) {
+        const std::string_view segment = segments[segment_index];
+        const size_t found = value.find(segment, value_pos);
+        if (found == std::string_view::npos) {
+            return false;
+        }
+        value_pos = found + segment.size();
+    }
+
+    return pattern.back() == '%' || value.ends_with(segments.back());
+}
+
+static bool LikeMatchesWithUnderscore(const std::string_view value, const std::string_view pattern) {
+    size_t value_pos = 0;
+    size_t pattern_pos = 0;
+    size_t last_percent = std::string_view::npos;
+    size_t retry_value_pos = 0;
+
+    while (value_pos < value.size()) {
+        if (pattern_pos < pattern.size() && (pattern[pattern_pos] == '_' || pattern[pattern_pos] == value[value_pos])) {
+            ++value_pos;
+            ++pattern_pos;
+        } else if (pattern_pos < pattern.size() && pattern[pattern_pos] == '%') {
+            last_percent = pattern_pos++;
+            retry_value_pos = value_pos;
+        } else if (last_percent != std::string_view::npos) {
+            pattern_pos = last_percent + 1;
+            value_pos = ++retry_value_pos;
+        } else {
+            return false;
+        }
+    }
+
+    while (pattern_pos < pattern.size() && pattern[pattern_pos] == '%') {
+        ++pattern_pos;
+    }
+
+    return pattern_pos == pattern.size();
+}
+
+static bool LikeMatches(const std::string& value, const std::string& pattern) {
+    if (pattern.find('_') == std::string::npos) {
+        return LikeMatchesPercentOnly(value, pattern);
+    }
+
+    return LikeMatchesWithUnderscore(value, pattern);
+}
+
+static ComparisonKind FlipComparison(const ComparisonKind comparison) {
+    switch (comparison) {
+        case ComparisonKind::Equal:
+            return ComparisonKind::Equal;
+        case ComparisonKind::NotEqual:
+            return ComparisonKind::NotEqual;
+        case ComparisonKind::Less:
+            return ComparisonKind::Greater;
+        case ComparisonKind::LessOrEqual:
+            return ComparisonKind::GreaterOrEqual;
+        case ComparisonKind::Greater:
+            return ComparisonKind::Less;
+        case ComparisonKind::GreaterOrEqual:
+            return ComparisonKind::LessOrEqual;
+    }
+
+    return comparison;
+}
+
+static bool MatchesInt128Comparison(const Int128 lhs, const Int128 rhs, const ComparisonKind comparison) {
+    switch (comparison) {
+        case ComparisonKind::Equal:
+            return lhs == rhs;
+        case ComparisonKind::NotEqual:
+            return lhs != rhs;
+        case ComparisonKind::Less:
+            return lhs < rhs;
+        case ComparisonKind::LessOrEqual:
+            return lhs <= rhs;
+        case ComparisonKind::Greater:
+            return lhs > rhs;
+        case ComparisonKind::GreaterOrEqual:
+            return lhs >= rhs;
+    }
+
+    return false;
+}
+
+static std::optional<Int128> LiteralValueForColumnType(const QueryLiteral& literal, const ColumnType type) {
+    try {
+        if (literal.kind == LiteralKind::Numeric) {
+            return ParseInt128(literal.text);
+        }
+
+        if (literal.kind == LiteralKind::String) {
+            const QueryLiteral normalized_literal{NormalizeLiteralForEval(literal), LiteralKind::String};
+            if (type == ColumnType::Date) {
+                return ParseDate(normalized_literal.text);
+            }
+            if (type == ColumnType::Timestamp) {
+                return ParseTimestamp(normalized_literal.text);
+            }
+        }
+    } catch (const Error&) {
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+static std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPtr& right, const Batch& batch,
+                                                      const size_t row, ComparisonKind comparison) {
+    if (!left || !right) {
+        return std::nullopt;
+    }
+
+    if (left->kind != ExprKind::Column || right->kind != ExprKind::Literal) {
+        if (left->kind == ExprKind::Literal && right->kind == ExprKind::Column) {
+            return TryEvaluateTypedComparison(right, left, batch, row, FlipComparison(comparison));
+        }
+        return std::nullopt;
+    }
+
+    const auto column_index = TryFindBatchColumn(batch.GetSchema(), left->column.name);
+    if (!column_index.has_value()) {
+        return std::nullopt;
+    }
+
+    const Column& column = batch.ColumnAt(*column_index);
+    if (column.Type() == ColumnType::String) {
+        return std::nullopt;
+    }
+
+    const std::optional<Int128> rhs = LiteralValueForColumnType(right->literal, column.Type());
+    if (!rhs.has_value()) {
+        return std::nullopt;
+    }
+
+    return MatchesInt128Comparison(column.ValueAsInt128(row), *rhs, comparison);
 }
 
 static ColumnType InferComparisonType(const std::string& lhs, const std::string& rhs) {
@@ -270,6 +481,12 @@ static bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch,
                                        [&](const ExprPtr& value) { return lhs == EvalExpr(value, batch, row); });
         }
         case PredicateKind::Comparison: {
+            if (const std::optional<bool> result = TryEvaluateTypedComparison(predicate->left, predicate->right, batch,
+                                                                              row, predicate->comparison);
+                result.has_value()) {
+                return *result;
+            }
+
             const std::string lhs = EvalExpr(predicate->left, batch, row);
             const std::string rhs = EvalExpr(predicate->right, batch, row);
             return MatchesComparison(InferComparisonType(lhs, rhs), lhs, rhs, predicate->comparison);
@@ -311,6 +528,37 @@ class FilterOperator final : public Operator {
     PredicatePtr filter_;
 };
 
+class EnsureSchemaOperator final : public Operator {
+   public:
+    EnsureSchemaOperator(std::unique_ptr<Operator> child, Schema schema)
+        : child_(std::move(child)), schema_(std::move(schema)) {}
+
+    std::optional<Batch> Next() override {
+        if (returned_empty_) {
+            return std::nullopt;
+        }
+
+        if (auto batch = child_->Next()) {
+            returned_any_ = true;
+            return batch;
+        }
+
+        if (returned_any_) {
+            return std::nullopt;
+        }
+
+        returned_any_ = true;
+        returned_empty_ = true;
+        return Batch(schema_);
+    }
+
+   private:
+    std::unique_ptr<Operator> child_;
+    Schema schema_;
+    bool returned_any_ = false;
+    bool returned_empty_ = false;
+};
+
 class AggInput {
    public:
     virtual ~AggInput() = default;
@@ -330,12 +578,28 @@ class ColumnAggInput final : public AggInput {
     ExprPtr expression_;
 };
 
+class NumericAggInput final : public AggInput {
+   public:
+    NumericAggInput(const size_t column_index, const Int128 offset) : column_index_(column_index), offset_(offset) {}
+
+    void Consume(const Batch& batch, const size_t row, AggState& state) const override {
+        state.ConsumeInt128(batch.ColumnAt(column_index_).ValueAsInt128(row) + offset_);
+    }
+
+   private:
+    size_t column_index_;
+    Int128 offset_;
+};
+
 class RowAggInput final : public AggInput {
    public:
     void Consume(const Batch&, const size_t, AggState& state) const override { state.ConsumeRow(); }
 };
 
 static std::unique_ptr<AggInput> CreateAggInput(const PlannedAgg& aggregate) {
+    if (aggregate.direct_numeric_argument) {
+        return std::make_unique<NumericAggInput>(aggregate.column_index, aggregate.direct_numeric_offset);
+    }
     if (aggregate.argument_kind == AggArgumentKind::Column) {
         return std::make_unique<ColumnAggInput>(aggregate.argument);
     }
@@ -383,7 +647,8 @@ class GroupKeyEncoder {
 
 class AggOperator final : public Operator {
    public:
-    AggOperator(std::unique_ptr<Operator> child, const std::vector<PlannedAgg>& aggregates) : child_(std::move(child)) {
+    AggOperator(std::unique_ptr<Operator> child, const std::vector<PlannedAgg>& aggregates, PredicatePtr filter)
+        : child_(std::move(child)), filter_(std::move(filter)) {
         bindings_.reserve(aggregates.size());
 
         for (const auto& aggregate : aggregates) {
@@ -404,6 +669,10 @@ class AggOperator final : public Operator {
 
         while (auto batch = child_->Next()) {
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
+                if (!EvaluatePredicate(filter_, *batch, row)) {
+                    continue;
+                }
+
                 for (const auto& binding : bindings_) {
                     binding.input->Consume(*batch, row, *binding.state);
                 }
@@ -429,6 +698,7 @@ class AggOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+    PredicatePtr filter_;
     std::vector<AggBinding> bindings_;
     bool returned_ = false;
 };
@@ -437,10 +707,11 @@ class GroupAggOperator final : public Operator {
    public:
     GroupAggOperator(std::unique_ptr<Operator> child, std::vector<PlannedGroupKey> group_keys,
                      const std::vector<PlannedAgg>& aggregates, std::vector<PlannedSelectItem> select_items,
-                     PredicatePtr having, const bool sort_by_group_keys)
+                     PredicatePtr filter, PredicatePtr having, const bool sort_by_group_keys)
         : child_(std::move(child)),
           group_key_encoder_(std::move(group_keys)),
           select_items_(std::move(select_items)),
+          filter_(std::move(filter)),
           having_(std::move(having)),
           sort_by_group_keys_(sort_by_group_keys) {
         bindings_.reserve(aggregates.size());
@@ -462,6 +733,10 @@ class GroupAggOperator final : public Operator {
 
         while (auto batch = child_->Next()) {
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
+                if (!EvaluatePredicate(filter_, *batch, row)) {
+                    continue;
+                }
+
                 MaterializedGroupKey key = group_key_encoder_.Encode(*batch, row);
 
                 size_t group_index = 0;
@@ -594,6 +869,7 @@ class GroupAggOperator final : public Operator {
     GroupKeyEncoder group_key_encoder_;
     std::vector<GroupAggBinding> bindings_;
     std::vector<PlannedSelectItem> select_items_;
+    PredicatePtr filter_;
     PredicatePtr having_;
     std::unordered_map<std::string, size_t> group_indexes_;
     std::vector<GroupState> groups_;
@@ -691,6 +967,8 @@ class ProjectionOperator final : public Operator {
 
         return std::nullopt;
     }
+
+    const Schema& GetSchema() const { return schema_; }
 
    private:
     static std::vector<size_t> StarColumnIndexes(const Schema& schema) {
@@ -893,9 +1171,13 @@ class OffsetOperator final : public Operator {
 };
 
 std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
+    if (planned.metadata_count_only) {
+        return std::make_unique<MetadataCountOperator>(planned.table_path, planned.aggregates.front().output_name);
+    }
+
     std::unique_ptr<Operator> root = std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes);
 
-    if (planned.filter) {
+    if (planned.filter && planned.plain_select) {
         root = std::make_unique<FilterOperator>(std::move(root), planned.filter);
     }
 
@@ -909,15 +1191,20 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         if (planned.limit.has_value()) {
             root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
         }
-        root = std::make_unique<ProjectionOperator>(std::move(root), planned.plain_select_items, planned.table_schema);
+        auto projection =
+            std::make_unique<ProjectionOperator>(std::move(root), planned.plain_select_items, planned.table_schema);
+        const Schema output_schema = projection->GetSchema();
+        root = std::move(projection);
+        root = std::make_unique<EnsureSchemaOperator>(std::move(root), output_schema);
         return root;
     }
 
     if (!planned.group_keys.empty()) {
         root = std::make_unique<GroupAggOperator>(std::move(root), planned.group_keys, planned.aggregates,
-                                                  planned.select_items, planned.having, planned.order_by.empty());
+                                                  planned.select_items, planned.filter, planned.having,
+                                                  planned.order_by.empty());
     } else {
-        root = std::make_unique<AggOperator>(std::move(root), planned.aggregates);
+        root = std::make_unique<AggOperator>(std::move(root), planned.aggregates, planned.filter);
     }
 
     if (!planned.order_by.empty()) {

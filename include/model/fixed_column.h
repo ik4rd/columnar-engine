@@ -26,6 +26,7 @@ class FixedColumn : public MutableColumn {
     std::string ValueAsString(const size_t row) const override {
         return ColumnValueTraits<TypeValue>::ToString(ValueAt(row));
     }
+    Int128 ValueAsInt128(const size_t row) const override { return static_cast<Int128>(ValueAt(row)); }
 
     std::unique_ptr<Column> Clone() const override {
         return std::make_unique<ColumnImpl>(static_cast<const ColumnImpl&>(*this));

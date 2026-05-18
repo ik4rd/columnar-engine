@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/int128.h"
 #include "executor/aggregate_function.h"
 #include "executor/query.h"
 #include "model/schema.h"
@@ -17,6 +18,8 @@ struct PlannedAgg {
     bool distinct = false;
     AggArgumentKind argument_kind = AggArgumentKind::Column;
     size_t column_index = 0;
+    bool direct_numeric_argument = false;
+    Int128 direct_numeric_offset = 0;
     ColumnType input_type = ColumnType::String;
     ExprPtr argument;
     std::string output_name;
@@ -80,4 +83,5 @@ struct PlannedQuery {
     std::optional<size_t> limit;
     size_t offset = 0;
     bool plain_select = false;
+    bool metadata_count_only = false;
 };
