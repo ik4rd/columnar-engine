@@ -43,6 +43,51 @@ Column::Column(const ColumnType type) : type_(type) {}
 
 Int128 Column::ValueAsInt128(const size_t row) const { return ParseInt128(ValueAsString(row)); }
 
+static bool MatchesValueComparison(const Int128 lhs, const Int128 rhs, const ValueComparison comparison) {
+    switch (comparison) {
+        case ValueComparison::Equal:
+            return lhs == rhs;
+        case ValueComparison::NotEqual:
+            return lhs != rhs;
+        case ValueComparison::Less:
+            return lhs < rhs;
+        case ValueComparison::LessOrEqual:
+            return lhs <= rhs;
+        case ValueComparison::Greater:
+            return lhs > rhs;
+        case ValueComparison::GreaterOrEqual:
+            return lhs >= rhs;
+    }
+
+    return false;
+}
+
+void Column::SelectRowsByInt128Comparison(const Int128 rhs, const ValueComparison comparison,
+                                          std::vector<size_t>& rows) const {
+    for (size_t row = 0; row < Size(); ++row) {
+        if (MatchesValueComparison(ValueAsInt128(row), rhs, comparison)) {
+            rows.push_back(row);
+        }
+    }
+}
+
+void Column::SelectRowsByStringSet(const std::unordered_set<std::string>& values, std::vector<size_t>& rows) const {
+    for (size_t row = 0; row < Size(); ++row) {
+        if (values.contains(ValueAsString(row))) {
+            rows.push_back(row);
+        }
+    }
+}
+
+void Column::SelectRowsByLikePattern(const std::string_view, const bool, std::vector<size_t>&) const {}
+
+void Column::AppendEncodedValue(const size_t row, std::string& out) const {
+    const std::string value = ValueAsString(row);
+    out += std::to_string(value.size());
+    out.push_back(':');
+    out += value;
+}
+
 void Column::CheckRowIndex(const char* module, const size_t row, const size_t size) {
     if (row >= size) {
         throw Error::OutOfRange(module, "row index out of range");

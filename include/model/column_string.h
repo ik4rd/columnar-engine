@@ -1,7 +1,9 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "model/column.h"
@@ -23,7 +25,13 @@ class StringColumn final : public MutableColumn {
 
     void AppendFromString(std::string_view value) override;
     void AppendFromColumn(const Column& source, size_t row) override;
+    void AppendRangeFromColumn(const Column& source, size_t begin, size_t count) override;
+    void AppendSelectedFromColumn(const Column& source, std::span<const size_t> rows) override;
     std::string ValueAsString(size_t row) const override;
+    void SelectRowsByStringSet(const std::unordered_set<std::string>& values, std::vector<size_t>& rows) const override;
+    void SelectRowsByLikePattern(std::string_view pattern, bool negated, std::vector<size_t>& rows) const override;
+    void AppendEncodedValue(size_t row, std::string& out) const override;
+
     std::unique_ptr<Column> Clone() const override;
     std::unique_ptr<MutableColumn> CloneMutable() const override;
 

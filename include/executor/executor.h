@@ -17,6 +17,7 @@ class Executor {
 
     void RegisterTable(const std::string& name, std::filesystem::path path);
     void SetUnsupportedFallbackEnabled(bool enabled);
+
     ExecuteExpected Execute(std::string_view query) const;
 
    private:

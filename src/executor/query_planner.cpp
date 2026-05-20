@@ -253,6 +253,84 @@ static std::optional<size_t> ProjectedIndexOf(const std::vector<size_t>& project
     return std::nullopt;
 }
 
+static void BindExprColumnIndexes(const Query& query_ast, const Schema& schema,
+                                  const std::vector<size_t>& projection_indexes, const ExprPtr& expr);
+static void BindTypedLiteralComparison(const Query& query_ast, const Schema& schema,
+                                       const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate);
+static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
+                             const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate);
+static void BindLiteralLikePattern(const Query& query_ast, const Schema& schema,
+                                   const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate);
+static void BindRegexReplace(const ExprPtr& expr);
+
+static void BindPredicateColumnIndexes(const Query& query_ast, const Schema& schema,
+                                       const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate) {
+    if (!predicate) {
+        return;
+    }
+
+    switch (predicate->kind) {
+        case PredicateKind::And:
+            BindPredicateColumnIndexes(query_ast, schema, projection_indexes, predicate->lhs);
+            BindPredicateColumnIndexes(query_ast, schema, projection_indexes, predicate->rhs);
+            return;
+        case PredicateKind::Comparison:
+            BindTypedLiteralComparison(query_ast, schema, projection_indexes, predicate);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, predicate->left);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, predicate->right);
+            return;
+        case PredicateKind::Like:
+        case PredicateKind::NotLike:
+            BindLiteralLikePattern(query_ast, schema, projection_indexes, predicate);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, predicate->left);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, predicate->right);
+            return;
+        case PredicateKind::In:
+            BindLiteralInSet(query_ast, schema, projection_indexes, predicate);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, predicate->left);
+            for (const ExprPtr& value : predicate->values) {
+                BindExprColumnIndexes(query_ast, schema, projection_indexes, value);
+            }
+    }
+}
+
+static void BindExprColumnIndexes(const Query& query_ast, const Schema& schema,
+                                  const std::vector<size_t>& projection_indexes, const ExprPtr& expr) {
+    if (!expr) {
+        return;
+    }
+
+    switch (expr->kind) {
+        case ExprKind::Column: {
+            ValidateColumnQualifier(query_ast, expr->column);
+            const size_t source_index = FindColumnIndex(schema, expr->column.name);
+            const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+            if (projected_index.has_value()) {
+                expr->column_index_bound = true;
+                expr->column_index = *projected_index;
+            }
+            return;
+        }
+        case ExprKind::Literal:
+        case ExprKind::Star:
+            return;
+        case ExprKind::Binary:
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, expr->left);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, expr->right);
+            return;
+        case ExprKind::Function:
+            for (const ExprPtr& argument : expr->arguments) {
+                BindExprColumnIndexes(query_ast, schema, projection_indexes, argument);
+            }
+            BindRegexReplace(expr);
+            return;
+        case ExprKind::Case:
+            BindPredicateColumnIndexes(query_ast, schema, projection_indexes, expr->case_spec.condition);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, expr->case_spec.then_expr);
+            BindExprColumnIndexes(query_ast, schema, projection_indexes, expr->case_spec.else_expr);
+    }
+}
+
 static bool IsSimpleCountStar(const Query& query_ast, const PlannedQuery& planned) {
     if (query_ast.select_items.size() != 1 || query_ast.filter || query_ast.having || !query_ast.group_by.empty() ||
         !query_ast.order_by.empty() || query_ast.offset > 0 || query_ast.limit == 0) {
@@ -278,6 +356,204 @@ static std::optional<Int128> TryNumericLiteralValue(const ExprPtr& expr) {
     } catch (const Error&) {
         return std::nullopt;
     }
+}
+
+static std::string NormalizeStringLiteral(const std::string_view text) {
+    std::string result;
+
+    for (size_t i = 1; i + 1 < text.size(); ++i) {
+        if (text[i] == '\'' && i + 2 < text.size() && text[i + 1] == '\'') {
+            result.push_back('\'');
+            ++i;
+            continue;
+        }
+        result.push_back(text[i]);
+    }
+
+    return result;
+}
+
+static std::string LiteralTextForEval(const QueryLiteral& literal) {
+    if (literal.kind == LiteralKind::String) {
+        return NormalizeStringLiteral(literal.text);
+    }
+    return literal.text;
+}
+
+static void NormalizeRegexReplacement(std::string& replacement) {
+    for (size_t pos = 0; (pos = replacement.find("\\1", pos)) != std::string::npos;) {
+        replacement.replace(pos, 2, "$1");
+        pos += 2;
+    }
+}
+
+static void BindRegexReplace(const ExprPtr& expr) {
+    if (!expr || expr->kind != ExprKind::Function || !SameColumnName(expr->function_name, "REGEXP_REPLACE") ||
+        expr->arguments.size() != 3 || !expr->arguments[1] || !expr->arguments[2] ||
+        expr->arguments[1]->kind != ExprKind::Literal || expr->arguments[2]->kind != ExprKind::Literal) {
+        return;
+    }
+
+    try {
+        std::string replacement = LiteralTextForEval(expr->arguments[2]->literal);
+        NormalizeRegexReplacement(replacement);
+        expr->regex_pattern = std::regex(LiteralTextForEval(expr->arguments[1]->literal));
+        expr->regex_replacement = std::move(replacement);
+        expr->regex_replace_bound = true;
+    } catch (const std::regex_error&) {
+        expr->regex_replace_bound = false;
+    }
+}
+
+static std::optional<Int128> TryLiteralValueForColumnType(const QueryLiteral& literal, const ColumnType type) {
+    try {
+        if (literal.kind == LiteralKind::Numeric) {
+            return ParseInt128(literal.text);
+        }
+
+        if (literal.kind != LiteralKind::String) {
+            return std::nullopt;
+        }
+
+        const std::string normalized = NormalizeStringLiteral(literal.text);
+        switch (type) {
+            case ColumnType::Boolean:
+                return ParseBoolean(normalized) ? 1 : 0;
+            case ColumnType::Int16:
+                return ParseInt16(normalized);
+            case ColumnType::Int32:
+                return ParseInt32(normalized);
+            case ColumnType::Int64:
+                return ParseInt64(normalized);
+            case ColumnType::Int128:
+                return ParseInt128(normalized);
+            case ColumnType::Date:
+                return ParseDate(normalized);
+            case ColumnType::Timestamp:
+                return ParseTimestamp(normalized);
+            case ColumnType::Character:
+                return ParseCharacter(normalized);
+            case ColumnType::String:
+                return std::nullopt;
+        }
+    } catch (const Error&) {
+        return std::nullopt;
+    }
+
+    return std::nullopt;
+}
+
+static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
+                             const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate) {
+    if (!predicate || predicate->kind != PredicateKind::In || !predicate->left ||
+        predicate->left->kind != ExprKind::Column || predicate->values.empty()) {
+        return;
+    }
+
+    ValidateColumnQualifier(query_ast, predicate->left->column);
+    const size_t source_index = FindColumnIndex(schema, predicate->left->column.name);
+    const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+    if (!projected_index.has_value()) {
+        return;
+    }
+
+    std::unordered_set<std::string> values;
+    values.reserve(predicate->values.size());
+
+    for (const ExprPtr& value : predicate->values) {
+        if (!value || value->kind != ExprKind::Literal) {
+            return;
+        }
+        values.insert(LiteralTextForEval(value->literal));
+    }
+
+    predicate->literal_in_set_bound = true;
+    predicate->in_column_index = *projected_index;
+    predicate->literal_in_values = std::move(values);
+}
+
+static void BindLiteralLikePattern(const Query& query_ast, const Schema& schema,
+                                   const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate) {
+    if (!predicate || (predicate->kind != PredicateKind::Like && predicate->kind != PredicateKind::NotLike) ||
+        !predicate->left || !predicate->right || predicate->left->kind != ExprKind::Column ||
+        predicate->right->kind != ExprKind::Literal || predicate->right->literal.kind != LiteralKind::String) {
+        return;
+    }
+
+    ValidateColumnQualifier(query_ast, predicate->left->column);
+    const size_t source_index = FindColumnIndex(schema, predicate->left->column.name);
+    if (schema.columns[source_index].type != ColumnType::String) {
+        return;
+    }
+
+    const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+    if (!projected_index.has_value()) {
+        return;
+    }
+
+    predicate->literal_like_pattern_bound = true;
+    predicate->like_column_index = *projected_index;
+    predicate->like_pattern = LiteralTextForEval(predicate->right->literal);
+    predicate->like_negated = predicate->kind == PredicateKind::NotLike;
+}
+
+static ComparisonKind FlipComparison(const ComparisonKind comparison) {
+    switch (comparison) {
+        case ComparisonKind::Equal:
+            return ComparisonKind::Equal;
+        case ComparisonKind::NotEqual:
+            return ComparisonKind::NotEqual;
+        case ComparisonKind::Less:
+            return ComparisonKind::Greater;
+        case ComparisonKind::LessOrEqual:
+            return ComparisonKind::GreaterOrEqual;
+        case ComparisonKind::Greater:
+            return ComparisonKind::Less;
+        case ComparisonKind::GreaterOrEqual:
+            return ComparisonKind::LessOrEqual;
+    }
+
+    return comparison;
+}
+
+static void BindTypedLiteralComparison(const Query& query_ast, const Schema& schema,
+                                       const std::vector<size_t>& projection_indexes, const PredicatePtr& predicate) {
+    if (!predicate || predicate->kind != PredicateKind::Comparison || !predicate->left || !predicate->right) {
+        return;
+    }
+
+    const ExprPtr* column_expr = nullptr;
+    const ExprPtr* literal_expr = nullptr;
+    ComparisonKind comparison = predicate->comparison;
+
+    if (predicate->left->kind == ExprKind::Column && predicate->right->kind == ExprKind::Literal) {
+        column_expr = &predicate->left;
+        literal_expr = &predicate->right;
+    } else if (predicate->left->kind == ExprKind::Literal && predicate->right->kind == ExprKind::Column) {
+        column_expr = &predicate->right;
+        literal_expr = &predicate->left;
+        comparison = FlipComparison(comparison);
+    } else {
+        return;
+    }
+
+    ValidateColumnQualifier(query_ast, (*column_expr)->column);
+    const size_t source_index = FindColumnIndex(schema, (*column_expr)->column.name);
+    const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+    if (!projected_index.has_value()) {
+        return;
+    }
+
+    const ColumnType type = schema.columns[source_index].type;
+    const std::optional<Int128> literal = TryLiteralValueForColumnType((*literal_expr)->literal, type);
+    if (!literal.has_value()) {
+        return;
+    }
+
+    predicate->typed_literal_comparison_bound = true;
+    predicate->typed_column_index = *projected_index;
+    predicate->typed_literal_value = *literal;
+    predicate->typed_comparison = comparison;
 }
 
 static std::optional<std::pair<ColumnRef, Int128>> TryLinearColumnExpr(const ExprPtr& expr) {
@@ -320,12 +596,12 @@ static bool IsNumericType(const ColumnType type) {
     return false;
 }
 
-PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::string, std::filesystem::path>& tables) {
+PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string, std::filesystem::path>& tables) {
     PlannedQuery planned;
 
-    const auto table_it = tables.find(ToLowerAscii(query_ast.table_name));
+    const auto table_it = tables.find(ToLowerAscii(query.table_name));
     if (table_it == tables.end()) {
-        throw Error::NotFound("executor", "unknown table", query_ast.table_name);
+        throw Error::NotFound("executor", "unknown table", query.table_name);
     }
 
     planned.table_path = table_it->second;
@@ -335,33 +611,33 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
 
     std::vector<size_t> projection_indexes;
 
-    planned.filter = query_ast.filter;
-    planned.having = query_ast.having;
-    CollectColumnsFromPredicate(query_ast, schema, planned.filter, projection_indexes);
+    planned.filter = query.filter;
+    planned.having = query.having;
+    CollectColumnsFromPredicate(query, schema, planned.filter, projection_indexes);
 
-    planned.group_keys.reserve(query_ast.group_by.size());
+    planned.group_keys.reserve(query.group_by.size());
 
-    for (const ExprPtr& raw_group_expr : query_ast.group_by) {
-        ExprPtr group_expr = ResolveGroupByExpression(query_ast, raw_group_expr);
-        CollectColumnsFromExpr(query_ast, schema, group_expr, projection_indexes);
+    for (const ExprPtr& raw_group_expr : query.group_by) {
+        ExprPtr group_expr = ResolveGroupByExpression(query, raw_group_expr);
+        CollectColumnsFromExpr(query, schema, group_expr, projection_indexes);
         planned.group_keys.push_back(PlannedGroupKey{
             .column_index = 0,
             .expression = group_expr,
-            .column_type = ColumnTypeOf(query_ast, schema, group_expr),
+            .column_type = ColumnTypeOf(query, schema, group_expr),
             .output_name = group_expr->output_name,
         });
     }
 
-    const bool has_aggregate = HasAggregate(query_ast.select_items);
+    const bool has_aggregate = HasAggregate(query.select_items);
     planned.plain_select = planned.group_keys.empty() && !has_aggregate;
 
-    planned.select_items.reserve(query_ast.select_items.size());
-    planned.aggregates.reserve(query_ast.select_items.size());
+    planned.select_items.reserve(query.select_items.size());
+    planned.aggregates.reserve(query.select_items.size());
 
     if (planned.plain_select) {
-        planned.plain_select_items = query_ast.select_items;
-        for (const auto& item : query_ast.select_items) {
-            CollectColumnsFromExpr(query_ast, schema, item.expression, projection_indexes);
+        planned.plain_select_items = query.select_items;
+        for (const auto& item : query.select_items) {
+            CollectColumnsFromExpr(query, schema, item.expression, projection_indexes);
             if (item.expression && item.expression->kind == ExprKind::Star) {
                 for (const auto& column : schema.columns) {
                     planned.select_items.push_back(PlannedSelectItem{
@@ -376,17 +652,17 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
             planned.select_items.push_back(PlannedSelectItem{
                 .kind = SelectItemKind::GroupKey,
                 .index = planned.select_items.size(),
-                .output_type = ColumnTypeOf(query_ast, schema, item.expression),
+                .output_type = ColumnTypeOf(query, schema, item.expression),
                 .output_name = item.output_name,
             });
         }
     } else {
-        for (const auto& item : query_ast.select_items) {
+        for (const auto& item : query.select_items) {
             if (item.kind == SelectItemKind::GroupKey) {
-                const auto group_index = FindGroupKey(query_ast.group_by.empty() ? std::vector<ExprPtr>{} : [&] {
+                const auto group_index = FindGroupKey(query.group_by.empty() ? std::vector<ExprPtr>{} : [&] {
                     std::vector<ExprPtr> resolved;
-                    for (const auto& group : query_ast.group_by) {
-                        resolved.push_back(ResolveGroupByExpression(query_ast, group));
+                    for (const auto& group : query.group_by) {
+                        resolved.push_back(ResolveGroupByExpression(query, group));
                     }
                     return resolved;
                 }(), item.expression);
@@ -407,7 +683,7 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
 
             const AggSpec& aggregate = item.aggregate;
             const AggFuncDefinition& function = ResolveAggFunc(aggregate.function_name);
-            CollectColumnsFromExpr(query_ast, schema, aggregate.argument, projection_indexes);
+            CollectColumnsFromExpr(query, schema, aggregate.argument, projection_indexes);
             const std::optional<std::pair<ColumnRef, Int128>> direct_numeric = TryLinearColumnExpr(aggregate.argument);
 
             if (aggregate.distinct && !HasAggCallFeature(function.call_features, AggCallFeature::Distinct)) {
@@ -426,11 +702,10 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
                 .distinct = aggregate.distinct,
                 .argument_kind = aggregate.argument_kind,
                 .column_index = direct_numeric.has_value() ? FindColumnIndex(schema, direct_numeric->first.name) : 0,
-                .direct_numeric_argument =
-                    direct_numeric.has_value() && IsNumericType(ColumnTypeOfColumn(query_ast, schema, direct_numeric->first)),
+                .direct_numeric_argument = direct_numeric.has_value() &&
+                                           IsNumericType(ColumnTypeOfColumn(query, schema, direct_numeric->first)),
                 .direct_numeric_offset = direct_numeric.has_value() ? direct_numeric->second : 0,
-                .input_type =
-                    aggregate.argument ? ColumnTypeOf(query_ast, schema, aggregate.argument) : ColumnType::String,
+                .input_type = aggregate.argument ? ColumnTypeOf(query, schema, aggregate.argument) : ColumnType::String,
                 .argument = aggregate.argument,
                 .output_name = item.output_name,
             };
@@ -452,13 +727,13 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
         }
     }
 
-    planned.order_by.reserve(query_ast.order_by.size());
+    planned.order_by.reserve(query.order_by.size());
 
     if (planned.plain_select) {
-        planned.plain_order_by = query_ast.order_by;
-        std::vector<OrderBySpec> effective_order_by = query_ast.order_by;
+        planned.plain_order_by = query.order_by;
+        std::vector<OrderBySpec> effective_order_by = query.order_by;
 
-        for (const auto& item : query_ast.select_items) {
+        for (const auto& item : query.select_items) {
             if (item.expression && item.expression->kind != ExprKind::Star) {
                 const bool already_ordered = std::ranges::any_of(effective_order_by, [&](const OrderBySpec& order) {
                     return SameExpr(order.item.expression, item.expression);
@@ -474,11 +749,11 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
 
         for (const auto& order_item : effective_order_by) {
             size_t column_index = 0;
-            const auto selected = FindSelectItem(query_ast, order_item.item);
+            const auto selected = FindSelectItem(query, order_item.item);
             const ExprPtr order_expression =
-                selected.has_value() ? query_ast.select_items[*selected].expression : order_item.item.expression;
-            const ColumnType type = ColumnTypeOf(query_ast, schema, order_expression);
-            CollectColumnsFromExpr(query_ast, schema, order_expression, projection_indexes);
+                selected.has_value() ? query.select_items[*selected].expression : order_item.item.expression;
+            const ColumnType type = ColumnTypeOf(query, schema, order_expression);
+            CollectColumnsFromExpr(query, schema, order_expression, projection_indexes);
 
             if (order_expression && order_expression->kind == ExprKind::Column) {
                 column_index = FindColumnIndex(schema, order_expression->column.name);
@@ -499,12 +774,12 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
             return item.expression && item.expression->kind == ExprKind::Star;
         });
 
-        for (const auto& order_item : query_ast.order_by) {
+        for (const auto& order_item : query.order_by) {
             if (!order_item.item.expression || order_item.item.expression->kind == ExprKind::Star) {
                 continue;
             }
 
-            if (FindSelectItem(query_ast, order_item.item).has_value()) {
+            if (FindSelectItem(query, order_item.item).has_value()) {
                 continue;
             }
 
@@ -518,18 +793,18 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
 
             if (!already_selected) {
                 planned.plain_select_items.push_back(order_item.item);
-                CollectColumnsFromExpr(query_ast, schema, order_item.item.expression, projection_indexes);
+                CollectColumnsFromExpr(query, schema, order_item.item.expression, projection_indexes);
                 planned.select_items.push_back(PlannedSelectItem{
                     .kind = SelectItemKind::GroupKey,
                     .index = planned.select_items.size(),
-                    .output_type = ColumnTypeOf(query_ast, schema, order_item.item.expression),
+                    .output_type = ColumnTypeOf(query, schema, order_item.item.expression),
                     .output_name = order_item.item.output_name,
                 });
             }
         }
     } else {
-        for (const auto& order_item : query_ast.order_by) {
-            const std::optional<size_t> result_column = FindSelectItem(query_ast, order_item.item);
+        for (const auto& order_item : query.order_by) {
+            const std::optional<size_t> result_column = FindSelectItem(query, order_item.item);
             if (!result_column.has_value()) {
                 throw Error::InvalidArgument("executor", "ORDER BY expression must appear in SELECT");
             }
@@ -542,9 +817,9 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
         }
     }
 
-    planned.limit = query_ast.limit;
+    planned.limit = query.limit;
     planned.offset = 0;
-    planned.metadata_count_only = IsSimpleCountStar(query_ast, planned);
+    planned.metadata_count_only = IsSimpleCountStar(query, planned);
 
     if (!planned.metadata_count_only) {
         if (projection_indexes.empty() && !schema.columns.empty()) {
@@ -574,6 +849,19 @@ PlannedQuery PlanQuery(const Query& query_ast, const std::unordered_map<std::str
             aggregate.column_index = *projected_index;
         } else {
             aggregate.direct_numeric_argument = false;
+        }
+    }
+
+    if (!planned.metadata_count_only) {
+        BindPredicateColumnIndexes(query, schema, planned.projection_indexes, planned.filter);
+        for (PlannedGroupKey& group_key : planned.group_keys) {
+            BindExprColumnIndexes(query, schema, planned.projection_indexes, group_key.expression);
+        }
+        for (PlannedAgg& aggregate : planned.aggregates) {
+            BindExprColumnIndexes(query, schema, planned.projection_indexes, aggregate.argument);
+        }
+        for (SelectItemSpec& item : planned.plain_select_items) {
+            BindExprColumnIndexes(query, schema, planned.projection_indexes, item.expression);
         }
     }
 

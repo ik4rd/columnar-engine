@@ -2,6 +2,7 @@
 #include <chrono>
 #include <compare>
 #include <regex>
+#include <span>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -233,12 +234,16 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
             return std::string(rest.substr(0, slash));
         }
 
-        const std::regex pattern(pattern_text);
+        if (expr.regex_replace_bound) {
+            return std::regex_replace(source, expr.regex_pattern, expr.regex_replacement);
+        }
 
         for (size_t pos = 0; (pos = replacement.find("\\1", pos)) != std::string::npos;) {
             replacement.replace(pos, 2, "$1");
             pos += 2;
         }
+
+        const std::regex pattern(pattern_text);
 
         return std::regex_replace(source, pattern, replacement);
     }
@@ -249,10 +254,16 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
 static std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) {
     switch (expr->kind) {
         case ExprKind::Column: {
+            if (expr->column_index_bound && expr->column_index < batch.ColumnsCount() &&
+                SameColumnName(batch.GetSchema().columns[expr->column_index].name, expr->column.name)) {
+                return batch.ColumnAt(expr->column_index).ValueAsString(row);
+            }
+
             const auto column = TryFindBatchColumn(batch.GetSchema(), expr->column.name);
             if (!column.has_value()) {
                 throw Error::InvalidArgument("executor", "unknown column '" + expr->column.name + "'");
             }
+
             return batch.ColumnAt(*column).ValueAsString(row);
         }
         case ExprKind::Literal:
@@ -393,6 +404,25 @@ static bool MatchesInt128Comparison(const Int128 lhs, const Int128 rhs, const Co
     return false;
 }
 
+static ValueComparison ToValueComparison(const ComparisonKind comparison) {
+    switch (comparison) {
+        case ComparisonKind::Equal:
+            return ValueComparison::Equal;
+        case ComparisonKind::NotEqual:
+            return ValueComparison::NotEqual;
+        case ComparisonKind::Less:
+            return ValueComparison::Less;
+        case ComparisonKind::LessOrEqual:
+            return ValueComparison::LessOrEqual;
+        case ComparisonKind::Greater:
+            return ValueComparison::Greater;
+        case ComparisonKind::GreaterOrEqual:
+            return ValueComparison::GreaterOrEqual;
+    }
+
+    return ValueComparison::Equal;
+}
+
 static std::optional<Int128> LiteralValueForColumnType(const QueryLiteral& literal, const ColumnType type) {
     try {
         if (literal.kind == LiteralKind::Numeric) {
@@ -416,7 +446,7 @@ static std::optional<Int128> LiteralValueForColumnType(const QueryLiteral& liter
 }
 
 static std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPtr& right, const Batch& batch,
-                                                      const size_t row, ComparisonKind comparison) {
+                                                      const size_t row, const ComparisonKind comparison) {
     if (!left || !right) {
         return std::nullopt;
     }
@@ -476,11 +506,22 @@ static bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch,
         case PredicateKind::NotLike:
             return !LikeMatches(EvalExpr(predicate->left, batch, row), EvalExpr(predicate->right, batch, row));
         case PredicateKind::In: {
+            if (predicate->literal_in_set_bound && predicate->in_column_index < batch.ColumnsCount()) {
+                return predicate->literal_in_values.contains(
+                    batch.ColumnAt(predicate->in_column_index).ValueAsString(row));
+            }
+
             const std::string lhs = EvalExpr(predicate->left, batch, row);
+
             return std::ranges::any_of(predicate->values,
                                        [&](const ExprPtr& value) { return lhs == EvalExpr(value, batch, row); });
         }
         case PredicateKind::Comparison: {
+            if (predicate->typed_literal_comparison_bound && predicate->typed_column_index < batch.ColumnsCount()) {
+                return MatchesInt128Comparison(batch.ColumnAt(predicate->typed_column_index).ValueAsInt128(row),
+                                               predicate->typed_literal_value, predicate->typed_comparison);
+            }
+
             if (const std::optional<bool> result =
                     TryEvaluateTypedComparison(predicate->left, predicate->right, batch, row, predicate->comparison);
                 result.has_value()) {
@@ -489,11 +530,51 @@ static bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch,
 
             const std::string lhs = EvalExpr(predicate->left, batch, row);
             const std::string rhs = EvalExpr(predicate->right, batch, row);
+
             return MatchesComparison(InferComparisonType(lhs, rhs), lhs, rhs, predicate->comparison);
         }
     }
 
     return false;
+}
+
+static void SelectRowsMatchingPredicate(const PredicatePtr& predicate, const Batch& batch, std::vector<size_t>& rows) {
+    rows.clear();
+    rows.reserve(batch.RowsCount());
+
+    if (!predicate) {
+        for (size_t row = 0; row < batch.RowsCount(); ++row) {
+            rows.push_back(row);
+        }
+        return;
+    }
+
+    if (predicate->kind == PredicateKind::Comparison && predicate->typed_literal_comparison_bound &&
+        predicate->typed_column_index < batch.ColumnsCount()) {
+        batch.ColumnAt(predicate->typed_column_index)
+            .SelectRowsByInt128Comparison(predicate->typed_literal_value,
+                                          ToValueComparison(predicate->typed_comparison), rows);
+        return;
+    }
+
+    if ((predicate->kind == PredicateKind::Like || predicate->kind == PredicateKind::NotLike) &&
+        predicate->literal_like_pattern_bound && predicate->like_column_index < batch.ColumnsCount()) {
+        batch.ColumnAt(predicate->like_column_index)
+            .SelectRowsByLikePattern(predicate->like_pattern, predicate->like_negated, rows);
+        return;
+    }
+
+    if (predicate->kind == PredicateKind::In && predicate->literal_in_set_bound &&
+        predicate->in_column_index < batch.ColumnsCount()) {
+        batch.ColumnAt(predicate->in_column_index).SelectRowsByStringSet(predicate->literal_in_values, rows);
+        return;
+    }
+
+    for (size_t row = 0; row < batch.RowsCount(); ++row) {
+        if (EvaluatePredicate(predicate, batch, row)) {
+            rows.push_back(row);
+        }
+    }
 }
 
 class FilterOperator final : public Operator {
@@ -503,21 +584,17 @@ class FilterOperator final : public Operator {
 
     std::optional<Batch> Next() override {
         while (auto batch = child_->Next()) {
-            Batch filtered(batch->GetSchema());
+            std::vector<size_t> selected_rows;
+            SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                if (!EvaluatePredicate(filter_, *batch, row)) {
-                    continue;
-                }
-
-                for (size_t column_index = 0; column_index < batch->ColumnsCount(); ++column_index) {
-                    filtered.AppendValueFromColumn(column_index, batch->ColumnAt(column_index), row);
-                }
+            if (selected_rows.empty()) {
+                continue;
             }
 
-            if (filtered.RowsCount() > 0) {
-                return filtered;
-            }
+            Batch filtered(batch->GetSchema(), selected_rows.size());
+            filtered.AppendRowsSelectedFromBatch(*batch, selected_rows);
+
+            return filtered;
         }
 
         return std::nullopt;
@@ -549,6 +626,7 @@ class EnsureSchemaOperator final : public Operator {
 
         returned_any_ = true;
         returned_empty_ = true;
+
         return Batch(schema_);
     }
 
@@ -564,6 +642,12 @@ class AggInput {
     virtual ~AggInput() = default;
 
     virtual void Consume(const Batch& batch, size_t row, AggState& state) const = 0;
+
+    virtual void ConsumeRows(const Batch& batch, const std::span<const size_t> rows, AggState& state) const {
+        for (const size_t row : rows) {
+            Consume(batch, row, state);
+        }
+    }
 };
 
 class ColumnAggInput final : public AggInput {
@@ -594,6 +678,9 @@ class NumericAggInput final : public AggInput {
 class RowAggInput final : public AggInput {
    public:
     void Consume(const Batch&, const size_t, AggState& state) const override { state.ConsumeRow(); }
+    void ConsumeRows(const Batch&, const std::span<const size_t> rows, AggState& state) const override {
+        state.ConsumeRows(rows.size());
+    }
 };
 
 static std::unique_ptr<AggInput> CreateAggInput(const PlannedAgg& aggregate) {
@@ -626,6 +713,14 @@ class GroupKeyEncoder {
         key.values.reserve(group_keys_.size());
 
         for (const auto& group_key : group_keys_) {
+            if (group_key.expression && group_key.expression->kind == ExprKind::Column &&
+                group_key.expression->column_index_bound && group_key.expression->column_index < batch.ColumnsCount()) {
+                const Column& column = batch.ColumnAt(group_key.expression->column_index);
+                column.AppendEncodedValue(row, key.id);
+                key.values.push_back(column.ValueAsString(row));
+                continue;
+            }
+
             std::string value = EvalExpr(group_key.expression, batch, row);
             AppendValue(key.id, value);
             key.values.push_back(std::move(value));
@@ -668,14 +763,11 @@ class AggOperator final : public Operator {
         returned_ = true;
 
         while (auto batch = child_->Next()) {
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                if (!EvaluatePredicate(filter_, *batch, row)) {
-                    continue;
-                }
+            std::vector<size_t> selected_rows;
+            SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
-                for (const auto& binding : bindings_) {
-                    binding.input->Consume(*batch, row, *binding.state);
-                }
+            for (const auto& binding : bindings_) {
+                binding.input->ConsumeRows(*batch, selected_rows, *binding.state);
             }
         }
 
@@ -732,11 +824,10 @@ class GroupAggOperator final : public Operator {
         returned_ = true;
 
         while (auto batch = child_->Next()) {
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                if (!EvaluatePredicate(filter_, *batch, row)) {
-                    continue;
-                }
+            std::vector<size_t> selected_rows;
+            SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
+            for (const size_t row : selected_rows) {
                 MaterializedGroupKey key = group_key_encoder_.Encode(*batch, row);
 
                 size_t group_index = 0;
@@ -767,35 +858,24 @@ class GroupAggOperator final : public Operator {
             schema.columns.push_back(ColumnSchema(item.output_name, item.output_type));
         }
 
-        std::vector<std::vector<std::string>> rows;
-        rows.reserve(groups_.size());
+        std::vector<size_t> output_order = BuildOutputOrder();
+        Batch result(schema, output_order.size());
 
-        for (const auto& group : groups_) {
-            rows.push_back(MaterializeRow(group));
-        }
-
-        if (sort_by_group_keys_) {
-            SortRowsBySelectedGroupKeys(rows);
-        }
-
-        Batch result(schema, rows.size());
-
-        for (const auto& row : rows) {
-            for (size_t i = 0; i < row.size(); ++i) {
-                result.AppendValueFromString(i, row[i]);
-            }
+        for (const size_t group_index : output_order) {
+            AppendGroupToBatch(groups_[group_index], result);
         }
 
         if (having_) {
-            Batch filtered(schema);
+            std::vector<size_t> selected_rows;
+            selected_rows.reserve(result.RowsCount());
             for (size_t row = 0; row < result.RowsCount(); ++row) {
-                if (!EvaluatePredicate(having_, result, row)) {
-                    continue;
-                }
-                for (size_t column = 0; column < result.ColumnsCount(); ++column) {
-                    filtered.AppendValueFromColumn(column, result.ColumnAt(column), row);
+                if (EvaluatePredicate(having_, result, row)) {
+                    selected_rows.push_back(row);
                 }
             }
+
+            Batch filtered(schema, selected_rows.size());
+            filtered.AppendRowsSelectedFromBatch(result, selected_rows);
             return filtered;
         }
 
@@ -824,22 +904,28 @@ class GroupAggOperator final : public Operator {
         return states;
     }
 
-    std::vector<std::string> MaterializeRow(const GroupState& group) const {
-        std::vector<std::string> row;
-        row.reserve(select_items_.size());
-
-        for (const auto& item : select_items_) {
+    void AppendGroupToBatch(const GroupState& group, const Batch& batch) const {
+        for (size_t column = 0; column < select_items_.size(); ++column) {
+            const PlannedSelectItem& item = select_items_[column];
             if (item.kind == SelectItemKind::GroupKey) {
-                row.push_back(group.key_values[item.index]);
+                batch.AppendValueFromString(column, group.key_values[item.index]);
             } else {
-                row.push_back(group.states[item.index]->Finalize());
+                batch.AppendValueFromString(column, group.states[item.index]->Finalize());
             }
         }
-
-        return row;
     }
 
-    void SortRowsBySelectedGroupKeys(std::vector<std::vector<std::string>>& rows) const {
+    std::vector<size_t> BuildOutputOrder() const {
+        std::vector<size_t> order;
+        order.reserve(groups_.size());
+        for (size_t i = 0; i < groups_.size(); ++i) {
+            order.push_back(i);
+        }
+
+        if (!sort_by_group_keys_) {
+            return order;
+        }
+
         std::vector<size_t> group_key_columns;
 
         for (size_t i = 0; i < select_items_.size(); ++i) {
@@ -849,13 +935,16 @@ class GroupAggOperator final : public Operator {
         }
 
         if (group_key_columns.empty()) {
-            return;
+            return order;
         }
 
-        std::ranges::sort(rows, [&](const auto& lhs, const auto& rhs) {
+        std::ranges::sort(order, [&](const size_t lhs_index, const size_t rhs_index) {
+            const GroupState& lhs = groups_[lhs_index];
+            const GroupState& rhs = groups_[rhs_index];
             for (const size_t column : group_key_columns) {
+                const PlannedSelectItem& item = select_items_[column];
                 const std::strong_ordering comparison =
-                    CompareValues(select_items_[column].output_type, lhs[column], rhs[column]);
+                    CompareValues(item.output_type, lhs.key_values[item.index], rhs.key_values[item.index]);
                 if (comparison != 0) {
                     return comparison < 0;
                 }
@@ -863,6 +952,8 @@ class GroupAggOperator final : public Operator {
 
             return false;
         });
+
+        return order;
     }
 
     std::unique_ptr<Operator> child_;
@@ -944,18 +1035,26 @@ class ProjectionOperator final : public Operator {
 
     std::optional<Batch> Next() override {
         while (auto batch = child_->Next()) {
+            if (!star_column_indexes_initialized_) {
+                star_column_indexes_ = StarColumnIndexes(batch->GetSchema());
+                star_column_indexes_initialized_ = true;
+            }
+
             Batch projected(schema_, batch->RowsCount());
 
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                size_t output_column = 0;
-                for (const auto& item : items_) {
-                    if (item.expression && item.expression->kind == ExprKind::Star) {
-                        for (const size_t source_column : StarColumnIndexes(batch->GetSchema())) {
-                            projected.AppendValueFromColumn(output_column++, batch->ColumnAt(source_column), row);
-                        }
-                    } else {
-                        projected.AppendValueFromString(output_column++, EvalExpr(item.expression, *batch, row));
+            size_t output_column = 0;
+            for (const auto& item : items_) {
+                if (item.expression && item.expression->kind == ExprKind::Star) {
+                    for (const size_t source_column : star_column_indexes_) {
+                        projected.AppendColumnRange(output_column++, batch->ColumnAt(source_column), 0,
+                                                    batch->RowsCount());
                     }
+                    continue;
+                }
+
+                const size_t expression_column = output_column++;
+                for (size_t row = 0; row < batch->RowsCount(); ++row) {
+                    projected.AppendValueFromString(expression_column, EvalExpr(item.expression, *batch, row));
                 }
             }
 
@@ -997,6 +1096,8 @@ class ProjectionOperator final : public Operator {
     std::vector<SelectItemSpec> items_;
     Schema source_schema_;
     Schema schema_;
+    std::vector<size_t> star_column_indexes_;
+    bool star_column_indexes_initialized_ = false;
 };
 
 class OrderByOperator final : public Operator {
@@ -1020,8 +1121,6 @@ class OrderByOperator final : public Operator {
             if (!schema.has_value()) {
                 schema = batch->GetSchema();
             }
-
-            rows.reserve(rows.size() + batch->RowsCount());
 
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
                 rows.push_back(SortedRow{
@@ -1063,6 +1162,7 @@ class TopKOperator final : public Operator {
 
         std::optional<Schema> schema;
         std::vector<SortedRow> rows;
+        rows.reserve(limit_);
         size_t ordinal = 0;
 
         while (auto batch = child_->Next()) {
@@ -1070,13 +1170,23 @@ class TopKOperator final : public Operator {
                 schema = batch->GetSchema();
             }
 
-            rows.reserve(rows.size() + batch->RowsCount());
-
             for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                rows.push_back(SortedRow{
+                SortedRow candidate{
                     .values = MaterializeBatchRow(*batch, row),
                     .ordinal = ordinal++,
-                });
+                };
+
+                if (rows.size() < limit_) {
+                    rows.push_back(std::move(candidate));
+                    std::ranges::push_heap(rows, ordering_);
+                    continue;
+                }
+
+                if (ordering_(candidate, rows.front())) {
+                    std::ranges::pop_heap(rows, ordering_);
+                    rows.back() = std::move(candidate);
+                    std::ranges::push_heap(rows, ordering_);
+                }
             }
         }
 
@@ -1085,9 +1195,6 @@ class TopKOperator final : public Operator {
         }
 
         std::ranges::sort(rows, ordering_);
-        if (rows.size() > limit_) {
-            rows.resize(limit_);
-        }
 
         return BuildBatchFromSortedRows(*schema, rows);
     }
@@ -1116,12 +1223,7 @@ class LimitOperator final : public Operator {
             }
 
             Batch limited(batch->GetSchema(), remaining_);
-
-            for (size_t row = 0; row < remaining_; ++row) {
-                for (size_t column_index = 0; column_index < batch->ColumnsCount(); ++column_index) {
-                    limited.AppendValueFromColumn(column_index, batch->ColumnAt(column_index), row);
-                }
-            }
+            limited.AppendRowsRangeFromBatch(*batch, 0, remaining_);
 
             remaining_ = 0;
 
@@ -1151,11 +1253,7 @@ class OffsetOperator final : public Operator {
             }
 
             Batch shifted(batch->GetSchema(), batch->RowsCount() - remaining_);
-            for (size_t row = remaining_; row < batch->RowsCount(); ++row) {
-                for (size_t column = 0; column < batch->ColumnsCount(); ++column) {
-                    shifted.AppendValueFromColumn(column, batch->ColumnAt(column), row);
-                }
-            }
+            shifted.AppendRowsRangeFromBatch(*batch, remaining_, batch->RowsCount() - remaining_);
             remaining_ = 0;
 
             return shifted;
@@ -1181,20 +1279,29 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
     }
 
     if (planned.plain_select) {
+        bool limit_applied_by_top_k = false;
         if (!planned.order_by.empty()) {
-            root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
+            if (planned.limit.has_value() && planned.offset == 0) {
+                root = std::make_unique<TopKOperator>(std::move(root), planned.order_by, planned.select_items,
+                                                      *planned.limit);
+                limit_applied_by_top_k = true;
+            } else {
+                root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
+            }
         }
         if (planned.offset > 0) {
             root = std::make_unique<OffsetOperator>(std::move(root), planned.offset);
         }
-        if (planned.limit.has_value()) {
+        if (planned.limit.has_value() && !limit_applied_by_top_k) {
             root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
         }
+
         auto projection =
             std::make_unique<ProjectionOperator>(std::move(root), planned.plain_select_items, planned.table_schema);
         const Schema output_schema = projection->GetSchema();
         root = std::move(projection);
         root = std::make_unique<EnsureSchemaOperator>(std::move(root), output_schema);
+
         return root;
     }
 
@@ -1206,15 +1313,22 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         root = std::make_unique<AggOperator>(std::move(root), planned.aggregates, planned.filter);
     }
 
+    bool limit_applied_by_top_k = false;
     if (!planned.order_by.empty()) {
-        root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
+        if (planned.limit.has_value() && planned.offset == 0) {
+            root =
+                std::make_unique<TopKOperator>(std::move(root), planned.order_by, planned.select_items, *planned.limit);
+            limit_applied_by_top_k = true;
+        } else {
+            root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
+        }
     }
 
     if (planned.offset > 0) {
         root = std::make_unique<OffsetOperator>(std::move(root), planned.offset);
     }
 
-    if (planned.limit.has_value()) {
+    if (planned.limit.has_value() && !limit_applied_by_top_k) {
         root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
     }
 

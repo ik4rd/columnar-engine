@@ -14,6 +14,12 @@
 
 void AggState::ConsumeInt128(const Int128 value) { ConsumeValue(Int128ToString(value)); }
 
+void AggState::ConsumeRows(const size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        ConsumeRow();
+    }
+}
+
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {
     return VisitColumnType(type, [&]<ColumnType TypeValue>() {
@@ -54,11 +60,34 @@ static std::string FormatAverage(const Int128 sum, const uint64_t count) {
     return Int128ToString(sum / static_cast<Int128>(count));
 }
 
+static std::string FormatInt128AsType(const ColumnType type, const Int128 value) {
+    switch (type) {
+        case ColumnType::Boolean:
+            return BooleanToString(value != 0);
+        case ColumnType::Int16:
+        case ColumnType::Int32:
+        case ColumnType::Int64:
+        case ColumnType::Int128:
+            return Int128ToString(value);
+        case ColumnType::Date:
+            return DateToString(static_cast<int32_t>(value));
+        case ColumnType::Timestamp:
+            return TimestampToString(static_cast<int64_t>(value));
+        case ColumnType::Character:
+            return std::string(1, static_cast<char>(value));
+        case ColumnType::String:
+            break;
+    }
+
+    throw Error::Unsupported("executor", "unsupported typed aggregate result");
+}
+
 class CountAS final : public AggState {
    public:
     void ConsumeValue(const std::string_view) override { ConsumeRow(); }
     void ConsumeInt128(const Int128) override { ConsumeRow(); }
     void ConsumeRow() override { ++count_; }
+    void ConsumeRows(const size_t count) override { count_ += count; }
 
     std::string Finalize() const override { return std::to_string(count_); }
 
@@ -89,10 +118,12 @@ class AvgAS final : public AggState {
         sum_ += ParseToInt128(type_, value);
         ++count_;
     }
+
     void ConsumeInt128(const Int128 value) override {
         sum_ += value;
         ++count_;
     }
+
     void ConsumeRow() override { throw Error::InvalidState("executor", "AVG requires a value"); }
 
     std::string Finalize() const override { return FormatAverage(sum_, count_); }
@@ -117,14 +148,27 @@ class ExtremumAS final : public AggState {
             extremum_ = std::string(value);
         }
     }
+
+    void ConsumeInt128(const Int128 value) override {
+        if (!typed_extremum_.has_value() || (is_min_ ? value < *typed_extremum_ : value > *typed_extremum_)) {
+            typed_extremum_ = value;
+        }
+    }
+
     void ConsumeRow() override { throw Error::InvalidState("executor", "MIN/MAX requires a value"); }
 
-    std::string Finalize() const override { return extremum_.value_or(""); }
+    std::string Finalize() const override {
+        if (typed_extremum_.has_value()) {
+            return FormatInt128AsType(type_, *typed_extremum_);
+        }
+        return extremum_.value_or("");
+    }
 
    private:
     ColumnType type_;
     bool is_min_ = true;
     std::optional<std::string> extremum_;
+    std::optional<Int128> typed_extremum_;
 };
 
 class DistinctAS final : public AggState {
@@ -136,6 +180,7 @@ class DistinctAS final : public AggState {
             nested_->ConsumeValue(value);
         }
     }
+
     void ConsumeRow() override { throw Error::InvalidState("executor", "DISTINCT requires a value"); }
 
     std::string Finalize() const override { return nested_->Finalize(); }
