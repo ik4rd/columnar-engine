@@ -25,13 +25,13 @@ bool TryParseInteger(const std::string_view value, T& result) {
 }
 
 template <std::integral T>
-T ParseInteger(const std::string& value, const std::string_view type_name) {
+T ParseInteger(const std::string_view value, const std::string_view type_name) {
     if (value.empty()) {
         throw Error::MalformedData("common", "empty value for " + std::string(type_name));
     }
 
     T result = 0;
-    if (!TryParseInteger(std::string_view(value), result)) {
+    if (!TryParseInteger(value, result)) {
         throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
     }
 
@@ -101,7 +101,7 @@ std::optional<bool> TryParseBoolean(const std::string_view value) {
     return std::nullopt;
 }
 
-bool ParseBoolean(const std::string& value) {
+bool ParseBoolean(const std::string_view value) {
     const std::optional<bool> result = TryParseBoolean(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid bool value");
@@ -117,7 +117,7 @@ std::optional<int16_t> TryParseInt16(const std::string_view value) {
     return result;
 }
 
-int16_t ParseInt16(const std::string& value) { return ParseInteger<int16_t>(value, "int16"); }
+int16_t ParseInt16(const std::string_view value) { return ParseInteger<int16_t>(value, "int16"); }
 
 std::optional<int32_t> TryParseInt32(const std::string_view value) {
     int32_t result = 0;
@@ -127,7 +127,7 @@ std::optional<int32_t> TryParseInt32(const std::string_view value) {
     return result;
 }
 
-int32_t ParseInt32(const std::string& value) { return ParseInteger<int32_t>(value, "int32"); }
+int32_t ParseInt32(const std::string_view value) { return ParseInteger<int32_t>(value, "int32"); }
 
 std::optional<int64_t> TryParseInt64(const std::string_view value) {
     int64_t result = 0;
@@ -137,7 +137,7 @@ std::optional<int64_t> TryParseInt64(const std::string_view value) {
     return result;
 }
 
-int64_t ParseInt64(const std::string& value) { return ParseInteger<int64_t>(value, "int64"); }
+int64_t ParseInt64(const std::string_view value) { return ParseInteger<int64_t>(value, "int64"); }
 
 std::optional<Int128> TryParseInt128(const std::string_view value) {
     if (value.empty()) {
@@ -187,7 +187,7 @@ std::optional<Int128> TryParseInt128(const std::string_view value) {
     return -static_cast<Int128>(magnitude);
 }
 
-Int128 ParseInt128(const std::string& value) {
+Int128 ParseInt128(const std::string_view value) {
     if (value.empty()) {
         throw Error::MalformedData("common", "empty value for int128");
     }
@@ -216,7 +216,7 @@ std::optional<int32_t> TryParseDate(const std::string_view value) {
     return days_since_epoch;
 }
 
-int32_t ParseDate(const std::string& value) {
+int32_t ParseDate(const std::string_view value) {
     const auto day_point = ParseDatePoint(value, "date");
     const auto days_since_epoch = day_point.time_since_epoch().count();
 
@@ -288,7 +288,7 @@ std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
     return std::chrono::duration_cast<std::chrono::microseconds>(timestamp.time_since_epoch()).count();
 }
 
-int64_t ParseTimestamp(const std::string& value) {
+int64_t ParseTimestamp(const std::string_view value) {
     const std::optional<int64_t> result = TryParseTimestamp(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid timestamp value");
@@ -303,7 +303,7 @@ std::optional<char> TryParseCharacter(const std::string_view value) {
     return value[0];
 }
 
-char ParseCharacter(const std::string& value) {
+char ParseCharacter(const std::string_view value) {
     const std::optional<char> result = TryParseCharacter(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid char value");

@@ -203,7 +203,7 @@ std::vector<std::vector<std::string>> ReadRows(const std::filesystem::path& path
     std::vector<std::string> row;
 
     while (reader.ReadRow(row)) {
-        rows.push_back(row);
+        rows.push_back(std::move(row));
     }
 
     return rows;

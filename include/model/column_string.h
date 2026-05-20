@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "model/column.h"
@@ -20,7 +21,8 @@ class StringColumn final : public MutableColumn {
     void Reserve(size_t n) override;
     void Clear() override;
 
-    void AppendFromString(const std::string& value) override;
+    void AppendFromString(std::string_view value) override;
+    void AppendFromColumn(const Column& source, size_t row) override;
     std::string ValueAsString(size_t row) const override;
     std::unique_ptr<Column> Clone() const override;
     std::unique_ptr<MutableColumn> CloneMutable() const override;

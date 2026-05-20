@@ -54,11 +54,18 @@ void Batch::Reserve(const size_t n) const {
     }
 }
 
-void Batch::AppendValueFromString(const size_t column_index, const std::string& value) const {
+void Batch::AppendValueFromString(const size_t column_index, const std::string_view value) const {
     if (column_index >= columns_.size()) {
         throw Error::OutOfRange("model", "column index out of range");
     }
     columns_[column_index]->AppendFromString(value);
+}
+
+void Batch::AppendValueFromColumn(const size_t column_index, const Column& source, const size_t row) const {
+    if (column_index >= columns_.size()) {
+        throw Error::OutOfRange("model", "column index out of range");
+    }
+    columns_[column_index]->AppendFromColumn(source, row);
 }
 
 void Batch::ReadColumnFrom(const size_t column_index, std::istream& in, const uint32_t row_count,

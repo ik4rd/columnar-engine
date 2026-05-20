@@ -29,10 +29,10 @@ class MetadataCountOperator final : public Operator {
 
         returned_ = true;
 
-        const ColumnarMetadata metadata = ColumnarBatchReader(path_).GetMetadata();
         uint64_t rows = 0;
 
-        for (const auto& row_group : metadata.row_groups) {
+        const ColumnarBatchReader reader(path_);
+        for (const auto& row_group : reader.GetMetadata().row_groups) {
             rows += row_group.row_count;
         }
 
@@ -481,8 +481,8 @@ static bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch,
                                        [&](const ExprPtr& value) { return lhs == EvalExpr(value, batch, row); });
         }
         case PredicateKind::Comparison: {
-            if (const std::optional<bool> result = TryEvaluateTypedComparison(predicate->left, predicate->right, batch,
-                                                                              row, predicate->comparison);
+            if (const std::optional<bool> result =
+                    TryEvaluateTypedComparison(predicate->left, predicate->right, batch, row, predicate->comparison);
                 result.has_value()) {
                 return *result;
             }
@@ -511,7 +511,7 @@ class FilterOperator final : public Operator {
                 }
 
                 for (size_t column_index = 0; column_index < batch->ColumnsCount(); ++column_index) {
-                    filtered.AppendValueFromString(column_index, batch->ColumnAt(column_index).ValueAsString(row));
+                    filtered.AppendValueFromColumn(column_index, batch->ColumnAt(column_index), row);
                 }
             }
 
@@ -793,7 +793,7 @@ class GroupAggOperator final : public Operator {
                     continue;
                 }
                 for (size_t column = 0; column < result.ColumnsCount(); ++column) {
-                    filtered.AppendValueFromString(column, result.ColumnAt(column).ValueAsString(row));
+                    filtered.AppendValueFromColumn(column, result.ColumnAt(column), row);
                 }
             }
             return filtered;
@@ -951,8 +951,7 @@ class ProjectionOperator final : public Operator {
                 for (const auto& item : items_) {
                     if (item.expression && item.expression->kind == ExprKind::Star) {
                         for (const size_t source_column : StarColumnIndexes(batch->GetSchema())) {
-                            projected.AppendValueFromString(output_column++,
-                                                            batch->ColumnAt(source_column).ValueAsString(row));
+                            projected.AppendValueFromColumn(output_column++, batch->ColumnAt(source_column), row);
                         }
                     } else {
                         projected.AppendValueFromString(output_column++, EvalExpr(item.expression, *batch, row));
@@ -1120,7 +1119,7 @@ class LimitOperator final : public Operator {
 
             for (size_t row = 0; row < remaining_; ++row) {
                 for (size_t column_index = 0; column_index < batch->ColumnsCount(); ++column_index) {
-                    limited.AppendValueFromString(column_index, batch->ColumnAt(column_index).ValueAsString(row));
+                    limited.AppendValueFromColumn(column_index, batch->ColumnAt(column_index), row);
                 }
             }
 
@@ -1154,7 +1153,7 @@ class OffsetOperator final : public Operator {
             Batch shifted(batch->GetSchema(), batch->RowsCount() - remaining_);
             for (size_t row = remaining_; row < batch->RowsCount(); ++row) {
                 for (size_t column = 0; column < batch->ColumnsCount(); ++column) {
-                    shifted.AppendValueFromString(column, batch->ColumnAt(column).ValueAsString(row));
+                    shifted.AppendValueFromColumn(column, batch->ColumnAt(column), row);
                 }
             }
             remaining_ = 0;

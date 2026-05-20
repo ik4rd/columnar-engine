@@ -4,6 +4,7 @@
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "model/column.h"
@@ -26,7 +27,8 @@ class Batch {
     size_t RowsCount() const;
 
     void Reserve(size_t n) const;
-    void AppendValueFromString(size_t column_index, const std::string& value) const;
+    void AppendValueFromString(size_t column_index, std::string_view value) const;
+    void AppendValueFromColumn(size_t column_index, const Column& source, size_t row) const;
     void ReadColumnFrom(size_t column_index, std::istream& in, uint32_t row_count, uint64_t size) const;
 
     const Column& ColumnAt(size_t i) const;

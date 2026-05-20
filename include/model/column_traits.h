@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "common/error.h"
@@ -16,7 +17,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Boolean> {
     using Type = uint8_t;
 
-    static Type Parse(const std::string& value) { return ParseBoolean(value) ? 1 : 0; }
+    static Type Parse(const std::string_view value) { return ParseBoolean(value) ? 1 : 0; }
     static std::string ToString(const Type value) { return BooleanToString(value != 0); }
 };
 
@@ -24,7 +25,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Int16> {
     using Type = int16_t;
 
-    static Type Parse(const std::string& value) { return ParseInt16(value); }
+    static Type Parse(const std::string_view value) { return ParseInt16(value); }
     static std::string ToString(const Type value) { return std::to_string(value); }
 };
 
@@ -32,7 +33,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Int32> {
     using Type = int32_t;
 
-    static Type Parse(const std::string& value) { return ParseInt32(value); }
+    static Type Parse(const std::string_view value) { return ParseInt32(value); }
     static std::string ToString(const Type value) { return std::to_string(value); }
 };
 
@@ -40,7 +41,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Int64> {
     using Type = int64_t;
 
-    static Type Parse(const std::string& value) { return ParseInt64(value); }
+    static Type Parse(const std::string_view value) { return ParseInt64(value); }
     static std::string ToString(const Type value) { return std::to_string(value); }
 };
 
@@ -48,7 +49,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Int128> {
     using Type = Int128;
 
-    static Type Parse(const std::string& value) { return ParseInt128(value); }
+    static Type Parse(const std::string_view value) { return ParseInt128(value); }
     static std::string ToString(const Type value) { return Int128ToString(value); }
 };
 
@@ -56,7 +57,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Date> {
     using Type = int32_t;
 
-    static Type Parse(const std::string& value) { return ParseDate(value); }
+    static Type Parse(const std::string_view value) { return ParseDate(value); }
     static std::string ToString(const Type value) { return DateToString(value); }
 };
 
@@ -64,7 +65,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Timestamp> {
     using Type = int64_t;
 
-    static Type Parse(const std::string& value) { return ParseTimestamp(value); }
+    static Type Parse(const std::string_view value) { return ParseTimestamp(value); }
     static std::string ToString(const Type value) { return TimestampToString(value); }
 };
 
@@ -72,7 +73,7 @@ template <>
 struct ColumnValueTraits<ColumnType::Character> {
     using Type = char;
 
-    static Type Parse(const std::string& value) { return ParseCharacter(value); }
+    static Type Parse(const std::string_view value) { return ParseCharacter(value); }
     static std::string ToString(const Type value) { return std::string(1, value); }
 };
 
@@ -80,7 +81,7 @@ template <>
 struct ColumnValueTraits<ColumnType::String> {
     using Type = std::string;
 
-    static Type Parse(const std::string& value) { return value; }
+    static Type Parse(const std::string_view value) { return std::string(value); }
     static std::string ToString(const Type& value) { return value; }
 };
 

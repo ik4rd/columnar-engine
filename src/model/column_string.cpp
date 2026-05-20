@@ -15,7 +15,16 @@ void StringColumn::Reserve(const size_t n) { values_.reserve(n); }
 
 void StringColumn::Clear() { values_.clear(); }
 
-void StringColumn::AppendFromString(const std::string& value) { values_.push_back(value); }
+void StringColumn::AppendFromString(const std::string_view value) { values_.emplace_back(value); }
+
+void StringColumn::AppendFromColumn(const Column& source, const size_t row) {
+    if (source.Type() != ColumnType::String) {
+        throw Error::InconsistentData(ModuleName(), "column type mismatch");
+    }
+    const auto& typed_source = static_cast<const StringColumn&>(source);
+    CheckRowIndex(ModuleName(), row, typed_source.values_.size());
+    values_.push_back(typed_source.values_[row]);
+}
 
 std::string StringColumn::ValueAsString(const size_t row) const {
     CheckRowIndex(ModuleName(), row, values_.size());
@@ -27,31 +36,13 @@ std::unique_ptr<Column> StringColumn::Clone() const { return std::make_unique<St
 std::unique_ptr<MutableColumn> StringColumn::CloneMutable() const { return std::make_unique<StringColumn>(*this); }
 
 void StringColumn::WriteTo(std::ostream& out) const {
-    size_t total_size = 0;
-
     for (const auto& value : values_) {
         if (value.size() > std::numeric_limits<uint32_t>::max()) {
             throw Error::Overflow(ModuleName(), "value exceeds supported size");
         }
-        total_size += sizeof(uint32_t) + value.size();
+        WriteStream<uint32_t>(out, static_cast<uint32_t>(value.size()));
+        WriteBytes(out, value);
     }
-
-    std::string buffer(total_size, '\0');
-    char* dst = buffer.data();
-
-    for (const auto& value : values_) {
-        const uint32_t length = value.size();
-
-        std::memcpy(dst, &length, sizeof(length));
-        dst += sizeof(length);
-
-        if (!value.empty()) {
-            std::memcpy(dst, value.data(), value.size());
-            dst += value.size();
-        }
-    }
-
-    WriteBytes(out, buffer);
 }
 
 void StringColumn::ReadFrom(std::istream& in, const uint32_t row_count, const uint64_t size) {

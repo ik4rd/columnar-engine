@@ -42,8 +42,7 @@ static std::strong_ordering CompareValuesImpl(const T left, const T right) {
 
 std::strong_ordering CompareValues(const ColumnType type, const std::string_view lhs, const std::string_view rhs) {
     return VisitColumnType(type, [&]<ColumnType TypeValue>() {
-        return CompareValuesImpl(ColumnValueTraits<TypeValue>::Parse(std::string(lhs)),
-                                 ColumnValueTraits<TypeValue>::Parse(std::string(rhs)));
+        return CompareValuesImpl(ColumnValueTraits<TypeValue>::Parse(lhs), ColumnValueTraits<TypeValue>::Parse(rhs));
     });
 }
 

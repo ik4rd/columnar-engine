@@ -4,6 +4,7 @@
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "common/int128.h"
 #include "model/schema.h"
@@ -40,7 +41,8 @@ class MutableColumn : public Column {
 
     virtual void Reserve(size_t n) = 0;
     virtual void Clear() = 0;
-    virtual void AppendFromString(const std::string& value) = 0;
+    virtual void AppendFromString(std::string_view value) = 0;
+    virtual void AppendFromColumn(const Column& source, size_t row) = 0;
     virtual void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) = 0;
     virtual std::unique_ptr<MutableColumn> CloneMutable() const = 0;
 };

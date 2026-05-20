@@ -20,8 +20,15 @@ class FixedColumn : public MutableColumn {
     size_t Size() const override { return values_.size(); }
     void Reserve(const size_t n) override { values_.reserve(n); }
     void Clear() override { values_.clear(); }
-    void AppendFromString(const std::string& value) override {
+    void AppendFromString(const std::string_view value) override {
         AppendValue(ColumnValueTraits<TypeValue>::Parse(value));
+    }
+    void AppendFromColumn(const Column& source, const size_t row) override {
+        if (source.Type() != TypeValue) {
+            throw Error::InconsistentData(ColumnImpl::ModuleName(), "column type mismatch");
+        }
+        const auto& typed_source = static_cast<const FixedColumn&>(source);
+        AppendValue(typed_source.ValueAt(row));
     }
     std::string ValueAsString(const size_t row) const override {
         return ColumnValueTraits<TypeValue>::ToString(ValueAt(row));

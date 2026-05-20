@@ -17,8 +17,8 @@ void AggState::ConsumeInt128(const Int128 value) { ConsumeValue(Int128ToString(v
 static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view candidate,
                                   const std::string_view current, const bool is_min) {
     return VisitColumnType(type, [&]<ColumnType TypeValue>() {
-        const auto left = ColumnValueTraits<TypeValue>::Parse(std::string(candidate));
-        const auto right = ColumnValueTraits<TypeValue>::Parse(std::string(current));
+        const auto left = ColumnValueTraits<TypeValue>::Parse(candidate);
+        const auto right = ColumnValueTraits<TypeValue>::Parse(current);
 
         return is_min ? left < right : left > right;
     });
@@ -27,17 +27,17 @@ static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view 
 static Int128 ParseToInt128(const ColumnType type, const std::string_view value) {
     switch (type) {
         case ColumnType::Boolean:
-            return ParseBoolean(std::string(value)) ? 1 : 0;
+            return ParseBoolean(value) ? 1 : 0;
         case ColumnType::Int16:
-            return ParseInt16(std::string(value));
+            return ParseInt16(value);
         case ColumnType::Int32:
-            return ParseInt32(std::string(value));
+            return ParseInt32(value);
         case ColumnType::Int64:
-            return ParseInt64(std::string(value));
+            return ParseInt64(value);
         case ColumnType::Int128:
-            return ParseInt128(std::string(value));
+            return ParseInt128(value);
         case ColumnType::Character:
-            return ParseCharacter(std::string(value));
+            return ParseCharacter(value);
         case ColumnType::String:
         case ColumnType::Date:
         case ColumnType::Timestamp:
