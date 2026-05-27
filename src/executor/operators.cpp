@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <compare>
+#include <cstddef>
 #include <regex>
 #include <span>
 #include <unordered_map>
@@ -163,12 +164,10 @@ static bool MayMatchRowGroup(const PredicatePtr& predicate, const RowGroupMetada
                 return true;
             }
 
-            return std::ranges::any_of(
-                predicate->metadata_typed_in_values,
-                [&](const Int128 value) {
-                    return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_in_column_index],
-                                                     value, ComparisonKind::Equal);
-                });
+            return std::ranges::any_of(predicate->metadata_typed_in_values, [&](const Int128 value) {
+                return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_in_column_index], value,
+                                                 ComparisonKind::Equal);
+            });
         case PredicateKind::Like:
         case PredicateKind::NotLike:
             return true;
@@ -736,43 +735,166 @@ struct AggBinding {
     std::unique_ptr<AggState> state;
 };
 
-struct MaterializedGroupKey {
-    std::string id;
-    std::vector<std::string> values;
+struct GroupKeyComponent {
+    ColumnType type = ColumnType::String;
+    Int128 int_value = 0;
+    std::string string_value;
 };
 
-class GroupKeyEncoder {
-   public:
-    explicit GroupKeyEncoder(std::vector<PlannedGroupKey> group_keys) : group_keys_(std::move(group_keys)) {}
+static Int128 ParseGroupKeyIntValue(const ColumnType type, const std::string_view value) {
+    switch (type) {
+        case ColumnType::Boolean:
+            return ParseBoolean(value) ? 1 : 0;
+        case ColumnType::Int16:
+            return ParseInt16(value);
+        case ColumnType::Int32:
+            return ParseInt32(value);
+        case ColumnType::Int64:
+            return ParseInt64(value);
+        case ColumnType::Int128:
+            return ParseInt128(value);
+        case ColumnType::Date:
+            return ParseDate(value);
+        case ColumnType::Timestamp:
+            return ParseTimestamp(value);
+        case ColumnType::Character:
+            return ParseCharacter(value);
+        case ColumnType::String:
+            break;
+    }
 
-    MaterializedGroupKey Encode(const Batch& batch, const size_t row) const {
-        MaterializedGroupKey key;
+    throw Error::Unsupported("executor", "unsupported group key type");
+}
+
+static std::string FormatGroupKeyValue(const GroupKeyComponent& value) {
+    switch (value.type) {
+        case ColumnType::Boolean:
+            return BooleanToString(value.int_value != 0);
+        case ColumnType::Int16:
+        case ColumnType::Int32:
+        case ColumnType::Int64:
+        case ColumnType::Int128:
+            return Int128ToString(value.int_value);
+        case ColumnType::Date:
+            return DateToString(static_cast<int32_t>(value.int_value));
+        case ColumnType::Timestamp:
+            return TimestampToString(static_cast<int64_t>(value.int_value));
+        case ColumnType::Character:
+            return std::string(1, static_cast<char>(value.int_value));
+        case ColumnType::String:
+            return value.string_value;
+    }
+
+    return {};
+}
+
+static std::strong_ordering CompareGroupKeyValue(const GroupKeyComponent& lhs, const GroupKeyComponent& rhs) {
+    if (lhs.type != rhs.type) {
+        throw Error::InconsistentData("executor", "group key type mismatch");
+    }
+
+    if (lhs.type == ColumnType::String) {
+        return lhs.string_value <=> rhs.string_value;
+    }
+
+    return lhs.int_value <=> rhs.int_value;
+}
+
+static bool GroupKeyValueEquals(const GroupKeyComponent& lhs, const GroupKeyComponent& rhs) {
+    return CompareGroupKeyValue(lhs, rhs) == 0;
+}
+
+static size_t HashCombine(const size_t seed, const size_t value) {
+    return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+}
+
+static size_t HashInt128(const Int128 value) {
+    const auto bits = static_cast<unsigned __int128>(value);
+    const uint64_t low = static_cast<uint64_t>(bits);
+    const uint64_t high = static_cast<uint64_t>(bits >> 64);
+
+    return HashCombine(std::hash<uint64_t>{}(high), std::hash<uint64_t>{}(low));
+}
+
+struct TypedGroupKey {
+    std::vector<GroupKeyComponent> values;
+};
+
+struct TypedGroupKeyHash {
+    size_t operator()(const TypedGroupKey& key) const {
+        size_t hash = 0;
+
+        for (const GroupKeyComponent& value : key.values) {
+            hash = HashCombine(hash, std::hash<int>{}(static_cast<int>(value.type)));
+            hash = HashCombine(hash, value.type == ColumnType::String ? std::hash<std::string>{}(value.string_value)
+                                                                      : HashInt128(value.int_value));
+        }
+
+        return hash;
+    }
+};
+
+struct TypedGroupKeyEqual {
+    bool operator()(const TypedGroupKey& lhs, const TypedGroupKey& rhs) const {
+        if (lhs.values.size() != rhs.values.size()) {
+            return false;
+        }
+
+        for (size_t i = 0; i < lhs.values.size(); ++i) {
+            if (!GroupKeyValueEquals(lhs.values[i], rhs.values[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+};
+
+class GroupKeyMaterializer {
+   public:
+    explicit GroupKeyMaterializer(std::vector<PlannedGroupKey> group_keys) : group_keys_(std::move(group_keys)) {}
+
+    TypedGroupKey Materialize(const Batch& batch, const size_t row) const {
+        TypedGroupKey key;
         key.values.reserve(group_keys_.size());
 
         for (const auto& group_key : group_keys_) {
             if (group_key.expression && group_key.expression->kind == ExprKind::Column &&
                 group_key.expression->column_index_bound && group_key.expression->column_index < batch.ColumnsCount()) {
                 const Column& column = batch.ColumnAt(group_key.expression->column_index);
-                column.AppendEncodedValue(row, key.id);
-                key.values.push_back(column.ValueAsString(row));
+                if (group_key.column_type == ColumnType::String) {
+                    key.values.push_back(GroupKeyComponent{
+                        .type = group_key.column_type,
+                        .int_value = 0,
+                        .string_value = column.ValueAsString(row),
+                    });
+                } else {
+                    key.values.push_back(GroupKeyComponent{
+                        .type = group_key.column_type,
+                        .int_value = column.ValueAsInt128(row),
+                        .string_value = {},
+                    });
+                }
                 continue;
             }
 
             std::string value = EvalExpr(group_key.expression, batch, row);
-            AppendValue(key.id, value);
-
-            key.values.push_back(std::move(value));
+            if (group_key.column_type == ColumnType::String) {
+                key.values.push_back(GroupKeyComponent{
+                    .type = group_key.column_type,
+                    .int_value = 0,
+                    .string_value = std::move(value),
+                });
+            } else {
+                key.values.push_back(GroupKeyComponent{
+                    .type = group_key.column_type,
+                    .int_value = ParseGroupKeyIntValue(group_key.column_type, value),
+                    .string_value = {},
+                });
+            }
         }
 
         return key;
-    }
-
-   private:
-    static void AppendValue(std::string& id, const std::string_view value) {
-        id += std::to_string(value.size());
-        id.push_back(':');
-
-        id += value;
     }
 
     std::vector<PlannedGroupKey> group_keys_;
@@ -838,7 +960,7 @@ class GroupAggOperator final : public Operator {
                      const std::vector<PlannedAgg>& aggregates, std::vector<PlannedSelectItem> select_items,
                      PredicatePtr filter, PredicatePtr having, const bool sort_by_group_keys)
         : child_(std::move(child)),
-          group_key_encoder_(std::move(group_keys)),
+          group_key_materializer_(std::move(group_keys)),
           select_items_(std::move(select_items)),
           filter_(std::move(filter)),
           having_(std::move(having)),
@@ -864,13 +986,13 @@ class GroupAggOperator final : public Operator {
             SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
             for (const size_t row : selected_rows) {
-                MaterializedGroupKey key = group_key_encoder_.Encode(*batch, row);
+                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row);
 
                 size_t group_index = 0;
-                const auto it = group_indexes_.find(key.id);
+                const auto it = group_indexes_.find(key);
                 if (it == group_indexes_.end()) {
                     group_index = groups_.size();
-                    group_indexes_.emplace(std::move(key.id), group_index);
+                    group_indexes_.emplace(key, group_index);
 
                     groups_.push_back(GroupState{
                         .key_values = std::move(key.values),
@@ -922,7 +1044,7 @@ class GroupAggOperator final : public Operator {
 
    private:
     struct GroupState {
-        std::vector<std::string> key_values;
+        std::vector<GroupKeyComponent> key_values;
         std::vector<std::unique_ptr<AggState>> states;
     };
 
@@ -945,7 +1067,7 @@ class GroupAggOperator final : public Operator {
         for (size_t column = 0; column < select_items_.size(); ++column) {
             const PlannedSelectItem& item = select_items_[column];
             if (item.kind == SelectItemKind::GroupKey) {
-                batch.AppendValueFromString(column, group.key_values[item.index]);
+                batch.AppendValueFromString(column, FormatGroupKeyValue(group.key_values[item.index]));
             } else {
                 batch.AppendValueFromString(column, group.states[item.index]->Finalize());
             }
@@ -982,7 +1104,7 @@ class GroupAggOperator final : public Operator {
             for (const size_t column : group_key_columns) {
                 const PlannedSelectItem& item = select_items_[column];
                 const std::strong_ordering comparison =
-                    CompareValues(item.output_type, lhs.key_values[item.index], rhs.key_values[item.index]);
+                    CompareGroupKeyValue(lhs.key_values[item.index], rhs.key_values[item.index]);
                 if (comparison != 0) {
                     return comparison < 0;
                 }
@@ -995,14 +1117,198 @@ class GroupAggOperator final : public Operator {
     }
 
     std::unique_ptr<Operator> child_;
-    GroupKeyEncoder group_key_encoder_;
+    GroupKeyMaterializer group_key_materializer_;
     std::vector<GroupAggBinding> bindings_;
     std::vector<PlannedSelectItem> select_items_;
     PredicatePtr filter_;
     PredicatePtr having_;
-    std::unordered_map<std::string, size_t> group_indexes_;
+    std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
     std::vector<GroupState> groups_;
     bool sort_by_group_keys_ = false;
+    bool returned_ = false;
+};
+
+class GroupAggTopKOperator final : public Operator {
+   public:
+    GroupAggTopKOperator(std::unique_ptr<Operator> child, std::vector<PlannedGroupKey> group_keys,
+                         const std::vector<PlannedAgg>& aggregates, std::vector<PlannedSelectItem> select_items,
+                         PredicatePtr filter, std::vector<PlannedOrderBy> order_by, const size_t limit)
+        : child_(std::move(child)),
+          group_key_materializer_(std::move(group_keys)),
+          select_items_(std::move(select_items)),
+          filter_(std::move(filter)),
+          order_by_(std::move(order_by)),
+          limit_(limit) {
+        bindings_.reserve(aggregates.size());
+
+        for (const auto& aggregate : aggregates) {
+            bindings_.push_back(GroupAggBinding{
+                .aggregate = aggregate,
+            });
+        }
+    }
+
+    std::optional<Batch> Next() override {
+        if (returned_ || limit_ == 0) {
+            return std::nullopt;
+        }
+
+        returned_ = true;
+
+        while (auto batch = child_->Next()) {
+            std::vector<size_t> selected_rows;
+            SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
+
+            for (const size_t row : selected_rows) {
+                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row);
+
+                size_t group_index = 0;
+                const auto it = group_indexes_.find(key);
+                if (it == group_indexes_.end()) {
+                    group_index = groups_.size();
+                    group_indexes_.emplace(key, group_index);
+
+                    groups_.push_back(GroupState{
+                        .key_values = std::move(key.values),
+                        .states = CreateStates(),
+                        .aggregate_values = {},
+                        .aggregate_values_finalized = false,
+                    });
+                } else {
+                    group_index = it->second;
+                }
+
+                GroupState& group = groups_[group_index];
+                for (size_t i = 0; i < bindings_.size(); ++i) {
+                    ConsumeAggRow(bindings_[i].aggregate, *batch, row, *group.states[i]);
+                }
+            }
+        }
+
+        Schema schema;
+        schema.columns.reserve(select_items_.size());
+        for (const auto& item : select_items_) {
+            schema.columns.push_back(ColumnSchema(item.output_name, item.output_type));
+        }
+
+        const std::vector<size_t> top_groups = BuildTopGroupIndexes();
+        Batch result(schema, top_groups.size());
+
+        for (const size_t group_index : top_groups) {
+            AppendGroupToBatch(groups_[group_index], result);
+        }
+
+        return result;
+    }
+
+   private:
+    struct GroupState {
+        std::vector<GroupKeyComponent> key_values;
+        std::vector<std::unique_ptr<AggState>> states;
+        mutable std::vector<std::string> aggregate_values;
+        mutable bool aggregate_values_finalized = false;
+    };
+
+    struct GroupAggBinding {
+        PlannedAgg aggregate;
+    };
+
+    std::vector<std::unique_ptr<AggState>> CreateStates() const {
+        std::vector<std::unique_ptr<AggState>> states;
+        states.reserve(bindings_.size());
+
+        for (const auto& binding : bindings_) {
+            states.push_back(CreateAggState(binding.aggregate));
+        }
+
+        return states;
+    }
+
+    static void FinalizeAggregateValues(const GroupState& group) {
+        if (group.aggregate_values_finalized) {
+            return;
+        }
+
+        group.aggregate_values.reserve(group.states.size());
+        for (const auto& state : group.states) {
+            group.aggregate_values.push_back(state->Finalize());
+        }
+        group.aggregate_values_finalized = true;
+    }
+
+    bool OrdersBefore(const size_t lhs_index, const size_t rhs_index) const {
+        const GroupState& lhs = groups_[lhs_index];
+        const GroupState& rhs = groups_[rhs_index];
+
+        for (const PlannedOrderBy& order : order_by_) {
+            const PlannedSelectItem& item = select_items_[order.result_column_index];
+            std::strong_ordering comparison = std::strong_ordering::equal;
+
+            if (item.kind == SelectItemKind::GroupKey) {
+                comparison = CompareGroupKeyValue(lhs.key_values[item.index], rhs.key_values[item.index]);
+            } else {
+                FinalizeAggregateValues(lhs);
+                FinalizeAggregateValues(rhs);
+                comparison =
+                    CompareValues(item.output_type, lhs.aggregate_values[item.index], rhs.aggregate_values[item.index]);
+            }
+
+            if (comparison != 0) {
+                return order.descending ? comparison > 0 : comparison < 0;
+            }
+        }
+
+        return lhs_index < rhs_index;
+    }
+
+    void AppendGroupToBatch(const GroupState& group, const Batch& batch) const {
+        FinalizeAggregateValues(group);
+
+        for (size_t column = 0; column < select_items_.size(); ++column) {
+            const PlannedSelectItem& item = select_items_[column];
+            if (item.kind == SelectItemKind::GroupKey) {
+                batch.AppendValueFromString(column, FormatGroupKeyValue(group.key_values[item.index]));
+            } else {
+                batch.AppendValueFromString(column, group.aggregate_values[item.index]);
+            }
+        }
+    }
+
+    std::vector<size_t> BuildTopGroupIndexes() const {
+        std::vector<size_t> top_groups;
+        top_groups.reserve(limit_);
+
+        for (size_t i = 0; i < groups_.size(); ++i) {
+            if (top_groups.size() < limit_) {
+                top_groups.push_back(i);
+                std::ranges::push_heap(top_groups,
+                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                continue;
+            }
+
+            if (OrdersBefore(i, top_groups.front())) {
+                std::ranges::pop_heap(top_groups,
+                                      [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                top_groups.back() = i;
+                std::ranges::push_heap(top_groups,
+                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+            }
+        }
+
+        std::ranges::sort(top_groups, [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+
+        return top_groups;
+    }
+
+    std::unique_ptr<Operator> child_;
+    GroupKeyMaterializer group_key_materializer_;
+    std::vector<GroupAggBinding> bindings_;
+    std::vector<PlannedSelectItem> select_items_;
+    PredicatePtr filter_;
+    std::vector<PlannedOrderBy> order_by_;
+    size_t limit_ = 0;
+    std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
+    mutable std::vector<GroupState> groups_;
     bool returned_ = false;
 };
 
@@ -1324,15 +1630,22 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         return root;
     }
 
+    bool limit_applied_by_top_k = false;
+
     if (!planned.group_keys.empty()) {
-        root = std::make_unique<GroupAggOperator>(std::move(root), planned.group_keys, planned.aggregates,
-                                                  planned.select_items, planned.filter, planned.having,
-                                                  planned.order_by.empty());
+        if (!planned.order_by.empty() && planned.limit.has_value() && planned.offset == 0 && !planned.having) {
+            root = std::make_unique<GroupAggTopKOperator>(std::move(root), planned.group_keys, planned.aggregates,
+                                                          planned.select_items, planned.filter, planned.order_by,
+                                                          *planned.limit);
+            limit_applied_by_top_k = true;
+        } else {
+            root = std::make_unique<GroupAggOperator>(std::move(root), planned.group_keys, planned.aggregates,
+                                                      planned.select_items, planned.filter, planned.having,
+                                                      planned.order_by.empty());
+        }
     } else {
         root = std::make_unique<AggOperator>(std::move(root), planned.aggregates, planned.filter);
     }
-
-    bool limit_applied_by_top_k = false;
 
     if (!planned.order_by.empty()) {
         if (planned.limit.has_value() && planned.offset == 0) {
