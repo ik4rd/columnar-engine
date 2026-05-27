@@ -3,13 +3,13 @@
 #include <stdexcept>
 #include <vector>
 
+#include "common/error.h"
 #include "convert/csv_columnar.h"
 #include "executor/executor.h"
 #include "io/csv_batch.h"
 #include "io/file.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
-#include "common/error.h"
 
 void ConfigureInferSchemaCommand(argparse::ArgumentParser& command) {
     command.add_description("Infer a schema from a CSV file.");
@@ -22,7 +22,7 @@ void ConfigureConvertCommand(argparse::ArgumentParser& command) {
     command.add_argument("--schema").required();
     command.add_argument("--input").required();
     command.add_argument("--output").required();
-    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(size_t{50000});
+    command.add_argument("--row-group-size").scan<'u', size_t>().default_value(size_t{1 << 14});
 }
 
 void ConfigureRoundtripCommand(argparse::ArgumentParser& command) {

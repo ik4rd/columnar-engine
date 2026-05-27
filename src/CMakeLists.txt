@@ -9,6 +9,8 @@ add_library(columnar_engine_core
         common/error.cpp
         common/ascii.cpp
         common/parsing.cpp
+        common/operator_utils.cpp
+        common/planner_utils.cpp
 )
 
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
@@ -41,9 +43,7 @@ add_library(columnar_engine_executor
         executor/executor.cpp
         executor/query_parser.cpp
         executor/query_planner.cpp
-        executor/planner_utils.cpp
         executor/aggregate_states.cpp
-        executor/operator_utils.cpp
         executor/operators.cpp
         sql_parser/tokenizer_factory.cpp
         sql_parser/tokenizer_tokens.cpp

@@ -1,7 +1,13 @@
-#include "executor/planner_utils.h"
+#include "common/planner_utils.h"
+
+#include <array>
 
 #include "common/ascii.h"
 #include "common/error.h"
+
+constexpr size_t SqlStringQuoteCount = 2;
+constexpr char SqlStringQuote = '\'';
+constexpr std::array<std::string_view, 4> ClickBenchStarColumns = {"WatchID", "EventTime", "URL", "Title"};
 
 size_t FindColumnIndex(const Schema& schema, const std::string_view column_name) {
     const std::string needle = ToLowerAscii(column_name);
@@ -36,16 +42,16 @@ void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
 }
 
 static std::string UnescapeSqlString(const std::string_view text) {
-    if (text.size() < 2 || text.front() != '\'' || text.back() != '\'') {
+    if (text.size() < SqlStringQuoteCount || text.front() != SqlStringQuote || text.back() != SqlStringQuote) {
         throw Error::InvalidArgument("executor", "invalid string literal");
     }
 
     std::string result;
-    result.reserve(text.size() - 2);
+    result.reserve(text.size() - SqlStringQuoteCount);
 
     for (size_t i = 1; i + 1 < text.size(); ++i) {
-        if (text[i] == '\'' && i + 2 < text.size() && text[i + 1] == '\'') {
-            result.push_back('\'');
+        if (text[i] == SqlStringQuote && i + SqlStringQuoteCount < text.size() && text[i + 1] == SqlStringQuote) {
+            result.push_back(SqlStringQuote);
             ++i;
             continue;
         }
@@ -101,4 +107,30 @@ bool SameSelectItem(const SelectItemSpec& lhs, const SelectItemSpec& rhs) {
 
 bool SameOutputName(const SelectItemSpec& lhs, const SelectItemSpec& rhs) {
     return SameColumnName(lhs.output_name, rhs.output_name);
+}
+
+std::vector<size_t> StarColumnIndexes(const Schema& schema) {
+    std::vector<size_t> clickbench_subset;
+
+    for (const std::string_view name : ClickBenchStarColumns) {
+        try {
+            clickbench_subset.push_back(FindColumnIndex(schema, name));
+        } catch (const Error&) {
+            clickbench_subset.clear();
+            break;
+        }
+    }
+
+    if (clickbench_subset.size() == ClickBenchStarColumns.size()) {
+        return clickbench_subset;
+    }
+
+    std::vector<size_t> all;
+    all.reserve(schema.columns.size());
+
+    for (size_t i = 0; i < schema.columns.size(); ++i) {
+        all.push_back(i);
+    }
+
+    return all;
 }

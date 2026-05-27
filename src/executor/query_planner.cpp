@@ -4,10 +4,12 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
+#include "common/operator_utils.h"
 #include "common/parsing.h"
-#include "executor/operator_utils.h"
-#include "executor/planner_utils.h"
+#include "common/planner_utils.h"
 #include "io/columnar_batch.h"
+
+constexpr size_t SqlOrdinalBase = 1;
 
 static bool SameExpr(const ExprPtr& lhs, const ExprPtr& rhs) {
     if (!lhs || !rhs || lhs->kind != rhs->kind) {
@@ -131,8 +133,8 @@ static ExprPtr ResolveGroupByExpression(const Query& query_ast, const ExprPtr& e
     if (expr->kind == ExprKind::Literal && expr->literal.kind == LiteralKind::Numeric) {
         try {
             const size_t ordinal = std::stoull(expr->literal.text);
-            if (ordinal >= 1 && ordinal <= query_ast.select_items.size()) {
-                return query_ast.select_items[ordinal - 1].expression;
+            if (ordinal >= SqlOrdinalBase && ordinal <= query_ast.select_items.size()) {
+                return query_ast.select_items[ordinal - SqlOrdinalBase].expression;
             }
         } catch (...) {
         }
@@ -147,32 +149,6 @@ static ExprPtr ResolveGroupByExpression(const Query& query_ast, const ExprPtr& e
     }
 
     return expr;
-}
-
-static std::vector<size_t> StarColumnIndexes(const Schema& schema) {
-    std::vector<size_t> clickbench_subset;
-
-    for (const std::string_view name : {"WatchID", "EventTime", "URL", "Title"}) {
-        try {
-            clickbench_subset.push_back(FindColumnIndex(schema, name));
-        } catch (const Error&) {
-            clickbench_subset.clear();
-            break;
-        }
-    }
-
-    if (clickbench_subset.size() == 4) {
-        return clickbench_subset;
-    }
-
-    std::vector<size_t> all;
-    all.reserve(schema.columns.size());
-
-    for (size_t i = 0; i < schema.columns.size(); ++i) {
-        all.push_back(i);
-    }
-
-    return all;
 }
 
 static void AddProjectionIndex(std::vector<size_t>& indexes, const size_t index) {
@@ -575,6 +551,7 @@ static std::optional<std::pair<ColumnRef, Int128>> TryLinearColumnExpr(const Exp
     }
 
     const Int128 offset = expr->binary_op == BinaryOp::Add ? *literal : -*literal;
+
     return std::pair<ColumnRef, Int128>{expr->left->column, offset};
 }
 
@@ -594,6 +571,39 @@ static bool IsNumericType(const ColumnType type) {
     }
 
     return false;
+}
+
+static bool SupportsDirectTypedAggInput(const AggFuncDefinition& function, const ColumnType type) {
+    if (IsNumericType(type)) {
+        return true;
+    }
+    const std::string name = ToUpperAscii(function.canonical_name);
+    return (name == "MIN" || name == "MAX") && (type == ColumnType::Date || type == ColumnType::Timestamp);
+}
+
+static bool IsSimpleMetadataExtrema(const Query& query, const PlannedQuery& planned, const ColumnarMetadata& metadata) {
+    if (planned.plain_select || query.filter || query.having || !query.group_by.empty() || !query.order_by.empty() ||
+        query.limit.has_value() || query.offset != 0 || planned.aggregates.empty()) {
+        return false;
+    }
+
+    for (const PlannedAgg& aggregate : planned.aggregates) {
+        const std::string name = ToUpperAscii(aggregate.function->canonical_name);
+        if ((name != "MIN" && name != "MAX") || aggregate.distinct ||
+            aggregate.argument_kind != AggArgumentKind::Column || !aggregate.direct_numeric_argument ||
+            aggregate.direct_numeric_offset != 0) {
+            return false;
+        }
+
+        for (const auto& row_group : metadata.row_groups) {
+            if (aggregate.column_index >= row_group.columns.size() ||
+                !row_group.columns[aggregate.column_index].has_min_max) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string, std::filesystem::path>& tables) {
@@ -702,8 +712,9 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
                 .distinct = aggregate.distinct,
                 .argument_kind = aggregate.argument_kind,
                 .column_index = direct_numeric.has_value() ? FindColumnIndex(schema, direct_numeric->first.name) : 0,
-                .direct_numeric_argument = direct_numeric.has_value() &&
-                                           IsNumericType(ColumnTypeOfColumn(query, schema, direct_numeric->first)),
+                .direct_numeric_argument =
+                    direct_numeric.has_value() &&
+                    SupportsDirectTypedAggInput(function, ColumnTypeOfColumn(query, schema, direct_numeric->first)),
                 .direct_numeric_offset = direct_numeric.has_value() ? direct_numeric->second : 0,
                 .input_type = aggregate.argument ? ColumnTypeOf(query, schema, aggregate.argument) : ColumnType::String,
                 .argument = aggregate.argument,
@@ -820,8 +831,10 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
     planned.limit = query.limit;
     planned.offset = 0;
     planned.metadata_count_only = IsSimpleCountStar(query, planned);
+    planned.metadata_extrema_only =
+        !planned.metadata_count_only && IsSimpleMetadataExtrema(query, planned, reader.GetMetadata());
 
-    if (!planned.metadata_count_only) {
+    if (!planned.metadata_count_only && !planned.metadata_extrema_only) {
         if (projection_indexes.empty() && !schema.columns.empty()) {
             projection_indexes.push_back(0);
         }
@@ -852,7 +865,7 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
         }
     }
 
-    if (!planned.metadata_count_only) {
+    if (!planned.metadata_count_only && !planned.metadata_extrema_only) {
         BindPredicateColumnIndexes(query, schema, planned.projection_indexes, planned.filter);
         for (PlannedGroupKey& group_key : planned.group_keys) {
             BindExprColumnIndexes(query, schema, planned.projection_indexes, group_key.expression);

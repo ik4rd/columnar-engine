@@ -10,13 +10,27 @@
 #include "common/ascii.h"
 #include "common/error.h"
 #include "common/int128.h"
+#include "common/operator_utils.h"
 #include "common/parsing.h"
+#include "common/planner_utils.h"
 #include "executor/aggregate_state.h"
 #include "executor/operator.h"
-#include "executor/operator_utils.h"
-#include "executor/planner_utils.h"
 #include "io/columnar_batch.h"
 #include "io/file.h"
+
+constexpr std::string_view CountStarName = "COUNT(*)";
+constexpr std::string_view FallbackAggregateAlias = "c";
+constexpr std::string_view PageViewsAlias = "PageViews";
+constexpr std::string_view ExtractMinutePart = "MINUTE";
+constexpr std::string_view ExtractHourPart = "HOUR";
+
+constexpr int64_t MinuteMicros = 60'000'000;
+
+constexpr std::string_view HttpScheme = "http://";
+constexpr std::string_view HttpsScheme = "https://";
+constexpr std::string_view WwwPrefix = "www.";
+constexpr std::string_view RegexBackrefPlaceholder = "\\1";
+constexpr std::string_view RegexBackrefReplacement = "$1";
 
 class MetadataCountOperator final : public Operator {
    public:
@@ -46,6 +60,60 @@ class MetadataCountOperator final : public Operator {
    private:
     std::filesystem::path path_;
     std::string output_name_;
+    bool returned_ = false;
+};
+
+class MetadataExtremaOperator final : public Operator {
+   public:
+    MetadataExtremaOperator(std::filesystem::path path, std::vector<PlannedAgg> aggregates)
+        : path_(std::move(path)), aggregates_(std::move(aggregates)) {}
+
+    std::optional<Batch> Next() override {
+        if (returned_) {
+            return std::nullopt;
+        }
+
+        returned_ = true;
+
+        const ColumnarBatchReader reader(path_);
+        const ColumnarMetadata& metadata = reader.GetMetadata();
+
+        Schema schema;
+        schema.columns.reserve(aggregates_.size());
+
+        std::vector<std::unique_ptr<AggState>> states;
+        states.reserve(aggregates_.size());
+
+        for (const PlannedAgg& aggregate : aggregates_) {
+            schema.columns.push_back(ColumnSchema(aggregate.output_name, AggregateOutputType(aggregate)));
+            states.push_back(CreateAggState(aggregate));
+        }
+
+        for (const auto& row_group : metadata.row_groups) {
+            for (size_t i = 0; i < aggregates_.size(); ++i) {
+                const PlannedAgg& aggregate = aggregates_[i];
+                const auto& chunk = row_group.columns[aggregate.column_index];
+
+                if (!chunk.has_min_max) {
+                    throw Error::InvalidState("executor", "metadata min/max statistics are missing", path_.string());
+                }
+
+                const std::string name = ToUpperAscii(aggregate.function->canonical_name);
+                states[i]->ConsumeInt128(name == "MIN" ? chunk.min_value : chunk.max_value);
+            }
+        }
+
+        Batch result(schema);
+        for (size_t i = 0; i < states.size(); ++i) {
+            result.AppendValueFromString(i, states[i]->Finalize());
+        }
+
+        return result;
+    }
+
+   private:
+    std::filesystem::path path_;
+    std::vector<PlannedAgg> aggregates_;
     bool returned_ = false;
 };
 
@@ -131,7 +199,7 @@ static Int128 EvalInt(const std::string& value) { return ParseInt128(value); }
 static std::string FormatAggregateExprName(const ExprSpec& expr) {
     const std::string name = ToUpperAscii(expr.function_name);
     if (name == "COUNT" && !expr.arguments.empty() && expr.arguments.front()->kind == ExprKind::Star) {
-        return "COUNT(*)";
+        return std::string(CountStarName);
     }
 
     std::string out = name + "(";
@@ -159,10 +227,10 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
             column.has_value()) {
             return batch.ColumnAt(*column).ValueAsString(row);
         }
-        if (const auto column = TryFindBatchColumn(batch.GetSchema(), "c"); column.has_value()) {
+        if (const auto column = TryFindBatchColumn(batch.GetSchema(), FallbackAggregateAlias); column.has_value()) {
             return batch.ColumnAt(*column).ValueAsString(row);
         }
-        if (const auto column = TryFindBatchColumn(batch.GetSchema(), "PageViews"); column.has_value()) {
+        if (const auto column = TryFindBatchColumn(batch.GetSchema(), PageViewsAlias); column.has_value()) {
             return batch.ColumnAt(*column).ValueAsString(row);
         }
     }
@@ -180,10 +248,10 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
 
         const std::chrono::hh_mm_ss tod{time - day};
 
-        if (part == "MINUTE") {
+        if (part == ExtractMinutePart) {
             return std::to_string(tod.minutes().count());
         }
-        if (part == "HOUR") {
+        if (part == ExtractHourPart) {
             return std::to_string(tod.hours().count());
         }
 
@@ -194,8 +262,8 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
         const std::string part = ToUpperAscii(EvalExpr(expr.arguments.at(0), batch, row));
         int64_t micros = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
 
-        if (part == "MINUTE") {
-            micros = micros / 60000000 * 60000000;
+        if (part == ExtractMinutePart) {
+            micros = micros / MinuteMicros * MinuteMicros;
             return TimestampToString(micros);
         }
 
@@ -209,16 +277,16 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
 
         if (pattern_text == R"(^https?://(?:www\.)?([^/]+)/.*$)" && replacement == R"(\1)") {
             std::string_view rest = source;
-            if (rest.starts_with("http://")) {
-                rest.remove_prefix(7);
-            } else if (rest.starts_with("https://")) {
-                rest.remove_prefix(8);
+            if (rest.starts_with(HttpScheme)) {
+                rest.remove_prefix(HttpScheme.size());
+            } else if (rest.starts_with(HttpsScheme)) {
+                rest.remove_prefix(HttpsScheme.size());
             } else {
                 return source;
             }
 
-            if (rest.starts_with("www.")) {
-                rest.remove_prefix(4);
+            if (rest.starts_with(WwwPrefix)) {
+                rest.remove_prefix(WwwPrefix.size());
             }
 
             const size_t slash = rest.find('/');
@@ -238,9 +306,9 @@ static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const 
             return std::regex_replace(source, expr.regex_pattern, expr.regex_replacement);
         }
 
-        for (size_t pos = 0; (pos = replacement.find("\\1", pos)) != std::string::npos;) {
-            replacement.replace(pos, 2, "$1");
-            pos += 2;
+        for (size_t pos = 0; (pos = replacement.find(RegexBackrefPlaceholder, pos)) != std::string::npos;) {
+            replacement.replace(pos, RegexBackrefPlaceholder.size(), RegexBackrefReplacement);
+            pos += RegexBackrefReplacement.size();
         }
 
         const std::regex pattern(pattern_text);
@@ -283,87 +351,6 @@ static std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_
             return "*";
     }
     return {};
-}
-
-static bool LikeMatchesPercentOnly(const std::string_view value, const std::string_view pattern) {
-    std::vector<std::string_view> segments;
-
-    for (size_t pos = 0; pos < pattern.size();) {
-        while (pos < pattern.size() && pattern[pos] == '%') {
-            ++pos;
-        }
-
-        const size_t start = pos;
-        while (pos < pattern.size() && pattern[pos] != '%') {
-            ++pos;
-        }
-
-        if (start != pos) {
-            segments.push_back(pattern.substr(start, pos - start));
-        }
-    }
-
-    if (segments.empty()) {
-        return true;
-    }
-
-    size_t value_pos = 0;
-    size_t segment_index = 0;
-
-    if (pattern.front() != '%') {
-        if (!value.starts_with(segments.front())) {
-            return false;
-        }
-        value_pos = segments.front().size();
-        segment_index = 1;
-    }
-
-    for (; segment_index < segments.size(); ++segment_index) {
-        const std::string_view segment = segments[segment_index];
-        const size_t found = value.find(segment, value_pos);
-        if (found == std::string_view::npos) {
-            return false;
-        }
-        value_pos = found + segment.size();
-    }
-
-    return pattern.back() == '%' || value.ends_with(segments.back());
-}
-
-static bool LikeMatchesWithUnderscore(const std::string_view value, const std::string_view pattern) {
-    size_t value_pos = 0;
-    size_t pattern_pos = 0;
-    size_t last_percent = std::string_view::npos;
-    size_t retry_value_pos = 0;
-
-    while (value_pos < value.size()) {
-        if (pattern_pos < pattern.size() && (pattern[pattern_pos] == '_' || pattern[pattern_pos] == value[value_pos])) {
-            ++value_pos;
-            ++pattern_pos;
-        } else if (pattern_pos < pattern.size() && pattern[pattern_pos] == '%') {
-            last_percent = pattern_pos++;
-            retry_value_pos = value_pos;
-        } else if (last_percent != std::string_view::npos) {
-            pattern_pos = last_percent + 1;
-            value_pos = ++retry_value_pos;
-        } else {
-            return false;
-        }
-    }
-
-    while (pattern_pos < pattern.size() && pattern[pattern_pos] == '%') {
-        ++pattern_pos;
-    }
-
-    return pattern_pos == pattern.size();
-}
-
-static bool LikeMatches(const std::string& value, const std::string& pattern) {
-    if (pattern.find('_') == std::string::npos) {
-        return LikeMatchesPercentOnly(value, pattern);
-    }
-
-    return LikeMatchesWithUnderscore(value, pattern);
 }
 
 static ComparisonKind FlipComparison(const ComparisonKind comparison) {
@@ -637,65 +624,39 @@ class EnsureSchemaOperator final : public Operator {
     bool returned_empty_ = false;
 };
 
-class AggInput {
-   public:
-    virtual ~AggInput() = default;
+static bool UsesRowAggInput(const PlannedAgg& aggregate) {
+    return !aggregate.direct_numeric_argument && aggregate.argument_kind != AggArgumentKind::Column;
+}
 
-    virtual void Consume(const Batch& batch, size_t row, AggState& state) const = 0;
-
-    virtual void ConsumeRows(const Batch& batch, const std::span<const size_t> rows, AggState& state) const {
-        for (const size_t row : rows) {
-            Consume(batch, row, state);
-        }
-    }
-};
-
-class ColumnAggInput final : public AggInput {
-   public:
-    explicit ColumnAggInput(ExprPtr expression) : expression_(std::move(expression)) {}
-
-    void Consume(const Batch& batch, const size_t row, AggState& state) const override {
-        state.ConsumeValue(EvalExpr(expression_, batch, row));
-    }
-
-   private:
-    ExprPtr expression_;
-};
-
-class NumericAggInput final : public AggInput {
-   public:
-    NumericAggInput(const size_t column_index, const Int128 offset) : column_index_(column_index), offset_(offset) {}
-
-    void Consume(const Batch& batch, const size_t row, AggState& state) const override {
-        state.ConsumeInt128(batch.ColumnAt(column_index_).ValueAsInt128(row) + offset_);
-    }
-
-   private:
-    size_t column_index_;
-    Int128 offset_;
-};
-
-class RowAggInput final : public AggInput {
-   public:
-    void Consume(const Batch&, const size_t, AggState& state) const override { state.ConsumeRow(); }
-    void ConsumeRows(const Batch&, const std::span<const size_t> rows, AggState& state) const override {
-        state.ConsumeRows(rows.size());
-    }
-};
-
-static std::unique_ptr<AggInput> CreateAggInput(const PlannedAgg& aggregate) {
+static void ConsumeAggRow(const PlannedAgg& aggregate, const Batch& batch, const size_t row, AggState& state) {
     if (aggregate.direct_numeric_argument) {
-        return std::make_unique<NumericAggInput>(aggregate.column_index, aggregate.direct_numeric_offset);
+        state.ConsumeInt128(batch.ColumnAt(aggregate.column_index).ValueAsInt128(row) +
+                            aggregate.direct_numeric_offset);
+        return;
     }
+
     if (aggregate.argument_kind == AggArgumentKind::Column) {
-        return std::make_unique<ColumnAggInput>(aggregate.argument);
+        state.ConsumeValue(EvalExpr(aggregate.argument, batch, row));
+        return;
     }
-    return std::make_unique<RowAggInput>();
+
+    state.ConsumeRow();
+}
+
+static void ConsumeAggRows(const PlannedAgg& aggregate, const Batch& batch, const std::span<const size_t> rows,
+                           AggState& state) {
+    if (UsesRowAggInput(aggregate)) {
+        state.ConsumeRows(rows.size());
+        return;
+    }
+
+    for (const size_t row : rows) {
+        ConsumeAggRow(aggregate, batch, row, state);
+    }
 }
 
 struct AggBinding {
     PlannedAgg aggregate;
-    std::unique_ptr<AggInput> input;
     std::unique_ptr<AggState> state;
 };
 
@@ -723,6 +684,7 @@ class GroupKeyEncoder {
 
             std::string value = EvalExpr(group_key.expression, batch, row);
             AppendValue(key.id, value);
+
             key.values.push_back(std::move(value));
         }
 
@@ -749,7 +711,6 @@ class AggOperator final : public Operator {
         for (const auto& aggregate : aggregates) {
             bindings_.push_back(AggBinding{
                 .aggregate = aggregate,
-                .input = CreateAggInput(aggregate),
                 .state = CreateAggState(aggregate),
             });
         }
@@ -767,7 +728,7 @@ class AggOperator final : public Operator {
             SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
             for (const auto& binding : bindings_) {
-                binding.input->ConsumeRows(*batch, selected_rows, *binding.state);
+                ConsumeAggRows(binding.aggregate, *batch, selected_rows, *binding.state);
             }
         }
 
@@ -811,7 +772,6 @@ class GroupAggOperator final : public Operator {
         for (const auto& aggregate : aggregates) {
             bindings_.push_back(GroupAggBinding{
                 .aggregate = aggregate,
-                .input = CreateAggInput(aggregate),
             });
         }
     }
@@ -846,7 +806,7 @@ class GroupAggOperator final : public Operator {
 
                 GroupState& group = groups_[group_index];
                 for (size_t i = 0; i < bindings_.size(); ++i) {
-                    bindings_[i].input->Consume(*batch, row, *group.states[i]);
+                    ConsumeAggRow(bindings_[i].aggregate, *batch, row, *group.states[i]);
                 }
             }
         }
@@ -868,6 +828,7 @@ class GroupAggOperator final : public Operator {
         if (having_) {
             std::vector<size_t> selected_rows;
             selected_rows.reserve(result.RowsCount());
+
             for (size_t row = 0; row < result.RowsCount(); ++row) {
                 if (EvaluatePredicate(having_, result, row)) {
                     selected_rows.push_back(row);
@@ -876,6 +837,7 @@ class GroupAggOperator final : public Operator {
 
             Batch filtered(schema, selected_rows.size());
             filtered.AppendRowsSelectedFromBatch(result, selected_rows);
+
             return filtered;
         }
 
@@ -890,7 +852,6 @@ class GroupAggOperator final : public Operator {
 
     struct GroupAggBinding {
         PlannedAgg aggregate;
-        std::unique_ptr<AggInput> input;
     };
 
     std::vector<std::unique_ptr<AggState>> CreateStates() const {
@@ -918,6 +879,7 @@ class GroupAggOperator final : public Operator {
     std::vector<size_t> BuildOutputOrder() const {
         std::vector<size_t> order;
         order.reserve(groups_.size());
+
         for (size_t i = 0; i < groups_.size(); ++i) {
             order.push_back(i);
         }
@@ -975,8 +937,7 @@ struct SortedRow {
 
 class RowOrdering {
    public:
-    RowOrdering(std::vector<PlannedOrderBy> order_by, std::vector<PlannedSelectItem> select_items)
-        : order_by_(std::move(order_by)), select_items_(std::move(select_items)) {}
+    explicit RowOrdering(std::vector<PlannedOrderBy> order_by) : order_by_(std::move(order_by)) {}
 
     bool operator()(const SortedRow& lhs, const SortedRow& rhs) const {
         for (const auto& order : order_by_) {
@@ -992,7 +953,6 @@ class RowOrdering {
 
    private:
     std::vector<PlannedOrderBy> order_by_;
-    std::vector<PlannedSelectItem> select_items_;
 };
 
 static std::vector<std::string> MaterializeBatchRow(const Batch& batch, const size_t row) {
@@ -1069,29 +1029,6 @@ class ProjectionOperator final : public Operator {
     const Schema& GetSchema() const { return schema_; }
 
    private:
-    static std::vector<size_t> StarColumnIndexes(const Schema& schema) {
-        std::vector<size_t> clickbench_subset;
-
-        for (const std::string_view name : {"WatchID", "EventTime", "URL", "Title"}) {
-            if (const auto index = TryFindBatchColumn(schema, name); index.has_value()) {
-                clickbench_subset.push_back(*index);
-            }
-        }
-
-        if (clickbench_subset.size() == 4) {
-            return clickbench_subset;
-        }
-
-        std::vector<size_t> all;
-        all.reserve(schema.columns.size());
-
-        for (size_t i = 0; i < schema.columns.size(); ++i) {
-            all.push_back(i);
-        }
-
-        return all;
-    }
-
     std::unique_ptr<Operator> child_;
     std::vector<SelectItemSpec> items_;
     Schema source_schema_;
@@ -1103,8 +1040,8 @@ class ProjectionOperator final : public Operator {
 class OrderByOperator final : public Operator {
    public:
     OrderByOperator(std::unique_ptr<Operator> child, std::vector<PlannedOrderBy> order_by,
-                    std::vector<PlannedSelectItem> select_items)
-        : child_(std::move(child)), ordering_(std::move(order_by), std::move(select_items)) {}
+                    std::vector<PlannedSelectItem> /*select_items*/)
+        : child_(std::move(child)), ordering_(std::move(order_by)) {}
 
     std::optional<Batch> Next() override {
         if (returned_) {
@@ -1150,8 +1087,8 @@ class OrderByOperator final : public Operator {
 class TopKOperator final : public Operator {
    public:
     TopKOperator(std::unique_ptr<Operator> child, std::vector<PlannedOrderBy> order_by,
-                 std::vector<PlannedSelectItem> select_items, const size_t limit)
-        : child_(std::move(child)), ordering_(std::move(order_by), std::move(select_items)), limit_(limit) {}
+                 std::vector<PlannedSelectItem> /*select_items*/, const size_t limit)
+        : child_(std::move(child)), ordering_(std::move(order_by)), limit_(limit) {}
 
     std::optional<Batch> Next() override {
         if (returned_ || limit_ == 0) {
@@ -1163,6 +1100,7 @@ class TopKOperator final : public Operator {
         std::optional<Schema> schema;
         std::vector<SortedRow> rows;
         rows.reserve(limit_);
+
         size_t ordinal = 0;
 
         while (auto batch = child_->Next()) {
@@ -1272,6 +1210,10 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         return std::make_unique<MetadataCountOperator>(planned.table_path, planned.aggregates.front().output_name);
     }
 
+    if (planned.metadata_extrema_only) {
+        return std::make_unique<MetadataExtremaOperator>(planned.table_path, planned.aggregates);
+    }
+
     std::unique_ptr<Operator> root = std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes);
 
     if (planned.filter && planned.plain_select) {
@@ -1314,6 +1256,7 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
     }
 
     bool limit_applied_by_top_k = false;
+
     if (!planned.order_by.empty()) {
         if (planned.limit.has_value() && planned.offset == 0) {
             root =

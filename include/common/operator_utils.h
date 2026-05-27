@@ -7,4 +7,5 @@
 
 std::strong_ordering CompareValues(ColumnType type, std::string_view lhs, std::string_view rhs);
 bool MatchesComparison(ColumnType type, std::string_view lhs, std::string_view rhs, ComparisonKind kind);
+bool LikeMatches(std::string_view value, std::string_view pattern);
 ColumnType AggregateOutputType(const PlannedAgg& aggregate);
