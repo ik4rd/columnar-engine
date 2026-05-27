@@ -122,9 +122,18 @@ struct PredicateSpec {
     Int128 typed_literal_value = 0;
     ComparisonKind typed_comparison = ComparisonKind::Equal;
 
+    bool metadata_typed_literal_comparison_bound = false;
+    size_t metadata_typed_column_index = 0;
+    Int128 metadata_typed_literal_value = 0;
+    ComparisonKind metadata_typed_comparison = ComparisonKind::Equal;
+
     bool literal_in_set_bound = false;
     size_t in_column_index = 0;
     std::unordered_set<std::string> literal_in_values;
+
+    bool metadata_typed_in_set_bound = false;
+    size_t metadata_typed_in_column_index = 0;
+    std::vector<Int128> metadata_typed_in_values;
 
     bool literal_like_pattern_bound = false;
     size_t like_column_index = 0;

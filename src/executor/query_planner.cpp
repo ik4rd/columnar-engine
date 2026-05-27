@@ -446,6 +446,25 @@ static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
     predicate->literal_in_set_bound = true;
     predicate->in_column_index = *projected_index;
     predicate->literal_in_values = std::move(values);
+
+    if (schema.columns[source_index].type == ColumnType::String) {
+        return;
+    }
+
+    std::vector<Int128> typed_values;
+    typed_values.reserve(predicate->values.size());
+
+    for (const ExprPtr& value : predicate->values) {
+        const std::optional<Int128> typed_value = TryLiteralValueForColumnType(value->literal, schema.columns[source_index].type);
+        if (!typed_value.has_value()) {
+            return;
+        }
+        typed_values.push_back(*typed_value);
+    }
+
+    predicate->metadata_typed_in_set_bound = true;
+    predicate->metadata_typed_in_column_index = source_index;
+    predicate->metadata_typed_in_values = std::move(typed_values);
 }
 
 static void BindLiteralLikePattern(const Query& query_ast, const Schema& schema,
@@ -530,6 +549,11 @@ static void BindTypedLiteralComparison(const Query& query_ast, const Schema& sch
     predicate->typed_column_index = *projected_index;
     predicate->typed_literal_value = *literal;
     predicate->typed_comparison = comparison;
+
+    predicate->metadata_typed_literal_comparison_bound = true;
+    predicate->metadata_typed_column_index = source_index;
+    predicate->metadata_typed_literal_value = *literal;
+    predicate->metadata_typed_comparison = comparison;
 }
 
 static std::optional<std::pair<ColumnRef, Int128>> TryLinearColumnExpr(const ExprPtr& expr) {

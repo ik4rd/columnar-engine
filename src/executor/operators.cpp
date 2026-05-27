@@ -117,10 +117,73 @@ class MetadataExtremaOperator final : public Operator {
     bool returned_ = false;
 };
 
+static bool MatchesRowGroupComparison(const ColumnChunkMetadata& chunk, const Int128 value,
+                                      const ComparisonKind comparison) {
+    if (!chunk.has_min_max) {
+        return true;
+    }
+
+    switch (comparison) {
+        case ComparisonKind::Equal:
+            return chunk.min_value <= value && value <= chunk.max_value;
+        case ComparisonKind::NotEqual:
+            return chunk.min_value != value || chunk.max_value != value;
+        case ComparisonKind::Less:
+            return chunk.min_value < value;
+        case ComparisonKind::LessOrEqual:
+            return chunk.min_value <= value;
+        case ComparisonKind::Greater:
+            return chunk.max_value > value;
+        case ComparisonKind::GreaterOrEqual:
+            return chunk.max_value >= value;
+    }
+
+    return true;
+}
+
+static bool MayMatchRowGroup(const PredicatePtr& predicate, const RowGroupMetadata& row_group) {
+    if (!predicate) {
+        return true;
+    }
+
+    switch (predicate->kind) {
+        case PredicateKind::And:
+            return MayMatchRowGroup(predicate->lhs, row_group) && MayMatchRowGroup(predicate->rhs, row_group);
+        case PredicateKind::Comparison:
+            if (!predicate->metadata_typed_literal_comparison_bound ||
+                predicate->metadata_typed_column_index >= row_group.columns.size()) {
+                return true;
+            }
+            return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_column_index],
+                                             predicate->metadata_typed_literal_value,
+                                             predicate->metadata_typed_comparison);
+        case PredicateKind::In:
+            if (!predicate->metadata_typed_in_set_bound ||
+                predicate->metadata_typed_in_column_index >= row_group.columns.size()) {
+                return true;
+            }
+
+            return std::ranges::any_of(
+                predicate->metadata_typed_in_values,
+                [&](const Int128 value) {
+                    return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_in_column_index],
+                                                     value, ComparisonKind::Equal);
+                });
+        case PredicateKind::Like:
+        case PredicateKind::NotLike:
+            return true;
+    }
+
+    return true;
+}
+
 class ScanOperator final : public Operator {
    public:
-    ScanOperator(std::filesystem::path path, std::vector<size_t> projection_indexes)
-        : path_(std::move(path)), input_(path_), metadata_(ColumnarBatchReader(path_).GetMetadata()) {
+    ScanOperator(std::filesystem::path path, std::vector<size_t> projection_indexes, PredicatePtr filter)
+        : path_(std::move(path)),
+          input_(path_),
+          metadata_(ColumnarBatchReader(path_).GetMetadata()),
+          filter_(std::move(filter)) {
         if (metadata_.schema.columns.empty()) {
             throw Error::MalformedData("executor", "columnar schema is empty", path_.string());
         }
@@ -142,14 +205,26 @@ class ScanOperator final : public Operator {
             return std::nullopt;
         }
 
-        const auto& row_group = metadata_.row_groups[next_group_++];
-        Batch batch(projected_schema_, row_group.row_count);
+        const RowGroupMetadata* row_group = nullptr;
+        while (next_group_ < metadata_.row_groups.size()) {
+            const RowGroupMetadata& candidate = metadata_.row_groups[next_group_++];
+            if (MayMatchRowGroup(filter_, candidate)) {
+                row_group = &candidate;
+                break;
+            }
+        }
+
+        if (row_group == nullptr) {
+            return std::nullopt;
+        }
+
+        Batch batch(projected_schema_, row_group->row_count);
 
         for (size_t projected_index = 0; projected_index < projection_indexes_.size(); ++projected_index) {
             const size_t source_index = projection_indexes_[projected_index];
-            const auto& chunk = row_group.columns[source_index];
+            const auto& chunk = row_group->columns[source_index];
 
-            batch.ReadColumnFrom(projected_index, input_.StreamAt(chunk.offset), row_group.row_count, chunk.size);
+            batch.ReadColumnFrom(projected_index, input_.StreamAt(chunk.offset), row_group->row_count, chunk.size);
         }
 
         return batch;
@@ -162,6 +237,7 @@ class ScanOperator final : public Operator {
     ColumnarMetadata metadata_;
     std::vector<size_t> projection_indexes_;
     Schema projected_schema_;
+    PredicatePtr filter_;
     size_t next_group_ = 0;
 };
 
@@ -1214,7 +1290,8 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         return std::make_unique<MetadataExtremaOperator>(planned.table_path, planned.aggregates);
     }
 
-    std::unique_ptr<Operator> root = std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes);
+    std::unique_ptr<Operator> root =
+        std::make_unique<ScanOperator>(planned.table_path, planned.projection_indexes, planned.filter);
 
     if (planned.filter && planned.plain_select) {
         root = std::make_unique<FilterOperator>(std::move(root), planned.filter);
