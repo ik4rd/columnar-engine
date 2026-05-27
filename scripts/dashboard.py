@@ -377,20 +377,20 @@ def heatmap_icon(value: float, median_value: float) -> str:
 
 def render_heatmap(rows: list[dict[str, str]], median_value: float, columns: int = 6) -> list[str]:
     lines = [
-        "### HEATMAP — время каждого запроса",
+        "### Heatmap",
         "",
-        "Зелёный = быстрее медианы · Синий = около медианы · Красный = медленнее медианы · Серый = 0ms",
+        "`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` 0 ms",
         "",
     ]
 
     chunks = [rows[index: index + columns] for index in range(0, len(rows), columns)]
     for chunk in chunks:
-        lines.append("| " + " | ".join(f"Q{row['query_id']}" for row in chunk) + " |")
+        lines.append("| " + " | ".join(f"Q{int(row['query_id']):02d}" for row in chunk) + " |")
         lines.append("| " + " | ".join("---:" for _ in chunk) + " |")
         lines.append(
             "| "
             + " | ".join(
-                f"{heatmap_icon(query_metric(row), median_value)} {format_ms(query_metric(row))} ms" for row in chunk
+                f"{heatmap_icon(query_metric(row), median_value)} `{format_ms(query_metric(row))}`" for row in chunk
             )
             + " |"
         )
@@ -424,45 +424,45 @@ def render_markdown(
     largest_outputs = sorted(ok_rows, key=lambda row: int(row["output_csv_bytes"]), reverse=True)[:5]
 
     lines = [
-        "## Dashboard",
+        "## Benchmark Dashboard",
         "",
-        f"_Generated at {generated_at} · queries: {len(rows)}/{count} · warm runs: {warm_runs} · source: [{csv_path}]({csv_path})_",
+        f"`generated {generated_at}` · `queries {len(rows)}/{count}` · `warm runs {warm_runs}` · [`csv`]({csv_path})",
         "",
-        "### Query KPIs",
+        "### Summary",
         "",
         "| Metric | Value |",
         "| --- | ---: |",
-        f"| Successful queries | {len(ok_rows)} / {len(rows)} |",
-        f"| Failed queries | {len(failed_rows)} |",
-        f"| Warm median | {format_ms(median_value)} ms |",
-        f"| Warm average | {format_ms(avg_value)} ms |",
-        f"| Warm p95 | {format_ms(p95_value)} ms |",
-        f"| Cold start penalty | {format_percent(cold_penalty)} |",
-        f"| Total query output size | {format_size(sum(output_sizes))} |",
-        f"| Largest query output | {format_size(max(output_sizes)) if output_sizes else '—'} |",
-        f"| Fastest query | Q{fastest['query_id']} · {format_ms(query_metric(fastest))} ms |" if fastest else "| Fastest query | — |",
-        f"| Slowest query | Q{slowest['query_id']} · {format_ms(query_metric(slowest))} ms |" if slowest else "| Slowest query | — |",
+        f"| queries ok | {len(ok_rows)} / {len(rows)} |",
+        f"| queries failed | {len(failed_rows)} |",
+        f"| median warm time | {format_ms(median_value)} ms |",
+        f"| average warm time | {format_ms(avg_value)} ms |",
+        f"| p95 warm time | {format_ms(p95_value)} ms |",
+        f"| cold/warm delta | {format_percent(cold_penalty)} |",
+        f"| total output size | {format_size(sum(output_sizes))} |",
+        f"| max output size | {format_size(max(output_sizes)) if output_sizes else '—'} |",
+        f"| fastest query | Q{int(fastest['query_id']):02d} · {format_ms(query_metric(fastest))} ms |" if fastest else "| fastest query | — |",
+        f"| slowest query | Q{int(slowest['query_id']):02d} · {format_ms(query_metric(slowest))} ms |" if slowest else "| slowest query | — |",
         "",
     ]
 
     if conversion_stats is not None:
         lines.extend(
             [
-                "### CSV -> Columnar",
+                "### Storage",
                 "",
                 "| Metric | Value |",
                 "| --- | ---: |",
-                f"| Source CSV | {conversion_stats['source_csv_path']} |",
-                f"| Schema | {conversion_stats['schema_path']} |",
-                f"| Source size | {format_size(int(conversion_stats['source_csv_bytes']))} |",
-                f"| Columnar size | {format_size(int(conversion_stats['columnar_bytes']))} |",
-                f"| Roundtrip CSV size | {format_size(int(conversion_stats['roundtrip_csv_bytes']))} |",
-                f"| Compression ratio | {format_ratio(float(conversion_stats['compression_ratio']))} |",
-                f"| Columnar vs CSV | {format_percent(float(conversion_stats['columnar_vs_csv_percent']))} |",
-                f"| CSV -> columnar | {format_seconds(float(conversion_stats['convert_elapsed_seconds']))} |",
-                f"| Columnar -> CSV | {format_seconds(float(conversion_stats['roundtrip_elapsed_seconds']))} |",
-                f"| Convert throughput | {float(conversion_stats['convert_throughput_mb_s']):.1f} MB/s |",
-                f"| Roundtrip throughput | {float(conversion_stats['roundtrip_throughput_mb_s']):.1f} MB/s |",
+                f"| source csv | `{conversion_stats['source_csv_path']}` |",
+                f"| schema | `{conversion_stats['schema_path']}` |",
+                f"| source size | {format_size(int(conversion_stats['source_csv_bytes']))} |",
+                f"| columnar size | {format_size(int(conversion_stats['columnar_bytes']))} |",
+                f"| roundtrip csv size | {format_size(int(conversion_stats['roundtrip_csv_bytes']))} |",
+                f"| compression ratio | {format_ratio(float(conversion_stats['compression_ratio']))} |",
+                f"| columnar / csv | {format_percent(float(conversion_stats['columnar_vs_csv_percent']))} |",
+                f"| csv -> columnar | {format_seconds(float(conversion_stats['convert_elapsed_seconds']))} |",
+                f"| columnar -> csv | {format_seconds(float(conversion_stats['roundtrip_elapsed_seconds']))} |",
+                f"| convert throughput | {float(conversion_stats['convert_throughput_mb_s']):.1f} MB/s |",
+                f"| roundtrip throughput | {float(conversion_stats['roundtrip_throughput_mb_s']):.1f} MB/s |",
                 "",
             ]
         )
@@ -470,22 +470,22 @@ def render_markdown(
     lines.extend(render_heatmap(rows, median_value))
     lines.extend(
         [
-            "### Largest outputs",
+            "### Largest Result Sets",
             "",
-            "| Query | Output CSV | SQL | Warm median, ms |",
+            "| Query | Output | Warm median, ms | SQL |",
             "| --- | ---: | --- | ---: |",
         ]
     )
     for row in largest_outputs:
         lines.append(
-            f"| [Q{row['query_id']}]({row['query_file']}) | {format_size(int(row['output_csv_bytes']))} | "
-            f"{markdown_escape(compact_sql(row['sql'], 64))} | {format_ms(query_metric(row))} |"
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {format_size(int(row['output_csv_bytes']))} | "
+            f"{format_ms(query_metric(row))} | {markdown_escape(compact_sql(row['sql'], 64))} |"
         )
 
     lines.extend(
         [
             "",
-            "### Fastest queries",
+            "### Fastest Queries",
             "",
             "| Query | SQL | Warm median, ms | First run, ms |",
             "| --- | --- | ---: | ---: |",
@@ -493,14 +493,14 @@ def render_markdown(
     )
     for row in top_fastest:
         lines.append(
-            f"| [Q{row['query_id']}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
             f"{format_ms(query_metric(row))} | {row['first_run_ms'] or '—'} |"
         )
 
     lines.extend(
         [
             "",
-            "### Slowest queries",
+            "### Slowest Queries",
             "",
             "| Query | SQL | Warm median, ms | Warm max, ms |",
             "| --- | --- | ---: | ---: |",
@@ -508,14 +508,14 @@ def render_markdown(
     )
     for row in top_slowest:
         lines.append(
-            f"| [Q{row['query_id']}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
             f"{format_ms(query_metric(row))} | {row['warm_max_ms'] or '—'} |"
         )
 
     lines.extend(
         [
             "",
-            "### All queries",
+            "### Query Table",
             "",
             "| Query | Output CSV | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
@@ -524,7 +524,7 @@ def render_markdown(
 
     for row in rows:
         query_file = row["query_file"]
-        query_label = f"[Q{row['query_id']}]({query_file})"
+        query_label = f"[Q{int(row['query_id']):02d}]({query_file})"
         status = row["status"]
         if row["error"]:
             status = f"{status}: {markdown_escape(compact_sql(row['error'], max_len=48))}"
