@@ -76,6 +76,12 @@ def parse_args() -> argparse.Namespace:
         default=1 << 14,
         help="Row group size for the CSV -> columnar conversion benchmark.",
     )
+    parser.add_argument(
+        "--compression",
+        default="none",
+        choices=("none", "lz4"),
+        help="Compression codec for the CSV -> columnar conversion benchmark.",
+    )
     return parser.parse_args()
 
 
@@ -161,6 +167,7 @@ def collect_conversion_stats(
         schema_path: pathlib.Path,
         source_csv_path: pathlib.Path,
         row_group_size: int,
+        compression: str,
 ) -> dict[str, float | int | str] | None:
     if not schema_path.exists() or not source_csv_path.exists():
         return None
@@ -182,6 +189,8 @@ def collect_conversion_stats(
             str(output_columnar),
             "--row-group-size",
             str(row_group_size),
+            "--compression",
+            compression,
         ]
         roundtrip_command = [
             str(binary),
@@ -215,6 +224,7 @@ def collect_conversion_stats(
     return {
         "source_csv_path": str(source_csv_path.relative_to(root)),
         "schema_path": str(schema_path.relative_to(root)),
+        "compression": compression,
         "source_csv_bytes": source_csv_bytes,
         "columnar_bytes": columnar_bytes,
         "roundtrip_csv_bytes": roundtrip_csv_bytes,
@@ -460,6 +470,7 @@ def render_markdown(
                 "| --- | ---: |",
                 f"| source csv | `{conversion_stats['source_csv_path']}` |",
                 f"| schema | `{conversion_stats['schema_path']}` |",
+                f"| compression | `{conversion_stats['compression']}` |",
                 f"| source size | {format_size(int(conversion_stats['source_csv_bytes']))} |",
                 f"| columnar size | {format_size(int(conversion_stats['columnar_bytes']))} |",
                 f"| roundtrip csv size | {format_size(int(conversion_stats['roundtrip_csv_bytes']))} |",
@@ -612,6 +623,7 @@ def main() -> int:
         schema_path=schema_path,
         source_csv_path=source_csv_path,
         row_group_size=args.row_group_size,
+        compression=args.compression,
     )
     write_csv(csv_path, rows)
     markdown_block = render_markdown(

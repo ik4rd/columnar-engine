@@ -2,8 +2,11 @@
 
 #include <filesystem>
 #include <optional>
+#include <span>
+#include <vector>
 
 #include "io/batch.h"
+#include "io/compression.h"
 #include "io/file.h"
 #include "model/metadata.h"
 
@@ -33,7 +36,7 @@ class ColumnarBatchReader final : public BatchReader {
 
 class ColumnarBatchWriter final : public BatchWriter {
    public:
-    ColumnarBatchWriter(const std::filesystem::path& path, Schema schema);
+    ColumnarBatchWriter(const std::filesystem::path& path, Schema schema, Compression compression = Compression::None);
     ColumnarBatchWriter(const ColumnarBatchWriter&) = delete;
     ColumnarBatchWriter(ColumnarBatchWriter&&) noexcept = default;
     ColumnarBatchWriter& operator=(const ColumnarBatchWriter&) = delete;
@@ -53,5 +56,11 @@ class ColumnarBatchWriter final : public BatchWriter {
     std::ofstream out_;
 
     ColumnarMetadata metadata_;
+    Compression compression_ = Compression::None;
     bool finalized_ = false;
 };
+
+std::vector<uint8_t> ReadColumnChunk(const std::filesystem::path& path, InputFile& input,
+                                     const ColumnChunkMetadata& chunk);
+void ReadBatchColumnChunk(const std::filesystem::path& path, InputFile& input, const ColumnChunkMetadata& chunk,
+                          uint32_t row_count, const Batch& batch, size_t column_index);

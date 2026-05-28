@@ -23,6 +23,7 @@ void ConfigureConvertCommand(argparse::ArgumentParser& command) {
     command.add_argument("--input").required();
     command.add_argument("--output").required();
     command.add_argument("--row-group-size").scan<'u', size_t>().default_value(size_t{1 << 14});
+    command.add_argument("--compression").default_value(std::string("none"));
 }
 
 void ConfigureRoundtripCommand(argparse::ArgumentParser& command) {
@@ -57,7 +58,8 @@ int RunConvert(const argparse::ArgumentParser& command) {
     EnsureParentDirectory(output_path);
     ConvertCsvToColumnar(std::filesystem::path(command.get<std::string>("--schema")),
                          std::filesystem::path(command.get<std::string>("--input")), output_path,
-                         command.get<size_t>("--row-group-size"));
+                         command.get<size_t>("--row-group-size"),
+                         CompressionFromName(command.get<std::string>("--compression")));
 
     return 0;
 }

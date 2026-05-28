@@ -3,12 +3,15 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "common/error.h"
+#include "io/compression.h"
 #include "io/stream.h"
 
 static constexpr std::string_view ColumnarMagic = "CLMN";
@@ -51,6 +54,42 @@ static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk
     chunk.has_min_max = true;
     chunk.min_value = min_value;
     chunk.max_value = max_value;
+}
+
+static std::vector<uint8_t> SerializeColumn(const Column& column) {
+    std::ostringstream buffer(std::ios::binary);
+    column.WriteTo(buffer);
+    const std::string bytes = std::move(buffer).str();
+    return std::vector<uint8_t>(bytes.begin(), bytes.end());
+}
+
+static ColumnChunkMetadata WriteColumnChunk(const std::filesystem::path& path, std::ofstream& out, const Column& column,
+                                            const Compression compression) {
+    const std::vector<uint8_t> uncompressed = SerializeColumn(column);
+    const std::vector<uint8_t> compressed = Compress(uncompressed, compression);
+
+    const std::span<const uint8_t> payload = compressed.size() < uncompressed.size()
+                                                 ? std::span<const uint8_t>(compressed)
+                                                 : std::span<const uint8_t>(uncompressed);
+    const Compression stored_compression = compressed.size() < uncompressed.size() ? compression : Compression::None;
+    const uint64_t offset = TellWrite(path, out);
+
+    if (!payload.empty()) {
+        out.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+        if (!out) {
+            throw Error::PathIo("io", path, "write file");
+        }
+    }
+
+    ColumnChunkMetadata chunk;
+    chunk.offset = offset;
+    chunk.compressed_size = payload.size();
+    chunk.uncompressed_size = uncompressed.size();
+    chunk.compression = stored_compression;
+
+    PopulateChunkMinMax(column, chunk);
+
+    return chunk;
 }
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
@@ -106,14 +145,15 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
 
     for (size_t col = 0; col < batch.ColumnsCount(); ++col) {
         const auto& chunk = row_group_columns[col];
-        batch.ReadColumnFrom(col, input_.StreamAt(chunk.offset), row_count, chunk.size);
+        ReadBatchColumnChunk(path_, input_, chunk, row_count, batch, col);
     }
 
     return batch;
 }
 
-ColumnarBatchWriter::ColumnarBatchWriter(const std::filesystem::path& path, Schema schema)
-    : path_(path), out_(OpenOutputFile(path)) {
+ColumnarBatchWriter::ColumnarBatchWriter(const std::filesystem::path& path, Schema schema,
+                                         const Compression compression)
+    : path_(path), out_(OpenOutputFile(path)), compression_(compression) {
     if (schema.columns.empty()) {
         throw Error::InvalidArgument("io", "schema has no columns", path.string());
     }
@@ -145,15 +185,8 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     group.columns.reserve(batch.ColumnsCount());
 
     for (size_t column_index = 0; column_index < batch.ColumnsCount(); ++column_index) {
-        const uint64_t offset = TellWrite(path_, out_);
         const Column& column = batch.ColumnAt(column_index);
-        column.WriteTo(out_);
-
-        const uint64_t end = TellWrite(path_, out_);
-
-        ColumnChunkMetadata chunk{offset, end - offset};
-        PopulateChunkMinMax(column, chunk);
-        group.columns.push_back(chunk);
+        group.columns.push_back(WriteColumnChunk(path_, out_, column, compression_));
     }
 
     metadata_.row_groups.push_back(std::move(group));
@@ -179,4 +212,27 @@ void ColumnarBatchWriter::Finalize() && {
     FlushWrite(path_, out_);
 
     finalized_ = true;
+}
+
+std::vector<uint8_t> ReadColumnChunk(const std::filesystem::path& path, InputFile& input,
+                                     const ColumnChunkMetadata& chunk) {
+    const std::string raw = input.ReadStringAt(chunk.offset, chunk.compressed_size);
+    const std::span<const uint8_t> raw_bytes(reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
+
+    if (chunk.compression == Compression::None) {
+        if (chunk.compressed_size != chunk.uncompressed_size) {
+            throw Error::MalformedData("io", "uncompressed chunk size mismatch", path.string());
+        }
+        return std::vector<uint8_t>(raw_bytes.begin(), raw_bytes.end());
+    }
+
+    return Decompress(raw_bytes, chunk.compression, chunk.uncompressed_size);
+}
+
+void ReadBatchColumnChunk(const std::filesystem::path& path, InputFile& input, const ColumnChunkMetadata& chunk,
+                          const uint32_t row_count, const Batch& batch, const size_t column_index) {
+    const std::vector<uint8_t> payload = ReadColumnChunk(path, input, chunk);
+    const std::string bytes(payload.begin(), payload.end());
+    std::istringstream stream(bytes, std::ios::binary);
+    batch.ReadColumnFrom(column_index, stream, row_count, chunk.uncompressed_size);
 }

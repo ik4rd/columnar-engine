@@ -1,9 +1,21 @@
+find_path(LZ4_INCLUDE_DIR lz4.h)
+find_library(LZ4_LIBRARY lz4)
+
+if (NOT LZ4_INCLUDE_DIR OR NOT LZ4_LIBRARY)
+    message(FATAL_ERROR "lz4 headers/library not found")
+endif ()
+
+add_library(lz4_external INTERFACE)
+target_include_directories(lz4_external INTERFACE ${LZ4_INCLUDE_DIR})
+target_link_libraries(lz4_external INTERFACE ${LZ4_LIBRARY})
+
 add_library(columnar_engine_core
         model/batch.cpp
         model/column.cpp
         model/column_string.cpp
         model/metadata.cpp
         io/batch.cpp
+        io/compression.cpp
         io/file.cpp
         io/stream.cpp
         common/error.cpp
@@ -14,6 +26,7 @@ add_library(columnar_engine_core
 )
 
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
+target_link_libraries(columnar_engine_core PUBLIC lz4_external)
 
 add_library(columnar_engine_columnar
         io/columnar_batch.cpp

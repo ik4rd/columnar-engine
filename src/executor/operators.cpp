@@ -223,7 +223,7 @@ class ScanOperator final : public Operator {
             const size_t source_index = projection_indexes_[projected_index];
             const auto& chunk = row_group->columns[source_index];
 
-            batch.ReadColumnFrom(projected_index, input_.StreamAt(chunk.offset), row_group->row_count, chunk.size);
+            ReadBatchColumnChunk(path_, input_, chunk, row_group->row_count, batch, projected_index);
         }
 
         return batch;
