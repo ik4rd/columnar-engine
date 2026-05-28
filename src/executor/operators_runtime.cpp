@@ -8,10 +8,12 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
-#include "common/operator_utils.h"
 #include "common/parsing.h"
-#include "common/planner_utils.h"
+#include "common/string_pattern_utils.h"
+#include "executor/comparison_utils.h"
 #include "executor/operators_internal.h"
+#include "executor/query_utils.h"
+#include "executor/typed_value_utils.h"
 
 constexpr std::string_view CountStarName = "COUNT(*)";
 constexpr std::string_view FallbackAggregateAlias = "c";
@@ -161,25 +163,6 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
     throw Error::Unsupported("executor", "unsupported function '" + expr.function_name + "'");
 }
 
-ComparisonKind FlipComparison(const ComparisonKind comparison) {
-    switch (comparison) {
-        case ComparisonKind::Equal:
-            return ComparisonKind::Equal;
-        case ComparisonKind::NotEqual:
-            return ComparisonKind::NotEqual;
-        case ComparisonKind::Less:
-            return ComparisonKind::Greater;
-        case ComparisonKind::LessOrEqual:
-            return ComparisonKind::GreaterOrEqual;
-        case ComparisonKind::Greater:
-            return ComparisonKind::Less;
-        case ComparisonKind::GreaterOrEqual:
-            return ComparisonKind::LessOrEqual;
-    }
-
-    return comparison;
-}
-
 bool MatchesInt128Comparison(const Int128 lhs, const Int128 rhs, const ComparisonKind comparison) {
     switch (comparison) {
         case ComparisonKind::Equal:
@@ -218,28 +201,6 @@ ValueComparison ToValueComparison(const ComparisonKind comparison) {
     return ValueComparison::Equal;
 }
 
-std::optional<Int128> LiteralValueForColumnType(const QueryLiteral& literal, const ColumnType type) {
-    try {
-        if (literal.kind == LiteralKind::Numeric) {
-            return ParseInt128(literal.text);
-        }
-
-        if (literal.kind == LiteralKind::String) {
-            const QueryLiteral normalized_literal{NormalizeLiteralForEval(literal), LiteralKind::String};
-            if (type == ColumnType::Date) {
-                return ParseDate(normalized_literal.text);
-            }
-            if (type == ColumnType::Timestamp) {
-                return ParseTimestamp(normalized_literal.text);
-            }
-        }
-    } catch (const Error&) {
-        return std::nullopt;
-    }
-
-    return std::nullopt;
-}
-
 std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPtr& right, const Batch& batch,
                                                const size_t row, const ComparisonKind comparison) {
     if (!left || !right) {
@@ -263,7 +224,7 @@ std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPt
         return std::nullopt;
     }
 
-    const std::optional<Int128> rhs = LiteralValueForColumnType(right->literal, column.Type());
+    const std::optional<Int128> rhs = TryParseLiteralValueAsInt128(right->literal, column.Type());
     if (!rhs.has_value()) {
         return std::nullopt;
     }
@@ -520,14 +481,14 @@ class TopKOperator final : public Operator {
 
                 if (rows.size() < limit_) {
                     rows.push_back(std::move(candidate));
-                    std::push_heap(rows.begin(), rows.end(), ordering_);
+                    std::ranges::push_heap(rows, ordering_);
                     continue;
                 }
 
                 if (ordering_(candidate, rows.front())) {
-                    std::pop_heap(rows.begin(), rows.end(), ordering_);
+                    std::ranges::pop_heap(rows, ordering_);
                     rows.back() = std::move(candidate);
-                    std::push_heap(rows.begin(), rows.end(), ordering_);
+                    std::ranges::push_heap(rows, ordering_);
                 }
             }
         }
@@ -536,7 +497,7 @@ class TopKOperator final : public Operator {
             return std::nullopt;
         }
 
-        std::sort(rows.begin(), rows.end(), ordering_);
+        std::ranges::sort(rows, ordering_);
 
         return BuildBatchFromSortedRows(*schema, rows);
     }
@@ -606,23 +567,6 @@ class OffsetOperator final : public Operator {
     std::unique_ptr<Operator> child_;
     size_t remaining_;
 };
-
-std::string NormalizeLiteralForEval(const QueryLiteral& literal) {
-    if (literal.kind != LiteralKind::String) {
-        return literal.text;
-    }
-
-    return UnescapeSqlString(literal.text);
-}
-
-std::optional<size_t> TryFindBatchColumn(const Schema& schema, const std::string_view name) {
-    for (size_t i = 0; i < schema.columns.size(); ++i) {
-        if (SameColumnName(schema.columns[i].name, name)) {
-            return i;
-        }
-    }
-    return std::nullopt;
-}
 
 std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) {
     switch (expr->kind) {

@@ -21,8 +21,7 @@ add_library(columnar_engine_core
         common/error.cpp
         common/ascii.cpp
         common/parsing.cpp
-        common/operator_utils.cpp
-        common/planner_utils.cpp
+        common/string_pattern_utils.cpp
         common/string_arena.cpp
 )
 
@@ -54,6 +53,9 @@ target_link_libraries(columnar_engine_convert
 )
 
 add_library(columnar_engine_executor
+        executor/comparison_utils.cpp
+        executor/query_utils.cpp
+        executor/typed_value_utils.cpp
         executor/executor.cpp
         executor/query_parser.cpp
         executor/query_planner.cpp

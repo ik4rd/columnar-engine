@@ -9,8 +9,8 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
-#include "common/operator_utils.h"
-#include "common/planner_utils.h"
+#include "executor/comparison_utils.h"
+#include "executor/query_utils.h"
 #include "io/csv.h"
 #include "io/csv_batch.h"
 

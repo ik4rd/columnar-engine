@@ -3,8 +3,8 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
-#include "common/operator_utils.h"
 #include "executor/aggregate_state.h"
+#include "executor/comparison_utils.h"
 #include "executor/operators_internal.h"
 #include "io/columnar_batch.h"
 #include "io/file.h"
@@ -139,12 +139,10 @@ bool MayMatchRowGroup(const PredicatePtr& predicate, const RowGroupMetadata& row
                 return true;
             }
 
-            return std::any_of(predicate->metadata_typed_in_values.begin(), predicate->metadata_typed_in_values.end(),
-                               [&](const Int128 value) {
-                                   return MatchesRowGroupComparison(
-                                       row_group.columns[predicate->metadata_typed_in_column_index], value,
-                                       ComparisonKind::Equal);
-                               });
+            return std::ranges::any_of(predicate->metadata_typed_in_values, [&](const Int128 value) {
+                return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_in_column_index], value,
+                                                 ComparisonKind::Equal);
+            });
         case PredicateKind::Like:
         case PredicateKind::NotLike:
             return true;

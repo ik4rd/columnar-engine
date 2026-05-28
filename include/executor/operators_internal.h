@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "executor/operator.h"
+#include "executor/query_utils.h"
 
 std::unique_ptr<Operator> CreateMetadataCountOperator(std::filesystem::path path, std::string output_name);
 std::unique_ptr<Operator> CreateMetadataExtremaOperator(std::filesystem::path path, std::vector<PlannedAgg> aggregates);
@@ -33,8 +34,6 @@ std::unique_ptr<Operator> CreateGroupAggTopKOperator(std::unique_ptr<Operator> c
 void ApplyOrderOffsetLimit(std::unique_ptr<Operator>& root, const PlannedQuery& planned, bool& limit_applied_by_top_k);
 Schema ProjectionOutputSchema(const std::vector<SelectItemSpec>& items, const Schema& source_schema);
 
-std::string NormalizeLiteralForEval(const QueryLiteral& literal);
-std::optional<size_t> TryFindBatchColumn(const Schema& schema, std::string_view name);
 std::string EvalExpr(const ExprPtr& expr, const Batch& batch, size_t row);
 bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch, size_t row);
 void SelectRowsMatchingPredicate(const PredicatePtr& predicate, const Batch& batch, std::vector<size_t>& rows);

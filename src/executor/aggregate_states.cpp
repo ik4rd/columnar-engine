@@ -11,6 +11,7 @@
 #include "common/string_arena.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
+#include "executor/typed_value_utils.h"
 #include "model/column_traits.h"
 
 void AggState::ConsumeInt128(const Int128 value) { ConsumeValue(Int128ToString(value)); }
@@ -31,56 +32,11 @@ static bool ShouldReplaceExtremum(const ColumnType type, const std::string_view 
     });
 }
 
-static Int128 ParseToInt128(const ColumnType type, const std::string_view value) {
-    switch (type) {
-        case ColumnType::Boolean:
-            return ParseBoolean(value) ? 1 : 0;
-        case ColumnType::Int16:
-            return ParseInt16(value);
-        case ColumnType::Int32:
-            return ParseInt32(value);
-        case ColumnType::Int64:
-            return ParseInt64(value);
-        case ColumnType::Int128:
-            return ParseInt128(value);
-        case ColumnType::Character:
-            return ParseCharacter(value);
-        case ColumnType::String:
-        case ColumnType::Date:
-        case ColumnType::Timestamp:
-            break;
-    }
-
-    throw Error::Unsupported("executor", "unsupported numeric conversion");
-}
-
 static std::string FormatAverage(const Int128 sum, const uint64_t count) {
     if (count == 0) {
         return "0";
     }
     return Int128ToString(sum / static_cast<Int128>(count));
-}
-
-static std::string FormatInt128AsType(const ColumnType type, const Int128 value) {
-    switch (type) {
-        case ColumnType::Boolean:
-            return BooleanToString(value != 0);
-        case ColumnType::Int16:
-        case ColumnType::Int32:
-        case ColumnType::Int64:
-        case ColumnType::Int128:
-            return Int128ToString(value);
-        case ColumnType::Date:
-            return DateToString(static_cast<int32_t>(value));
-        case ColumnType::Timestamp:
-            return TimestampToString(static_cast<int64_t>(value));
-        case ColumnType::Character:
-            return std::string(1, static_cast<char>(value));
-        case ColumnType::String:
-            break;
-    }
-
-    throw Error::Unsupported("executor", "unsupported typed aggregate result");
 }
 
 class CountAS final : public AggState {
@@ -100,7 +56,7 @@ class SumAS final : public AggState {
    public:
     explicit SumAS(const ColumnType type) : type_(type) {}
 
-    void ConsumeValue(const std::string_view value) override { sum_ += ParseToInt128(type_, value); }
+    void ConsumeValue(const std::string_view value) override { sum_ += ParseColumnValueAsInt128(type_, value); }
     void ConsumeInt128(const Int128 value) override { sum_ += value; }
     void ConsumeRow() override { throw Error::InvalidState("executor", "SUM requires a value"); }
 
@@ -116,7 +72,7 @@ class AvgAS final : public AggState {
     explicit AvgAS(const ColumnType type) : type_(type) {}
 
     void ConsumeValue(const std::string_view value) override {
-        sum_ += ParseToInt128(type_, value);
+        sum_ += ParseColumnValueAsInt128(type_, value);
         ++count_;
     }
 
@@ -160,7 +116,7 @@ class ExtremumAS final : public AggState {
 
     std::string Finalize() const override {
         if (typed_extremum_.has_value()) {
-            return FormatInt128AsType(type_, *typed_extremum_);
+            return FormatInt128Value(type_, *typed_extremum_);
         }
         return extremum_.value_or("");
     }
@@ -193,24 +149,6 @@ class DistinctAS final : public AggState {
 };
 
 static bool SupportsAnyType(const ColumnType) { return true; }
-
-static bool SupportsNumericType(const ColumnType type) {
-    switch (type) {
-        case ColumnType::Boolean:
-        case ColumnType::Int16:
-        case ColumnType::Int32:
-        case ColumnType::Int64:
-        case ColumnType::Int128:
-        case ColumnType::Character:
-            return true;
-        case ColumnType::String:
-        case ColumnType::Date:
-        case ColumnType::Timestamp:
-            return false;
-    }
-
-    return false;
-}
 
 static std::unique_ptr<AggState> CreateCountState(const PlannedAgg&) { return std::make_unique<CountAS>(); }
 
@@ -256,13 +194,13 @@ AggRegistrar::AggRegistrar(const AggFuncDefinition& def) { AggRegistry::Instance
 
 [[maybe_unused]] static AggRegistrar register_sum({
     .canonical_name = "SUM",
-    .supports_type = &SupportsNumericType,
+    .supports_type = &IsNumericColumnType,
     .factory = &CreateSumState,
 });
 
 [[maybe_unused]] static AggRegistrar register_avg({
     .canonical_name = "AVG",
-    .supports_type = &SupportsNumericType,
+    .supports_type = &IsNumericColumnType,
     .factory = &CreateAvgState,
 });
 

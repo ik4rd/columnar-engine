@@ -7,12 +7,13 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
-#include "common/operator_utils.h"
 #include "common/parsing.h"
 #include "common/string_arena.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
+#include "executor/comparison_utils.h"
 #include "executor/operators_internal.h"
+#include "executor/typed_value_utils.h"
 
 constexpr std::string_view ExtractMinutePart = "MINUTE";
 constexpr std::string_view ExtractHourPart = "HOUR";
@@ -147,46 +148,17 @@ std::optional<Int128> TryEvalTypedGroupKeyInt(const ExprPtr& expr, const Batch& 
     return std::nullopt;
 }
 
-Int128 ParseGroupKeyIntValue(const ColumnType type, const std::string_view value) {
-    switch (type) {
-        case ColumnType::Boolean:
-            return ParseBoolean(value) ? 1 : 0;
-        case ColumnType::Int16:
-            return ParseInt16(value);
-        case ColumnType::Int32:
-            return ParseInt32(value);
-        case ColumnType::Int64:
-            return ParseInt64(value);
-        case ColumnType::Int128:
-            return ParseInt128(value);
-        case ColumnType::Date:
-            return ParseDate(value);
-        case ColumnType::Timestamp:
-            return ParseTimestamp(value);
-        case ColumnType::Character:
-            return ParseCharacter(value);
-        case ColumnType::String:
-            break;
-    }
-
-    throw Error::Unsupported("executor", "unsupported group key type");
-}
-
 std::string FormatGroupKeyValue(const GroupKeyComponent& value) {
     switch (value.type) {
         case ColumnType::Boolean:
-            return BooleanToString(value.int_value != 0);
         case ColumnType::Int16:
         case ColumnType::Int32:
         case ColumnType::Int64:
         case ColumnType::Int128:
-            return Int128ToString(value.int_value);
         case ColumnType::Date:
-            return DateToString(static_cast<int32_t>(value.int_value));
         case ColumnType::Timestamp:
-            return TimestampToString(static_cast<int64_t>(value.int_value));
         case ColumnType::Character:
-            return std::string(1, static_cast<char>(value.int_value));
+            return FormatInt128Value(value.type, value.int_value);
         case ColumnType::String:
             return std::string(value.string_value);
     }
@@ -232,8 +204,8 @@ struct TypedGroupKeyHash {
 
         for (const GroupKeyComponent& value : key.values) {
             hash = HashCombine(hash, std::hash<int>{}(static_cast<int>(value.type)));
-                hash = HashCombine(hash, value.type == ColumnType::String ? StringViewHash{}(value.string_value)
-                                                                         : HashInt128(value.int_value));
+            hash = HashCombine(hash, value.type == ColumnType::String ? StringViewHash{}(value.string_value)
+                                                                      : HashInt128(value.int_value));
         }
 
         return hash;
@@ -296,7 +268,7 @@ class GroupKeyMaterializer {
             } else {
                 key.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
-                    .int_value = ParseGroupKeyIntValue(group_key.column_type, value),
+                    .int_value = ParseColumnValueAsInt128(group_key.column_type, value),
                     .string_value = {},
                 });
             }
@@ -494,7 +466,7 @@ class GroupAggOperator final : public Operator {
             return order;
         }
 
-        std::sort(order.begin(), order.end(), [&](const size_t lhs_index, const size_t rhs_index) {
+        std::ranges::sort(order, [&](const size_t lhs_index, const size_t rhs_index) {
             const GroupState& lhs = groups_[lhs_index];
             const GroupState& rhs = groups_[rhs_index];
             for (const size_t column : group_key_columns) {
@@ -673,22 +645,21 @@ class GroupAggTopKOperator final : public Operator {
         for (size_t i = 0; i < groups_.size(); ++i) {
             if (top_groups.size() < limit_) {
                 top_groups.push_back(i);
-                std::push_heap(top_groups.begin(), top_groups.end(),
-                               [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                std::ranges::push_heap(top_groups,
+                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
                 continue;
             }
 
             if (OrdersBefore(i, top_groups.front())) {
-                std::pop_heap(top_groups.begin(), top_groups.end(),
-                              [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                std::ranges::pop_heap(top_groups,
+                                      [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
                 top_groups.back() = i;
-                std::push_heap(top_groups.begin(), top_groups.end(),
-                               [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                std::ranges::push_heap(top_groups,
+                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
             }
         }
 
-        std::sort(top_groups.begin(), top_groups.end(),
-                  [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+        std::ranges::sort(top_groups, [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
 
         return top_groups;
     }
