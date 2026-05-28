@@ -8,6 +8,7 @@
 #include "common/error.h"
 #include "common/int128.h"
 #include "common/parsing.h"
+#include "common/string_arena.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
 #include "model/column_traits.h"
@@ -176,7 +177,7 @@ class DistinctAS final : public AggState {
     explicit DistinctAS(std::unique_ptr<AggState> nested) : nested_(std::move(nested)) {}
 
     void ConsumeValue(const std::string_view value) override {
-        if (seen_.insert(std::string(value)).second) {
+        if (seen_.insert(arena_.Store(value)).second) {
             nested_->ConsumeValue(value);
         }
     }
@@ -187,7 +188,8 @@ class DistinctAS final : public AggState {
 
    private:
     std::unique_ptr<AggState> nested_;
-    std::unordered_set<std::string> seen_;
+    StringArena arena_;
+    StringViewSet seen_;
 };
 
 static bool SupportsAnyType(const ColumnType) { return true; }

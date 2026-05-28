@@ -9,6 +9,7 @@
 #include "common/error.h"
 #include "common/operator_utils.h"
 #include "common/parsing.h"
+#include "common/string_arena.h"
 #include "executor/aggregate_function.h"
 #include "executor/aggregate_state.h"
 #include "executor/operators_internal.h"
@@ -68,7 +69,7 @@ struct AggBinding {
 struct GroupKeyComponent {
     ColumnType type = ColumnType::String;
     Int128 int_value = 0;
-    std::string string_value;
+    std::string_view string_value;
 };
 
 std::optional<Int128> TryEvalTypedGroupKeyInt(const ExprPtr& expr, const Batch& batch, const size_t row) {
@@ -187,7 +188,7 @@ std::string FormatGroupKeyValue(const GroupKeyComponent& value) {
         case ColumnType::Character:
             return std::string(1, static_cast<char>(value.int_value));
         case ColumnType::String:
-            return value.string_value;
+            return std::string(value.string_value);
     }
 
     return {};
@@ -231,8 +232,8 @@ struct TypedGroupKeyHash {
 
         for (const GroupKeyComponent& value : key.values) {
             hash = HashCombine(hash, std::hash<int>{}(static_cast<int>(value.type)));
-            hash = HashCombine(hash, value.type == ColumnType::String ? std::hash<std::string>{}(value.string_value)
-                                                                      : HashInt128(value.int_value));
+                hash = HashCombine(hash, value.type == ColumnType::String ? StringViewHash{}(value.string_value)
+                                                                         : HashInt128(value.int_value));
         }
 
         return hash;
@@ -259,7 +260,7 @@ class GroupKeyMaterializer {
    public:
     explicit GroupKeyMaterializer(std::vector<PlannedGroupKey> group_keys) : group_keys_(std::move(group_keys)) {}
 
-    TypedGroupKey Materialize(const Batch& batch, const size_t row) const {
+    TypedGroupKey Materialize(const Batch& batch, const size_t row, StringArena& arena) const {
         TypedGroupKey key;
         key.values.reserve(group_keys_.size());
 
@@ -280,7 +281,7 @@ class GroupKeyMaterializer {
                 key.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = 0,
-                    .string_value = batch.ColumnAt(group_key.expression->column_index).ValueAsString(row),
+                    .string_value = arena.Store(batch.ColumnAt(group_key.expression->column_index).ValueAsString(row)),
                 });
                 continue;
             }
@@ -290,7 +291,7 @@ class GroupKeyMaterializer {
                 key.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = 0,
-                    .string_value = std::move(value),
+                    .string_value = arena.Store(value),
                 });
             } else {
                 key.values.push_back(GroupKeyComponent{
@@ -387,7 +388,7 @@ class GroupAggOperator final : public Operator {
             SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
             for (const size_t row : selected_rows) {
-                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row);
+                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
 
                 size_t group_index = 0;
                 const auto it = group_indexes_.find(key);
@@ -517,6 +518,7 @@ class GroupAggOperator final : public Operator {
     std::vector<PlannedSelectItem> select_items_;
     PredicatePtr filter_;
     PredicatePtr having_;
+    StringArena string_arena_;
     std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
     std::vector<GroupState> groups_;
     bool sort_by_group_keys_ = false;
@@ -555,7 +557,7 @@ class GroupAggTopKOperator final : public Operator {
             SelectRowsMatchingPredicate(filter_, *batch, selected_rows);
 
             for (const size_t row : selected_rows) {
-                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row);
+                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
 
                 size_t group_index = 0;
                 const auto it = group_indexes_.find(key);
@@ -698,6 +700,7 @@ class GroupAggTopKOperator final : public Operator {
     PredicatePtr filter_;
     std::vector<PlannedOrderBy> order_by_;
     size_t limit_ = 0;
+    StringArena string_arena_;
     std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
     mutable std::vector<GroupState> groups_;
     bool returned_ = false;

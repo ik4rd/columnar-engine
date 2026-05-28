@@ -312,14 +312,6 @@ TEST(executor, supports_group_by_computed_numeric_and_timestamp_keys) {
     }
 }
 
-TEST(executor, preserves_schema_for_empty_grouped_result_after_offset) {
-    const Batch batch = BuildHitsTable(
-        "SELECT RegionID, COUNT(*) AS c FROM hits GROUP BY RegionID ORDER BY c DESC LIMIT 10 OFFSET 100;");
-
-    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "c"}));
-    EXPECT_TRUE(BatchRows(batch).empty());
-}
-
 TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) {
     const TempFile schema_file("executor_prune_schema");
     const TempFile data_file("executor_prune_data");

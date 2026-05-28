@@ -23,6 +23,7 @@ add_library(columnar_engine_core
         common/parsing.cpp
         common/operator_utils.cpp
         common/planner_utils.cpp
+        common/string_arena.cpp
 )
 
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
