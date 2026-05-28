@@ -809,7 +809,7 @@ static size_t HashCombine(const size_t seed, const size_t value) {
 }
 
 static size_t HashInt128(const Int128 value) {
-    const auto bits = static_cast<unsigned __int128>(value);
+    const auto bits = static_cast<UInt128>(value);
     const uint64_t low = static_cast<uint64_t>(bits);
     const uint64_t high = static_cast<uint64_t>(bits >> 64);
 
