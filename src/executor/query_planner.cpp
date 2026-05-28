@@ -631,23 +631,8 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
 
     if (planned.plain_select) {
         planned.plain_order_by = query.order_by;
-        std::vector<OrderBySpec> effective_order_by = query.order_by;
 
-        for (const auto& item : query.select_items) {
-            if (item.expression && item.expression->kind != ExprKind::Star) {
-                const bool already_ordered = std::ranges::any_of(effective_order_by, [&](const OrderBySpec& order) {
-                    return SameExpr(order.item.expression, item.expression);
-                });
-                if (!already_ordered) {
-                    effective_order_by.push_back(OrderBySpec{
-                        .item = item,
-                        .descending = false,
-                    });
-                }
-            }
-        }
-
-        for (const auto& order_item : effective_order_by) {
+        for (const auto& order_item : query.order_by) {
             size_t column_index = 0;
             const auto selected = FindSelectItem(query, order_item.item);
             const ExprPtr order_expression =

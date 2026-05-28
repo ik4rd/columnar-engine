@@ -248,19 +248,35 @@ ColumnType InferComparisonType(const std::string& lhs, const std::string& rhs) {
     return ColumnType::String;
 }
 
-struct SortedRow {
-    std::vector<std::string> values;
+struct RowRef {
+    size_t batch_index = 0;
+    size_t row = 0;
     size_t ordinal = 0;
 };
 
+std::strong_ordering CompareColumnRows(const Column& lhs_column, const size_t lhs_row, const Column& rhs_column,
+                                       const size_t rhs_row, const ColumnType type) {
+    if (type != ColumnType::String) {
+        return lhs_column.ValueAsInt128(lhs_row) <=> rhs_column.ValueAsInt128(rhs_row);
+    }
+
+    return lhs_column.ValueAsString(lhs_row) <=> rhs_column.ValueAsString(rhs_row);
+}
+
 class RowOrdering {
    public:
-    explicit RowOrdering(std::vector<PlannedOrderBy> order_by) : order_by_(std::move(order_by)) {}
+    RowOrdering(std::vector<PlannedOrderBy> order_by, const std::vector<Batch>* batches)
+        : order_by_(std::move(order_by)), batches_(batches) {}
 
-    bool operator()(const SortedRow& lhs, const SortedRow& rhs) const {
+    bool operator()(const RowRef& lhs, const RowRef& rhs) const {
+        const Batch& lhs_batch = batches_->at(lhs.batch_index);
+        const Batch& rhs_batch = batches_->at(rhs.batch_index);
+
         for (const auto& order : order_by_) {
-            const std::strong_ordering comparison = CompareValues(
-                order.value_type, lhs.values[order.result_column_index], rhs.values[order.result_column_index]);
+            const Column& lhs_column = lhs_batch.ColumnAt(order.result_column_index);
+            const Column& rhs_column = rhs_batch.ColumnAt(order.result_column_index);
+            const std::strong_ordering comparison =
+                CompareColumnRows(lhs_column, lhs.row, rhs_column, rhs.row, order.value_type);
             if (comparison != 0) {
                 return order.descending ? comparison > 0 : comparison < 0;
             }
@@ -271,25 +287,16 @@ class RowOrdering {
 
    private:
     std::vector<PlannedOrderBy> order_by_;
+    const std::vector<Batch>* batches_ = nullptr;
 };
 
-std::vector<std::string> MaterializeBatchRow(const Batch& batch, const size_t row) {
-    std::vector<std::string> values;
-    values.reserve(batch.ColumnsCount());
-
-    for (size_t column_index = 0; column_index < batch.ColumnsCount(); ++column_index) {
-        values.push_back(batch.ColumnAt(column_index).ValueAsString(row));
-    }
-
-    return values;
-}
-
-Batch BuildBatchFromSortedRows(const Schema& schema, const std::vector<SortedRow>& rows) {
+Batch BuildBatchFromRowRefs(const Schema& schema, const std::vector<Batch>& batches, const std::vector<RowRef>& rows) {
     Batch result(schema, rows.size());
 
     for (const auto& row : rows) {
-        for (size_t i = 0; i < row.values.size(); ++i) {
-            result.AppendValueFromString(i, row.values[i]);
+        const Batch& source = batches[row.batch_index];
+        for (size_t column = 0; column < source.ColumnsCount(); ++column) {
+            result.AppendValueFromColumn(column, source.ColumnAt(column), row.row);
         }
     }
 
@@ -409,7 +416,7 @@ class ProjectionOperator final : public Operator {
 class OrderByOperator final : public Operator {
    public:
     OrderByOperator(std::unique_ptr<Operator> child, std::vector<PlannedOrderBy> order_by)
-        : child_(std::move(child)), ordering_(std::move(order_by)) {}
+        : child_(std::move(child)), ordering_(std::move(order_by), &batches_) {}
 
     std::optional<Batch> Next() override {
         if (returned_) {
@@ -419,7 +426,7 @@ class OrderByOperator final : public Operator {
         returned_ = true;
 
         std::optional<Schema> schema;
-        std::vector<SortedRow> rows;
+        std::vector<RowRef> rows;
         size_t ordinal = 0;
 
         while (auto batch = child_->Next()) {
@@ -427,9 +434,14 @@ class OrderByOperator final : public Operator {
                 schema = batch->GetSchema();
             }
 
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                rows.push_back(SortedRow{
-                    .values = MaterializeBatchRow(*batch, row),
+            const size_t batch_index = batches_.size();
+            const size_t rows_count = batch->RowsCount();
+            batches_.push_back(std::move(*batch));
+
+            for (size_t row = 0; row < rows_count; ++row) {
+                rows.push_back(RowRef{
+                    .batch_index = batch_index,
+                    .row = row,
                     .ordinal = ordinal++,
                 });
             }
@@ -439,13 +451,14 @@ class OrderByOperator final : public Operator {
             return std::nullopt;
         }
 
-        std::sort(rows.begin(), rows.end(), ordering_);
+        std::ranges::sort(rows, ordering_);
 
-        return BuildBatchFromSortedRows(*schema, rows);
+        return BuildBatchFromRowRefs(*schema, batches_, rows);
     }
 
    private:
     std::unique_ptr<Operator> child_;
+    std::vector<Batch> batches_;
     RowOrdering ordering_;
     bool returned_ = false;
 };
@@ -453,7 +466,7 @@ class OrderByOperator final : public Operator {
 class TopKOperator final : public Operator {
    public:
     TopKOperator(std::unique_ptr<Operator> child, std::vector<PlannedOrderBy> order_by, const size_t limit)
-        : child_(std::move(child)), ordering_(std::move(order_by)), limit_(limit) {}
+        : child_(std::move(child)), ordering_(std::move(order_by), &batches_), limit_(limit) {}
 
     std::optional<Batch> Next() override {
         if (returned_ || limit_ == 0) {
@@ -463,7 +476,7 @@ class TopKOperator final : public Operator {
         returned_ = true;
 
         std::optional<Schema> schema;
-        std::vector<SortedRow> rows;
+        std::vector<RowRef> rows;
         rows.reserve(limit_);
 
         size_t ordinal = 0;
@@ -473,9 +486,14 @@ class TopKOperator final : public Operator {
                 schema = batch->GetSchema();
             }
 
-            for (size_t row = 0; row < batch->RowsCount(); ++row) {
-                SortedRow candidate{
-                    .values = MaterializeBatchRow(*batch, row),
+            const size_t batch_index = batches_.size();
+            const size_t rows_count = batch->RowsCount();
+            batches_.push_back(std::move(*batch));
+
+            for (size_t row = 0; row < rows_count; ++row) {
+                RowRef candidate{
+                    .batch_index = batch_index,
+                    .row = row,
                     .ordinal = ordinal++,
                 };
 
@@ -499,11 +517,12 @@ class TopKOperator final : public Operator {
 
         std::ranges::sort(rows, ordering_);
 
-        return BuildBatchFromSortedRows(*schema, rows);
+        return BuildBatchFromRowRefs(*schema, batches_, rows);
     }
 
    private:
     std::unique_ptr<Operator> child_;
+    std::vector<Batch> batches_;
     RowOrdering ordering_;
     size_t limit_;
     bool returned_ = false;
