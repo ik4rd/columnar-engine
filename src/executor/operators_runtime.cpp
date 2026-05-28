@@ -74,7 +74,7 @@ std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const 
 
 std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t row) {
     if (const auto aggregate_value = TryResolveAggregateValue(expr, batch, row); aggregate_value.has_value()) {
-        return std::move(*aggregate_value);
+        return *aggregate_value;
     }
 
     const std::string name = ToUpperAscii(expr.function_name);
