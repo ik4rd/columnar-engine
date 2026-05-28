@@ -58,6 +58,9 @@ add_library(columnar_engine_executor
         executor/query_planner.cpp
         executor/aggregate_states.cpp
         executor/operators.cpp
+        executor/operators_aggregate.cpp
+        executor/operators_runtime.cpp
+        executor/operators_scan.cpp
         sql_parser/tokenizer_factory.cpp
         sql_parser/tokenizer_tokens.cpp
         sql_parser/tokenizer.cpp

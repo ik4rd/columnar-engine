@@ -261,6 +261,65 @@ TEST(executor, rejects_unknown_aggregate_functions) {
     EXPECT_EQ(result.error().GetCode(), Error::Code::Unsupported);
 }
 
+TEST(executor, supports_group_by_computed_numeric_and_timestamp_keys) {
+    const TempFile schema_file("executor_computed_schema");
+    const TempFile data_file("executor_computed_data");
+    const TempFile columnar_file("executor_computed_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"ClientIP", "int64"},
+                                      {"EventTime", "timestamp"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"10", "2024-01-01 12:03:11"},
+                                    {"11", "2024-01-01 12:03:49"},
+                                    {"10", "2024-01-01 12:04:00"},
+                                });
+
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    Executor executor;
+    executor.RegisterTable("hits", columnar_file.Path());
+
+    {
+        auto result = executor.Execute(
+            "SELECT ClientIP - 1, COUNT(*) AS c FROM hits GROUP BY ClientIP - 1 ORDER BY c DESC, ClientIP - 1 ASC;");
+        ASSERT_TRUE(result.has_value()) << result.error().what();
+        EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
+                                                 {"9", "2"},
+                                                 {"10", "1"},
+                                             }));
+    }
+
+    {
+        auto result = executor.Execute(
+            "SELECT extract(minute FROM EventTime) AS m, COUNT(*) AS c FROM hits GROUP BY m ORDER BY m ASC;");
+        ASSERT_TRUE(result.has_value()) << result.error().what();
+        EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
+                                                 {"3", "2"},
+                                                 {"4", "1"},
+                                             }));
+    }
+
+    {
+        auto result = executor.Execute(
+            "SELECT DATE_TRUNC('minute', EventTime) AS m, COUNT(*) AS c FROM hits GROUP BY m ORDER BY m ASC;");
+        ASSERT_TRUE(result.has_value()) << result.error().what();
+        EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
+                                                 {"2024-01-01 12:03:00", "2"},
+                                                 {"2024-01-01 12:04:00", "1"},
+                                             }));
+    }
+}
+
+TEST(executor, preserves_schema_for_empty_grouped_result_after_offset) {
+    const Batch batch = BuildHitsTable(
+        "SELECT RegionID, COUNT(*) AS c FROM hits GROUP BY RegionID ORDER BY c DESC LIMIT 10 OFFSET 100;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "c"}));
+    EXPECT_TRUE(BatchRows(batch).empty());
+}
+
 TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) {
     const TempFile schema_file("executor_prune_schema");
     const TempFile data_file("executor_prune_data");
@@ -301,11 +360,14 @@ TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) 
     std::memcpy(&metadata_size, bytes.data() + footer_offset, sizeof(metadata_size));
 
     const size_t metadata_offset = footer_offset - metadata_size;
-    bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset), bytes.begin() + static_cast<std::ptrdiff_t>(footer_offset));
-    bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset), metadata_blob.begin(), metadata_blob.end());
+    bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset),
+                bytes.begin() + static_cast<std::ptrdiff_t>(footer_offset));
+    bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset), metadata_blob.begin(),
+                 metadata_blob.end());
 
     const uint64_t patched_metadata_size = metadata_blob.size();
-    std::memcpy(bytes.data() + metadata_offset + metadata_blob.size(), &patched_metadata_size, sizeof(patched_metadata_size));
+    std::memcpy(bytes.data() + metadata_offset + metadata_blob.size(), &patched_metadata_size,
+                sizeof(patched_metadata_size));
 
     WriteFileBytes(columnar_file.Path(), bytes);
 
