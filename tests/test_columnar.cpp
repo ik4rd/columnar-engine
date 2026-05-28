@@ -1,16 +1,20 @@
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "common/error.h"
+#include "common/parsing.h"
 #include "convert/csv_columnar.h"
 #include "gtest/gtest.h"
 #include "io/columnar_batch.h"
+#include "io/compression.h"
 #include "io/csv.h"
 #include "io/file.h"
+#include "io/stream.h"
+#include "model/metadata.h"
 #include "model/schema.h"
 #include "model/schema_csv.h"
-#include "common/error.h"
-#include "common/parsing.h"
 #include "testing/temp_file.h"
 
 TEST(columnar, csv_to_columnar_and_back) {
@@ -96,10 +100,18 @@ TEST(columnar, metadata_offsets_and_sizes) {
         return total;
     };
 
-    EXPECT_EQ(row_groups[0].columns[0].size, sizeof(int64_t) * 2u);
-    EXPECT_EQ(row_groups[0].columns[1].size, string_chunk_size(0, 2));
-    EXPECT_EQ(row_groups[1].columns[0].size, sizeof(int64_t) * 1u);
-    EXPECT_EQ(row_groups[1].columns[1].size, string_chunk_size(2, 1));
+    EXPECT_EQ(row_groups[0].columns[0].compressed_size, sizeof(int64_t) * 2u);
+    EXPECT_EQ(row_groups[0].columns[0].uncompressed_size, sizeof(int64_t) * 2u);
+    EXPECT_EQ(row_groups[0].columns[0].compression, Compression::None);
+    EXPECT_EQ(row_groups[0].columns[1].compressed_size, string_chunk_size(0, 2));
+    EXPECT_EQ(row_groups[0].columns[1].uncompressed_size, string_chunk_size(0, 2));
+    EXPECT_EQ(row_groups[0].columns[1].compression, Compression::None);
+    EXPECT_EQ(row_groups[1].columns[0].compressed_size, sizeof(int64_t) * 1u);
+    EXPECT_EQ(row_groups[1].columns[0].uncompressed_size, sizeof(int64_t) * 1u);
+    EXPECT_EQ(row_groups[1].columns[0].compression, Compression::None);
+    EXPECT_EQ(row_groups[1].columns[1].compressed_size, string_chunk_size(2, 1));
+    EXPECT_EQ(row_groups[1].columns[1].uncompressed_size, string_chunk_size(2, 1));
+    EXPECT_EQ(row_groups[1].columns[1].compression, Compression::None);
     EXPECT_TRUE(row_groups[0].columns[0].has_min_max);
     EXPECT_EQ(row_groups[0].columns[0].min_value, 1);
     EXPECT_EQ(row_groups[0].columns[0].max_value, 2);
@@ -113,7 +125,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
     for (const auto& row_group : row_groups) {
         for (const auto& column : row_group.columns) {
             EXPECT_EQ(column.offset, expected_offset);
-            expected_offset += column.size;
+            expected_offset += column.compressed_size;
         }
     }
 
@@ -142,15 +154,8 @@ TEST(columnar, mixed_supported_types_roundtrip) {
     const TempFile data_out("data_mixed_out");
 
     const std::vector<std::vector<std::string>> schema_rows = {
-        {"flag", "bool"},
-        {"small", "int16"},
-        {"medium", "int32"},
-        {"big", "int64"},
-        {"huge", "int128"},
-        {"name", "string"},
-        {"birth_date", "date"},
-        {"created_at", "timestamp"},
-        {"grade", "char"},
+        {"flag", "bool"},   {"small", "int16"},     {"medium", "int32"},         {"big", "int64"},  {"huge", "int128"},
+        {"name", "string"}, {"birth_date", "date"}, {"created_at", "timestamp"}, {"grade", "char"},
     };
 
     const std::vector<std::vector<std::string>> data_rows = {
@@ -186,18 +191,17 @@ TEST(columnar, infer_schema_from_csv_is_convert_compatible) {
     WriteRows(data_in.Path(), data_rows);
     WriteSchemaCsv(schema_out.Path(), InferSchemaCsv(data_in.Path()));
 
-    EXPECT_EQ(ReadRows(schema_out.Path()),
-              (std::vector<std::vector<std::string>>{
-                  {"column_1", "bool"},
-                  {"column_2", "int16"},
-                  {"column_3", "int32"},
-                  {"column_4", "int64"},
-                  {"column_5", "int128"},
-                  {"column_6", "string"},
-                  {"column_7", "date"},
-                  {"column_8", "timestamp"},
-                  {"column_9", "char"},
-              }));
+    EXPECT_EQ(ReadRows(schema_out.Path()), (std::vector<std::vector<std::string>>{
+                                               {"column_1", "bool"},
+                                               {"column_2", "int16"},
+                                               {"column_3", "int32"},
+                                               {"column_4", "int64"},
+                                               {"column_5", "int128"},
+                                               {"column_6", "string"},
+                                               {"column_7", "date"},
+                                               {"column_8", "timestamp"},
+                                               {"column_9", "char"},
+                                           }));
 
     ConvertCsvToColumnar(schema_out.Path(), data_in.Path(), columnar_file.Path(), 1);
     ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
@@ -239,4 +243,80 @@ TEST(columnar, metadata_records_minmax_stats_for_date_columns) {
     EXPECT_TRUE(row_groups[1].columns[0].has_min_max);
     EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[1].columns[0].min_value)), "2024-01-01");
     EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[1].columns[0].max_value)), "2024-01-09");
+}
+
+TEST(columnar, lz4_compressed_roundtrip) {
+    const TempFile schema_in("schema_lz4_in");
+    const TempFile data_in("data_lz4_in");
+    const TempFile columnar_file("columnar_lz4");
+    const TempFile data_out("data_lz4_out");
+    const TempFile schema_out("schema_lz4_out");
+
+    WriteRows(schema_in.Path(), {{"id", "int64"}, {"payload", "string"}});
+
+    std::vector<std::vector<std::string>> data_rows;
+    for (int i = 0; i < 256; ++i) {
+        data_rows.push_back({std::to_string(i), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"});
+    }
+    WriteRows(data_in.Path(), data_rows);
+
+    ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 256, Compression::Lz4);
+    ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
+
+    ColumnarBatchReader reader(columnar_file.Path());
+    const auto& row_group = reader.GetMetadata().row_groups.at(0);
+    ASSERT_EQ(row_group.columns.size(), 2u);
+    EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
+    EXPECT_EQ(ReadRows(schema_out.Path()),
+              (std::vector<std::vector<std::string>>{{"id", "int64"}, {"payload", "string"}}));
+    EXPECT_EQ(row_group.columns[1].compression, Compression::Lz4);
+    EXPECT_LT(row_group.columns[1].compressed_size, row_group.columns[1].uncompressed_size);
+}
+
+TEST(columnar, lz4_falls_back_to_none_when_chunk_does_not_shrink) {
+    const TempFile schema_in("schema_lz4_fallback_in");
+    const TempFile data_in("data_lz4_fallback_in");
+    const TempFile columnar_file("columnar_lz4_fallback");
+
+    WriteRows(schema_in.Path(), {{"value", "int64"}});
+    WriteRows(data_in.Path(), {{"42"}});
+
+    ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 1, Compression::Lz4);
+
+    const ColumnarBatchReader reader(columnar_file.Path());
+    const auto& chunk = reader.GetMetadata().row_groups.at(0).columns.at(0);
+    EXPECT_EQ(chunk.compression, Compression::None);
+    EXPECT_EQ(chunk.compressed_size, sizeof(int64_t));
+    EXPECT_EQ(chunk.uncompressed_size, sizeof(int64_t));
+}
+
+TEST(columnar, read_legacy_metadata_without_compression_fields) {
+    std::ostringstream out(std::ios::binary);
+
+    WriteStream<uint32_t>(out, 1);
+    WriteStream<uint32_t>(out, 2);
+    WriteBytes(out, "id");
+    WriteStream<uint8_t>(out, static_cast<uint8_t>(ColumnType::Int64));
+    WriteStream<uint32_t>(out, 1);
+    WriteStream<uint32_t>(out, 3);
+    WriteStream<uint32_t>(out, 1);
+    WriteStream<uint64_t>(out, 10);
+    WriteStream<uint64_t>(out, 24);
+    WriteStream<uint8_t>(out, 1);
+    WriteStream<Int128>(out, 7);
+    WriteStream<Int128>(out, 9);
+
+    std::istringstream in(out.str(), std::ios::binary);
+    const ColumnarMetadata metadata = ReadMetadata(in);
+
+    ASSERT_EQ(metadata.schema.columns.size(), 1u);
+    ASSERT_EQ(metadata.row_groups.size(), 1u);
+    const auto& chunk = metadata.row_groups[0].columns[0];
+    EXPECT_EQ(chunk.offset, 10u);
+    EXPECT_EQ(chunk.compressed_size, 24u);
+    EXPECT_EQ(chunk.uncompressed_size, 24u);
+    EXPECT_EQ(chunk.compression, Compression::None);
+    EXPECT_TRUE(chunk.has_min_max);
+    EXPECT_EQ(chunk.min_value, 7);
+    EXPECT_EQ(chunk.max_value, 9);
 }

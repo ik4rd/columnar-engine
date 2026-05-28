@@ -76,6 +76,12 @@ def parse_args() -> argparse.Namespace:
         default=1 << 14,
         help="Row group size for the CSV -> columnar conversion benchmark.",
     )
+    parser.add_argument(
+        "--compression",
+        default="none",
+        choices=("none", "lz4"),
+        help="Compression codec for the CSV -> columnar conversion benchmark.",
+    )
     return parser.parse_args()
 
 
@@ -128,6 +134,30 @@ def markdown_escape(text: str) -> str:
     return text.replace("|", "\\|")
 
 
+def html_escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def render_html_metric_table(title: str, rows: list[tuple[str, str]]) -> list[str]:
+    lines = [
+        f"<h3>{html_escape(title)}</h3>",
+        '<table>',
+        '<thead><tr><th align="left">Metric</th><th align="right">Value</th></tr></thead>',
+        "<tbody>",
+    ]
+    for metric, value in rows:
+        lines.append(
+            f"<tr><td>{html_escape(str(metric))}</td><td align=\"right\">{html_escape(str(value))}</td></tr>"
+        )
+    lines.extend(["</tbody>", "</table>"])
+    return lines
+
+
 def parse_ms(raw: str) -> float | None:
     if not raw:
         return None
@@ -161,6 +191,7 @@ def collect_conversion_stats(
         schema_path: pathlib.Path,
         source_csv_path: pathlib.Path,
         row_group_size: int,
+        compression: str,
 ) -> dict[str, float | int | str] | None:
     if not schema_path.exists() or not source_csv_path.exists():
         return None
@@ -182,6 +213,8 @@ def collect_conversion_stats(
             str(output_columnar),
             "--row-group-size",
             str(row_group_size),
+            "--compression",
+            compression,
         ]
         roundtrip_command = [
             str(binary),
@@ -215,6 +248,7 @@ def collect_conversion_stats(
     return {
         "source_csv_path": str(source_csv_path.relative_to(root)),
         "schema_path": str(schema_path.relative_to(root)),
+        "compression": compression,
         "source_csv_bytes": source_csv_bytes,
         "columnar_bytes": columnar_bytes,
         "roundtrip_csv_bytes": roundtrip_csv_bytes,
@@ -425,98 +459,75 @@ def render_markdown(
     cold_penalty = ((statistics.fmean(first_run_values) / avg_value) - 1.0) * 100.0 if avg_value and first_run_values else 0.0
     fastest = min(ok_rows, key=query_metric) if ok_rows else None
     slowest = max(ok_rows, key=query_metric) if ok_rows else None
-    top_slowest = sorted(ok_rows, key=query_metric, reverse=True)[:5]
-    top_fastest = sorted(ok_rows, key=query_metric)[:5]
-    largest_outputs = sorted(ok_rows, key=lambda row: int(row["output_csv_bytes"]), reverse=True)[:5]
+    summary_rows = [
+        ("queries ok", f"{len(ok_rows)} / {len(rows)}"),
+        ("queries failed", str(len(failed_rows))),
+        ("median warm time", f"{format_ms(median_value)} ms"),
+        ("average warm time", f"{format_ms(avg_value)} ms"),
+        ("p95 warm time", f"{format_ms(p95_value)} ms"),
+        ("cold/warm delta", format_percent(cold_penalty)),
+        ("total output size", format_size(sum(output_sizes))),
+        ("max output size", format_size(max(output_sizes)) if output_sizes else "—"),
+        (
+            "fastest query",
+            f"Q{int(fastest['query_id']):02d} · {format_ms(query_metric(fastest))} ms" if fastest else "—",
+        ),
+        (
+            "slowest query",
+            f"Q{int(slowest['query_id']):02d} · {format_ms(query_metric(slowest))} ms" if slowest else "—",
+        ),
+    ]
 
     lines = [
         "## Benchmark Dashboard",
         "",
         f"`generated {generated_at}` · `queries {len(rows)}/{count}` · `warm runs {warm_runs}` · [`csv`]({csv_path})",
         "",
-        "### Summary",
-        "",
-        "| Metric | Value |",
-        "| --- | ---: |",
-        f"| queries ok | {len(ok_rows)} / {len(rows)} |",
-        f"| queries failed | {len(failed_rows)} |",
-        f"| median warm time | {format_ms(median_value)} ms |",
-        f"| average warm time | {format_ms(avg_value)} ms |",
-        f"| p95 warm time | {format_ms(p95_value)} ms |",
-        f"| cold/warm delta | {format_percent(cold_penalty)} |",
-        f"| total output size | {format_size(sum(output_sizes))} |",
-        f"| max output size | {format_size(max(output_sizes)) if output_sizes else '—'} |",
-        f"| fastest query | Q{int(fastest['query_id']):02d} · {format_ms(query_metric(fastest))} ms |" if fastest else "| fastest query | — |",
-        f"| slowest query | Q{int(slowest['query_id']):02d} · {format_ms(query_metric(slowest))} ms |" if slowest else "| slowest query | — |",
-        "",
     ]
 
     if conversion_stats is not None:
+        storage_rows = [
+            ("source csv", conversion_stats["source_csv_path"]),
+            ("schema", conversion_stats["schema_path"]),
+            ("compression", conversion_stats["compression"]),
+            ("source size", format_size(int(conversion_stats["source_csv_bytes"]))),
+            ("columnar size", format_size(int(conversion_stats["columnar_bytes"]))),
+            ("roundtrip csv size", format_size(int(conversion_stats["roundtrip_csv_bytes"]))),
+            ("compression ratio", format_ratio(float(conversion_stats["compression_ratio"]))),
+            ("columnar / csv", format_percent(float(conversion_stats["columnar_vs_csv_percent"]))),
+            ("csv -> columnar", format_seconds(float(conversion_stats["convert_elapsed_seconds"]))),
+            ("columnar -> csv", format_seconds(float(conversion_stats["roundtrip_elapsed_seconds"]))),
+            ("convert throughput", f"{float(conversion_stats['convert_throughput_mb_s']):.1f} MB/s"),
+            ("roundtrip throughput", f"{float(conversion_stats['roundtrip_throughput_mb_s']):.1f} MB/s"),
+        ]
         lines.extend(
             [
-                "### Storage",
+                '<table>',
+                '<tr>',
+                '<td valign="top" width="50%">',
+                *render_html_metric_table("Summary", summary_rows),
+                "</td>",
+                '<td valign="top" width="50%">',
+                *render_html_metric_table("Storage", storage_rows),
+                "</td>",
+                "</tr>",
+                "</table>",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "### Summary",
                 "",
                 "| Metric | Value |",
                 "| --- | ---: |",
-                f"| source csv | `{conversion_stats['source_csv_path']}` |",
-                f"| schema | `{conversion_stats['schema_path']}` |",
-                f"| source size | {format_size(int(conversion_stats['source_csv_bytes']))} |",
-                f"| columnar size | {format_size(int(conversion_stats['columnar_bytes']))} |",
-                f"| roundtrip csv size | {format_size(int(conversion_stats['roundtrip_csv_bytes']))} |",
-                f"| compression ratio | {format_ratio(float(conversion_stats['compression_ratio']))} |",
-                f"| columnar / csv | {format_percent(float(conversion_stats['columnar_vs_csv_percent']))} |",
-                f"| csv -> columnar | {format_seconds(float(conversion_stats['convert_elapsed_seconds']))} |",
-                f"| columnar -> csv | {format_seconds(float(conversion_stats['roundtrip_elapsed_seconds']))} |",
-                f"| convert throughput | {float(conversion_stats['convert_throughput_mb_s']):.1f} MB/s |",
-                f"| roundtrip throughput | {float(conversion_stats['roundtrip_throughput_mb_s']):.1f} MB/s |",
+                *[f"| {markdown_escape(metric)} | {markdown_escape(str(value))} |" for metric, value in summary_rows],
                 "",
             ]
         )
 
     lines.extend(render_heatmap(rows, median_value))
-    lines.extend(
-        [
-            "### Largest Result Sets",
-            "",
-            "| Query | Output | Warm median, ms | SQL |",
-            "| --- | ---: | ---: | --- |",
-        ]
-    )
-    for row in largest_outputs:
-        lines.append(
-            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {format_size(int(row['output_csv_bytes']))} | "
-            f"{format_ms(query_metric(row))} | {markdown_escape(compact_sql(row['sql'], 64))} |"
-        )
-
-    lines.extend(
-        [
-            "",
-            "### Fastest Queries",
-            "",
-            "| Query | SQL | Warm median, ms | First run, ms |",
-            "| --- | --- | ---: | ---: |",
-        ]
-    )
-    for row in top_fastest:
-        lines.append(
-            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
-            f"{format_ms(query_metric(row))} | {row['first_run_ms'] or '—'} |"
-        )
-
-    lines.extend(
-        [
-            "",
-            "### Slowest Queries",
-            "",
-            "| Query | SQL | Warm median, ms | Warm max, ms |",
-            "| --- | --- | ---: | ---: |",
-        ]
-    )
-    for row in top_slowest:
-        lines.append(
-            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
-            f"{format_ms(query_metric(row))} | {row['warm_max_ms'] or '—'} |"
-        )
 
     lines.extend(
         [
@@ -612,6 +623,7 @@ def main() -> int:
         schema_path=schema_path,
         source_csv_path=source_csv_path,
         row_group_size=args.row_group_size,
+        compression=args.compression,
     )
     write_csv(csv_path, rows)
     markdown_block = render_markdown(

@@ -1,19 +1,32 @@
+find_path(LZ4_INCLUDE_DIR lz4.h)
+find_library(LZ4_LIBRARY lz4)
+
+if (NOT LZ4_INCLUDE_DIR OR NOT LZ4_LIBRARY)
+    message(FATAL_ERROR "lz4 headers/library not found")
+endif ()
+
+add_library(lz4_external INTERFACE)
+target_include_directories(lz4_external INTERFACE ${LZ4_INCLUDE_DIR})
+target_link_libraries(lz4_external INTERFACE ${LZ4_LIBRARY})
+
 add_library(columnar_engine_core
         model/batch.cpp
         model/column.cpp
         model/column_string.cpp
         model/metadata.cpp
         io/batch.cpp
+        io/compression.cpp
         io/file.cpp
         io/stream.cpp
         common/error.cpp
         common/ascii.cpp
         common/parsing.cpp
-        common/operator_utils.cpp
-        common/planner_utils.cpp
+        common/string_pattern_utils.cpp
+        common/string_arena.cpp
 )
 
 target_include_directories(columnar_engine_core PUBLIC ${COLUMNAR_INCLUDE_DIRS})
+target_link_libraries(columnar_engine_core PUBLIC lz4_external)
 
 add_library(columnar_engine_columnar
         io/columnar_batch.cpp
@@ -40,11 +53,17 @@ target_link_libraries(columnar_engine_convert
 )
 
 add_library(columnar_engine_executor
+        executor/comparison_utils.cpp
+        executor/query_utils.cpp
+        executor/typed_value_utils.cpp
         executor/executor.cpp
         executor/query_parser.cpp
         executor/query_planner.cpp
         executor/aggregate_states.cpp
         executor/operators.cpp
+        executor/operators_aggregate.cpp
+        executor/operators_runtime.cpp
+        executor/operators_scan.cpp
         sql_parser/tokenizer_factory.cpp
         sql_parser/tokenizer_tokens.cpp
         sql_parser/tokenizer.cpp

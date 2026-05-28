@@ -42,6 +42,7 @@ enum class QueryValueKind {
 
 struct QueryValue {
     QueryValueKind kind = QueryValueKind::Literal;
+
     ColumnRef column;
     QueryLiteral literal;
 };
@@ -76,6 +77,7 @@ struct ExprSpec {
     ExprKind kind = ExprKind::Literal;
 
     ColumnRef column;
+
     bool column_index_bound = false;
     size_t column_index = 0;
 
@@ -109,8 +111,8 @@ struct PredicateSpec {
     PredicateKind kind = PredicateKind::Comparison;
 
     ExprPtr left;
-    ComparisonKind comparison = ComparisonKind::Equal;
     ExprPtr right;
+    ComparisonKind comparison = ComparisonKind::Equal;
 
     std::vector<ExprPtr> values;
 
@@ -118,24 +120,29 @@ struct PredicateSpec {
     PredicatePtr rhs;
 
     bool typed_literal_comparison_bound = false;
+
     size_t typed_column_index = 0;
     Int128 typed_literal_value = 0;
     ComparisonKind typed_comparison = ComparisonKind::Equal;
 
     bool metadata_typed_literal_comparison_bound = false;
+
     size_t metadata_typed_column_index = 0;
     Int128 metadata_typed_literal_value = 0;
     ComparisonKind metadata_typed_comparison = ComparisonKind::Equal;
 
     bool literal_in_set_bound = false;
+
     size_t in_column_index = 0;
     std::unordered_set<std::string> literal_in_values;
 
     bool metadata_typed_in_set_bound = false;
+
     size_t metadata_typed_in_column_index = 0;
     std::vector<Int128> metadata_typed_in_values;
 
     bool literal_like_pattern_bound = false;
+
     size_t like_column_index = 0;
     std::string like_pattern;
     bool like_negated = false;
@@ -149,9 +156,12 @@ enum class AggArgumentKind {
 struct AggSpec {
     std::string function_name;
     bool distinct = false;
+
     AggArgumentKind argument_kind = AggArgumentKind::Column;
+
     ColumnRef column;
     ExprPtr argument;
+
     std::string output_name;
 };
 
@@ -162,9 +172,11 @@ enum class SelectItemKind {
 
 struct SelectItemSpec {
     SelectItemKind kind = SelectItemKind::GroupKey;
+
     ColumnRef column;
     ExprPtr expression;
     AggSpec aggregate;
+
     std::string output_name;
 };
 

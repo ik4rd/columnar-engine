@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "common/error.h"
-#include "common/operator_utils.h"
+#include "common/string_pattern_utils.h"
 #include "io/stream.h"
 
 constexpr char EncodedValueSeparator = ':';

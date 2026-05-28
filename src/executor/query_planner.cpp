@@ -4,45 +4,13 @@
 
 #include "common/ascii.h"
 #include "common/error.h"
-#include "common/operator_utils.h"
 #include "common/parsing.h"
-#include "common/planner_utils.h"
+#include "executor/comparison_utils.h"
+#include "executor/query_utils.h"
+#include "executor/typed_value_utils.h"
 #include "io/columnar_batch.h"
 
 constexpr size_t SqlOrdinalBase = 1;
-
-static bool SameExpr(const ExprPtr& lhs, const ExprPtr& rhs) {
-    if (!lhs || !rhs || lhs->kind != rhs->kind) {
-        return false;
-    }
-
-    switch (lhs->kind) {
-        case ExprKind::Column:
-            return SameColumnRef(lhs->column, rhs->column);
-        case ExprKind::Literal:
-            return lhs->literal.text == rhs->literal.text && lhs->literal.kind == rhs->literal.kind;
-        case ExprKind::Star:
-            return true;
-        case ExprKind::Binary:
-            return lhs->binary_op == rhs->binary_op && SameExpr(lhs->left, rhs->left) &&
-                   SameExpr(lhs->right, rhs->right);
-        case ExprKind::Function:
-            if (!SameColumnName(lhs->function_name, rhs->function_name) ||
-                lhs->arguments.size() != rhs->arguments.size()) {
-                return false;
-            }
-            for (size_t i = 0; i < lhs->arguments.size(); ++i) {
-                if (!SameExpr(lhs->arguments[i], rhs->arguments[i])) {
-                    return false;
-                }
-            }
-            return true;
-        case ExprKind::Case:
-            return lhs->output_name == rhs->output_name;
-    }
-
-    return false;
-}
 
 static ColumnType ColumnTypeOf(const Query& query, const Schema& schema, const ExprPtr& expr);
 
@@ -334,35 +302,6 @@ static std::optional<Int128> TryNumericLiteralValue(const ExprPtr& expr) {
     }
 }
 
-static std::string NormalizeStringLiteral(const std::string_view text) {
-    std::string result;
-
-    for (size_t i = 1; i + 1 < text.size(); ++i) {
-        if (text[i] == '\'' && i + 2 < text.size() && text[i + 1] == '\'') {
-            result.push_back('\'');
-            ++i;
-            continue;
-        }
-        result.push_back(text[i]);
-    }
-
-    return result;
-}
-
-static std::string LiteralTextForEval(const QueryLiteral& literal) {
-    if (literal.kind == LiteralKind::String) {
-        return NormalizeStringLiteral(literal.text);
-    }
-    return literal.text;
-}
-
-static void NormalizeRegexReplacement(std::string& replacement) {
-    for (size_t pos = 0; (pos = replacement.find("\\1", pos)) != std::string::npos;) {
-        replacement.replace(pos, 2, "$1");
-        pos += 2;
-    }
-}
-
 static void BindRegexReplace(const ExprPtr& expr) {
     if (!expr || expr->kind != ExprKind::Function || !SameColumnName(expr->function_name, "REGEXP_REPLACE") ||
         expr->arguments.size() != 3 || !expr->arguments[1] || !expr->arguments[2] ||
@@ -371,52 +310,14 @@ static void BindRegexReplace(const ExprPtr& expr) {
     }
 
     try {
-        std::string replacement = LiteralTextForEval(expr->arguments[2]->literal);
+        std::string replacement = NormalizeLiteralForEval(expr->arguments[2]->literal);
         NormalizeRegexReplacement(replacement);
-        expr->regex_pattern = std::regex(LiteralTextForEval(expr->arguments[1]->literal));
+        expr->regex_pattern = std::regex(NormalizeLiteralForEval(expr->arguments[1]->literal));
         expr->regex_replacement = std::move(replacement);
         expr->regex_replace_bound = true;
     } catch (const std::regex_error&) {
         expr->regex_replace_bound = false;
     }
-}
-
-static std::optional<Int128> TryLiteralValueForColumnType(const QueryLiteral& literal, const ColumnType type) {
-    try {
-        if (literal.kind == LiteralKind::Numeric) {
-            return ParseInt128(literal.text);
-        }
-
-        if (literal.kind != LiteralKind::String) {
-            return std::nullopt;
-        }
-
-        const std::string normalized = NormalizeStringLiteral(literal.text);
-        switch (type) {
-            case ColumnType::Boolean:
-                return ParseBoolean(normalized) ? 1 : 0;
-            case ColumnType::Int16:
-                return ParseInt16(normalized);
-            case ColumnType::Int32:
-                return ParseInt32(normalized);
-            case ColumnType::Int64:
-                return ParseInt64(normalized);
-            case ColumnType::Int128:
-                return ParseInt128(normalized);
-            case ColumnType::Date:
-                return ParseDate(normalized);
-            case ColumnType::Timestamp:
-                return ParseTimestamp(normalized);
-            case ColumnType::Character:
-                return ParseCharacter(normalized);
-            case ColumnType::String:
-                return std::nullopt;
-        }
-    } catch (const Error&) {
-        return std::nullopt;
-    }
-
-    return std::nullopt;
 }
 
 static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
@@ -440,7 +341,7 @@ static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
         if (!value || value->kind != ExprKind::Literal) {
             return;
         }
-        values.insert(LiteralTextForEval(value->literal));
+        values.insert(NormalizeLiteralForEval(value->literal));
     }
 
     predicate->literal_in_set_bound = true;
@@ -455,7 +356,8 @@ static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
     typed_values.reserve(predicate->values.size());
 
     for (const ExprPtr& value : predicate->values) {
-        const std::optional<Int128> typed_value = TryLiteralValueForColumnType(value->literal, schema.columns[source_index].type);
+        const std::optional<Int128> typed_value =
+            TryParseLiteralValueAsInt128(value->literal, schema.columns[source_index].type);
         if (!typed_value.has_value()) {
             return;
         }
@@ -488,27 +390,8 @@ static void BindLiteralLikePattern(const Query& query_ast, const Schema& schema,
 
     predicate->literal_like_pattern_bound = true;
     predicate->like_column_index = *projected_index;
-    predicate->like_pattern = LiteralTextForEval(predicate->right->literal);
+    predicate->like_pattern = NormalizeLiteralForEval(predicate->right->literal);
     predicate->like_negated = predicate->kind == PredicateKind::NotLike;
-}
-
-static ComparisonKind FlipComparison(const ComparisonKind comparison) {
-    switch (comparison) {
-        case ComparisonKind::Equal:
-            return ComparisonKind::Equal;
-        case ComparisonKind::NotEqual:
-            return ComparisonKind::NotEqual;
-        case ComparisonKind::Less:
-            return ComparisonKind::Greater;
-        case ComparisonKind::LessOrEqual:
-            return ComparisonKind::GreaterOrEqual;
-        case ComparisonKind::Greater:
-            return ComparisonKind::Less;
-        case ComparisonKind::GreaterOrEqual:
-            return ComparisonKind::LessOrEqual;
-    }
-
-    return comparison;
 }
 
 static void BindTypedLiteralComparison(const Query& query_ast, const Schema& schema,
@@ -540,7 +423,7 @@ static void BindTypedLiteralComparison(const Query& query_ast, const Schema& sch
     }
 
     const ColumnType type = schema.columns[source_index].type;
-    const std::optional<Int128> literal = TryLiteralValueForColumnType((*literal_expr)->literal, type);
+    const std::optional<Int128> literal = TryParseLiteralValueAsInt128((*literal_expr)->literal, type);
     if (!literal.has_value()) {
         return;
     }
@@ -579,26 +462,8 @@ static std::optional<std::pair<ColumnRef, Int128>> TryLinearColumnExpr(const Exp
     return std::pair<ColumnRef, Int128>{expr->left->column, offset};
 }
 
-static bool IsNumericType(const ColumnType type) {
-    switch (type) {
-        case ColumnType::Boolean:
-        case ColumnType::Int16:
-        case ColumnType::Int32:
-        case ColumnType::Int64:
-        case ColumnType::Int128:
-        case ColumnType::Character:
-            return true;
-        case ColumnType::String:
-        case ColumnType::Date:
-        case ColumnType::Timestamp:
-            return false;
-    }
-
-    return false;
-}
-
 static bool SupportsDirectTypedAggInput(const AggFuncDefinition& function, const ColumnType type) {
-    if (IsNumericType(type)) {
+    if (IsNumericColumnType(type)) {
         return true;
     }
     const std::string name = ToUpperAscii(function.canonical_name);
@@ -766,23 +631,8 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
 
     if (planned.plain_select) {
         planned.plain_order_by = query.order_by;
-        std::vector<OrderBySpec> effective_order_by = query.order_by;
 
-        for (const auto& item : query.select_items) {
-            if (item.expression && item.expression->kind != ExprKind::Star) {
-                const bool already_ordered = std::ranges::any_of(effective_order_by, [&](const OrderBySpec& order) {
-                    return SameExpr(order.item.expression, item.expression);
-                });
-                if (!already_ordered) {
-                    effective_order_by.push_back(OrderBySpec{
-                        .item = item,
-                        .descending = false,
-                    });
-                }
-            }
-        }
-
-        for (const auto& order_item : effective_order_by) {
+        for (const auto& order_item : query.order_by) {
             size_t column_index = 0;
             const auto selected = FindSelectItem(query, order_item.item);
             const ExprPtr order_expression =

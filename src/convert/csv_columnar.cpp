@@ -8,7 +8,8 @@
 #include "model/schema_csv.h"
 
 void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::filesystem::path& data_path,
-                          const std::filesystem::path& output_path, size_t max_rows_per_group) {
+                          const std::filesystem::path& output_path, const size_t max_rows_per_group,
+                          const Compression compression) {
     if (max_rows_per_group == 0) {
         throw Error::InvalidArgument("convert", "row group size must be > 0");
     }
@@ -19,13 +20,13 @@ void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::f
     sizing.max_rows = max_rows_per_group;
 
     CsvBatchReader batch_reader(data_path, schema, sizing);
-    ColumnarBatchWriter batch_writer(output_path, schema);
+    ColumnarBatchWriter batch_writer(output_path, schema, compression);
 
     while (auto batch = batch_reader.ReadNext()) {
         batch_writer.Write(*batch);
     }
 
-    std::move(batch_writer).Finalize();
+    batch_writer.Finalize();
 }
 
 void ConvertColumnarToCsv(const std::filesystem::path& columnar_path, const std::filesystem::path& schema_path,
