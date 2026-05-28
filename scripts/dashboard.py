@@ -384,17 +384,23 @@ def render_heatmap(rows: list[dict[str, str]], median_value: float, columns: int
     ]
 
     chunks = [rows[index: index + columns] for index in range(0, len(rows), columns)]
+    lines.append("| " + " | ".join(f"slot {index + 1}" for index in range(columns)) + " |")
+    lines.append("| " + " | ".join("---:" for _ in range(columns)) + " |")
     for chunk in chunks:
-        lines.append("| " + " | ".join(f"Q{int(row['query_id']):02d}" for row in chunk) + " |")
-        lines.append("| " + " | ".join("---:" for _ in chunk) + " |")
+        padded_chunk = chunk + [None] * (columns - len(chunk))
         lines.append(
             "| "
             + " | ".join(
-                f"{heatmap_icon(query_metric(row), median_value)} `{format_ms(query_metric(row))}`" for row in chunk
+                (
+                    f"Q{int(row['query_id']):02d} {heatmap_icon(query_metric(row), median_value)} "
+                    f"`{format_ms(query_metric(row))}`"
+                )
+                if row is not None
+                else ""
+                for row in padded_chunk
             )
             + " |"
         )
-        lines.append("")
 
     return lines
 
@@ -473,7 +479,7 @@ def render_markdown(
             "### Largest Result Sets",
             "",
             "| Query | Output | Warm median, ms | SQL |",
-            "| --- | ---: | --- | ---: |",
+            "| --- | ---: | ---: | --- |",
         ]
     )
     for row in largest_outputs:
