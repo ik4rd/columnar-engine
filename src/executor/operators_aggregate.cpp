@@ -73,11 +73,13 @@ void ConsumeAggRows(const PlannedAgg& aggregate, const Batch& batch, const std::
 
 struct AggBinding {
     PlannedAgg aggregate;
+
     std::unique_ptr<AggState> state;
 };
 
 struct GroupKeyComponent {
     ColumnType type = ColumnType::String;
+
     Int128 int_value = 0;
     std::string_view string_value;
 };
@@ -414,9 +416,12 @@ class GroupAggOperator final : public Operator {
    private:
     struct GroupState {
         std::vector<GroupKeyComponent> key_values;
+
         std::vector<std::unique_ptr<AggState>> states;
+
         mutable std::vector<std::string> aggregate_values;
         mutable std::vector<Int128> aggregate_int_values;
+
         mutable bool aggregate_values_finalized = false;
     };
 
@@ -522,13 +527,17 @@ class GroupAggOperator final : public Operator {
 
     std::unique_ptr<Operator> child_;
     GroupKeyMaterializer group_key_materializer_;
+
     std::vector<GroupAggBinding> bindings_;
     std::vector<PlannedSelectItem> select_items_;
+
     PredicatePtr filter_;
     PredicatePtr having_;
+
     StringArena string_arena_;
     std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
     std::vector<GroupState> groups_;
+
     bool sort_by_group_keys_ = false;
     bool returned_ = false;
 };
@@ -606,9 +615,12 @@ class GroupAggTopKOperator final : public Operator {
    private:
     struct GroupState {
         std::vector<GroupKeyComponent> key_values;
+
         std::vector<std::unique_ptr<AggState>> states;
+
         mutable std::vector<std::string> aggregate_values;
         mutable std::vector<Int128> aggregate_int_values;
+
         mutable bool aggregate_values_finalized = false;
     };
 
@@ -713,14 +725,19 @@ class GroupAggTopKOperator final : public Operator {
 
     std::unique_ptr<Operator> child_;
     GroupKeyMaterializer group_key_materializer_;
+
     std::vector<GroupAggBinding> bindings_;
     std::vector<PlannedSelectItem> select_items_;
+
     PredicatePtr filter_;
+
     std::vector<PlannedOrderBy> order_by_;
     size_t limit_ = 0;
+
     StringArena string_arena_;
     std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
     mutable std::vector<GroupState> groups_;
+
     bool returned_ = false;
 };
 

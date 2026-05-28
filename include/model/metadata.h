@@ -10,10 +10,13 @@
 
 struct ColumnChunkMetadata {
     uint64_t offset = 0;
+
     uint64_t compressed_size = 0;
     uint64_t uncompressed_size = 0;
     Compression compression = Compression::None;
+
     bool has_min_max = false;
+
     Int128 min_value = 0;
     Int128 max_value = 0;
 };

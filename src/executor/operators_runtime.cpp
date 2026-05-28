@@ -251,6 +251,7 @@ ColumnType InferComparisonType(const std::string& lhs, const std::string& rhs) {
 struct RowRef {
     size_t batch_index = 0;
     size_t row = 0;
+
     size_t ordinal = 0;
 };
 
@@ -328,6 +329,7 @@ class FilterOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     PredicatePtr filter_;
 };
 
@@ -358,7 +360,9 @@ class EnsureSchemaOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     Schema schema_;
+
     bool returned_any_ = false;
     bool returned_empty_ = false;
 };
@@ -406,10 +410,14 @@ class ProjectionOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     std::vector<SelectItemSpec> items_;
+
     Schema source_schema_;
     Schema schema_;
+
     std::vector<size_t> star_column_indexes_;
+
     bool star_column_indexes_initialized_ = false;
 };
 
@@ -458,8 +466,10 @@ class OrderByOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     std::vector<Batch> batches_;
     RowOrdering ordering_;
+
     bool returned_ = false;
 };
 
@@ -522,9 +532,12 @@ class TopKOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     std::vector<Batch> batches_;
     RowOrdering ordering_;
+
     size_t limit_;
+
     bool returned_ = false;
 };
 

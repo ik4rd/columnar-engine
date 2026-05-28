@@ -40,13 +40,16 @@ struct PlannedGroupKey {
 struct PlannedSelectItem {
     SelectItemKind kind = SelectItemKind::GroupKey;
     size_t index = 0;
+
     ColumnType output_type = ColumnType::String;
     std::string output_name;
 };
 
 struct PlannedOrderBy {
     size_t result_column_index = 0;
+
     bool descending = false;
+
     ColumnType value_type = ColumnType::String;
 };
 
@@ -66,8 +69,9 @@ struct PlannedValue {
 
 struct PlannedFilter {
     PlannedValue left;
-    ComparisonKind comparison = ComparisonKind::Equal;
     PlannedValue right;
+
+    ComparisonKind comparison = ComparisonKind::Equal;
     ColumnType comparison_type = ColumnType::String;
 };
 
@@ -89,6 +93,7 @@ struct PlannedQuery {
     std::vector<PlannedSelectItem> select_items;
 
     std::vector<SelectItemSpec> plain_select_items;
+
     std::vector<PlannedOrderBy> order_by;
     std::vector<OrderBySpec> plain_order_by;
 

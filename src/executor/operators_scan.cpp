@@ -37,6 +37,7 @@ class MetadataCountOperator final : public Operator {
    private:
     std::filesystem::path path_;
     std::string output_name_;
+
     bool returned_ = false;
 };
 
@@ -91,6 +92,7 @@ class MetadataExtremaOperator final : public Operator {
    private:
     std::filesystem::path path_;
     std::vector<PlannedAgg> aggregates_;
+
     bool returned_ = false;
 };
 
@@ -211,7 +213,9 @@ class ScanOperator final : public Operator {
     ColumnarMetadata metadata_;
     std::vector<size_t> projection_indexes_;
     Schema projected_schema_;
+
     PredicatePtr filter_;
+
     size_t next_group_ = 0;
 };
 

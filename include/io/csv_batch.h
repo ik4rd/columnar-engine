@@ -22,6 +22,7 @@ class CsvBatchReader final : public BatchReader {
 
    private:
     CsvReader csv_reader_;
+
     Schema schema_;
     BatchSizing sizing_;
 
