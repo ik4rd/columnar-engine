@@ -8,11 +8,13 @@
 #include "sql_parser/tokenizer.h"
 
 static const std::unordered_map<std::string, Tokens> Keywords = {
-    {"AS", Tokens::As},       {"AND", Tokens::And},       {"AVG", Tokens::Avg},           {"BY", Tokens::By},
-    {"COUNT", Tokens::Count}, {"CREATE", Tokens::Create}, {"DISTINCT", Tokens::Distinct}, {"FROM", Tokens::From},
-    {"GROUP", Tokens::Group}, {"LENGTH", Tokens::Length}, {"LIMIT", Tokens::Limit},       {"MAX", Tokens::Max},
-    {"MIN", Tokens::Min},     {"ORDER", Tokens::Order},   {"SELECT", Tokens::Select},     {"SUM", Tokens::Sum},
-    {"WHERE", Tokens::Where},
+    {"AND", Tokens::And},       {"AS", Tokens::As},       {"AVG", Tokens::Avg},       {"BY", Tokens::By},
+    {"CASE", Tokens::Case},     {"COUNT", Tokens::Count}, {"CREATE", Tokens::Create}, {"DISTINCT", Tokens::Distinct},
+    {"ELSE", Tokens::Else},     {"END", Tokens::End},     {"FROM", Tokens::From},     {"GROUP", Tokens::Group},
+    {"HAVING", Tokens::Having}, {"IN", Tokens::In},       {"LENGTH", Tokens::Length}, {"LIKE", Tokens::Like},
+    {"LIMIT", Tokens::Limit},   {"MAX", Tokens::Max},     {"MIN", Tokens::Min},       {"NOT", Tokens::Not},
+    {"OFFSET", Tokens::Offset}, {"ORDER", Tokens::Order}, {"SELECT", Tokens::Select}, {"SUM", Tokens::Sum},
+    {"THEN", Tokens::Then},     {"WHEN", Tokens::When},   {"WHERE", Tokens::Where},
 };
 
 static std::string DescribeCharacter(const char ch) {
@@ -79,6 +81,8 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
             return std::make_shared<TLengthToken>(std::move(text), offset);
         case Tokens::Where:
             return std::make_shared<TWhereToken>(std::move(text), offset);
+        case Tokens::Having:
+            return std::make_shared<TypedToken<Command, Tokens::Having>>(std::move(text), offset);
         case Tokens::By:
             return std::make_shared<TByToken>(std::move(text), offset);
         case Tokens::Group:
@@ -87,6 +91,24 @@ TokenPtr MakeToken(const Tokens type, std::string text, const size_t offset) {
             return std::make_shared<TOrderToken>(std::move(text), offset);
         case Tokens::Limit:
             return std::make_shared<TLimitToken>(std::move(text), offset);
+        case Tokens::Offset:
+            return std::make_shared<TypedToken<Command, Tokens::Offset>>(std::move(text), offset);
+        case Tokens::Like:
+            return std::make_shared<TypedToken<Token, Tokens::Like>>(std::move(text), offset);
+        case Tokens::Not:
+            return std::make_shared<TypedToken<Token, Tokens::Not>>(std::move(text), offset);
+        case Tokens::In:
+            return std::make_shared<TypedToken<Token, Tokens::In>>(std::move(text), offset);
+        case Tokens::Case:
+            return std::make_shared<TypedToken<Token, Tokens::Case>>(std::move(text), offset);
+        case Tokens::When:
+            return std::make_shared<TypedToken<Token, Tokens::When>>(std::move(text), offset);
+        case Tokens::Then:
+            return std::make_shared<TypedToken<Token, Tokens::Then>>(std::move(text), offset);
+        case Tokens::Else:
+            return std::make_shared<TypedToken<Token, Tokens::Else>>(std::move(text), offset);
+        case Tokens::End:
+            return std::make_shared<TypedToken<Token, Tokens::End>>(std::move(text), offset);
         case Tokens::Plus:
             return std::make_shared<TPlusToken>(std::move(text), offset);
         case Tokens::Minus:

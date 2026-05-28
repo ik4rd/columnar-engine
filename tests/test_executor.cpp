@@ -1,11 +1,16 @@
 #include <algorithm>
+#include <cstring>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "convert/csv_columnar.h"
 #include "executor/executor.h"
 #include "gtest/gtest.h"
+#include "io/columnar_batch.h"
 #include "io/csv.h"
+#include "io/file.h"
+#include "model/metadata.h"
 #include "testing/executor_test_utils.h"
 #include "testing/temp_file.h"
 
@@ -254,4 +259,60 @@ TEST(executor, rejects_unknown_aggregate_functions) {
     const ExecuteExpected result = executor.Execute("SELECT median(Value) FROM hits;");
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().GetCode(), Error::Code::Unsupported);
+}
+
+TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) {
+    const TempFile schema_file("executor_prune_schema");
+    const TempFile data_file("executor_prune_data");
+    const TempFile columnar_file("executor_prune_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"EventDate", "date"},
+                                      {"Value", "int64"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"2024-01-01", "1"},
+                                    {"2024-01-01", "2"},
+                                    {"2024-01-09", "3"},
+                                    {"2024-01-09", "4"},
+                                });
+
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    ColumnarBatchReader reader(columnar_file.Path());
+    ColumnarMetadata metadata = reader.GetMetadata();
+    ASSERT_EQ(metadata.row_groups.size(), 2u);
+    ASSERT_EQ(metadata.row_groups[1].columns.size(), 2u);
+
+    const auto file_info = GetFileMetadata(columnar_file.Path());
+    ASSERT_TRUE(file_info.has_value());
+
+    metadata.row_groups[1].columns[0].offset = file_info->size + 1024;
+
+    std::ostringstream metadata_stream;
+    WriteMetadata(metadata_stream, metadata);
+    const std::string metadata_blob = metadata_stream.str();
+
+    std::vector<uint8_t> bytes = ReadFileBytes(columnar_file.Path());
+    ASSERT_GE(bytes.size(), sizeof(uint64_t) + 4u);
+
+    const size_t footer_offset = bytes.size() - sizeof(uint64_t) - 4u;
+    uint64_t metadata_size = 0;
+    std::memcpy(&metadata_size, bytes.data() + footer_offset, sizeof(metadata_size));
+
+    const size_t metadata_offset = footer_offset - metadata_size;
+    bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset), bytes.begin() + static_cast<std::ptrdiff_t>(footer_offset));
+    bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(metadata_offset), metadata_blob.begin(), metadata_blob.end());
+
+    const uint64_t patched_metadata_size = metadata_blob.size();
+    std::memcpy(bytes.data() + metadata_offset + metadata_blob.size(), &patched_metadata_size, sizeof(patched_metadata_size));
+
+    WriteFileBytes(columnar_file.Path(), bytes);
+
+    Executor executor;
+    executor.RegisterTable("hits", columnar_file.Path());
+
+    auto result = executor.Execute("SELECT COUNT(*) FROM hits WHERE EventDate = '2024-01-01';");
+    ASSERT_TRUE(result.has_value()) << result.error().what();
+    EXPECT_EQ(SingleRowValues(result.value()), std::vector<std::string>{"2"});
 }

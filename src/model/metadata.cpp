@@ -66,6 +66,22 @@ ColumnarMetadata ReadMetadata(std::istream& in) {
         metadata.row_groups.push_back(std::move(group));
     }
 
+    if (in.peek() == std::istream::traits_type::eof()) {
+        return metadata;
+    }
+
+    for (auto& row_group : metadata.row_groups) {
+        for (auto& column : row_group.columns) {
+            column.has_min_max = ReadStream<uint8_t>(in) != 0;
+            if (!column.has_min_max) {
+                continue;
+            }
+
+            column.min_value = ReadStream<Int128>(in);
+            column.max_value = ReadStream<Int128>(in);
+        }
+    }
+
     return metadata;
 }
 
@@ -96,9 +112,21 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
         WriteStream<uint32_t>(out, row_count);
         WriteStream<uint32_t>(out, columns.size());
 
-        for (const auto& [offset, size] : columns) {
-            WriteStream<uint64_t>(out, offset);
-            WriteStream<uint64_t>(out, size);
+        for (const auto& column : columns) {
+            WriteStream<uint64_t>(out, column.offset);
+            WriteStream<uint64_t>(out, column.size);
+        }
+    }
+
+    for (const auto& row_group : metadata.row_groups) {
+        for (const auto& column : row_group.columns) {
+            WriteStream<uint8_t>(out, column.has_min_max ? 1 : 0);
+            if (!column.has_min_max) {
+                continue;
+            }
+
+            WriteStream(out, column.min_value);
+            WriteStream(out, column.max_value);
         }
     }
 }

@@ -100,12 +100,20 @@ TEST(columnar, metadata_offsets_and_sizes) {
     EXPECT_EQ(row_groups[0].columns[1].size, string_chunk_size(0, 2));
     EXPECT_EQ(row_groups[1].columns[0].size, sizeof(int64_t) * 1u);
     EXPECT_EQ(row_groups[1].columns[1].size, string_chunk_size(2, 1));
+    EXPECT_TRUE(row_groups[0].columns[0].has_min_max);
+    EXPECT_EQ(row_groups[0].columns[0].min_value, 1);
+    EXPECT_EQ(row_groups[0].columns[0].max_value, 2);
+    EXPECT_FALSE(row_groups[0].columns[1].has_min_max);
+    EXPECT_TRUE(row_groups[1].columns[0].has_min_max);
+    EXPECT_EQ(row_groups[1].columns[0].min_value, 3);
+    EXPECT_EQ(row_groups[1].columns[0].max_value, 3);
+    EXPECT_FALSE(row_groups[1].columns[1].has_min_max);
 
     uint64_t expected_offset = 0;
-    for (const auto& [row_count, columns] : row_groups) {
-        for (const auto& [offset, size] : columns) {
-            EXPECT_EQ(offset, expected_offset);
-            expected_offset += size;
+    for (const auto& row_group : row_groups) {
+        for (const auto& column : row_group.columns) {
+            EXPECT_EQ(column.offset, expected_offset);
+            expected_offset += column.size;
         }
     }
 
@@ -206,4 +214,29 @@ TEST(columnar, schema_rows_with_trailing_empty_columns_are_accepted) {
     WriteRows(data_in.Path(), {{"1", "alpha"}, {"2", "beta"}});
 
     EXPECT_NO_THROW(ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 2));
+}
+
+TEST(columnar, metadata_records_minmax_stats_for_date_columns) {
+    const TempFile schema_in("schema_date_stats");
+    const TempFile data_in("data_date_stats");
+    const TempFile columnar_file("columnar_date_stats");
+
+    WriteRows(schema_in.Path(), {{"event_date", "date"}});
+    WriteRows(data_in.Path(), {{"2024-01-05"}, {"2024-01-03"}, {"2024-01-09"}, {"2024-01-01"}});
+
+    ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 2);
+
+    ColumnarBatchReader reader(columnar_file.Path());
+    const auto& row_groups = reader.GetMetadata().row_groups;
+    ASSERT_EQ(row_groups.size(), 2u);
+    ASSERT_EQ(row_groups[0].columns.size(), 1u);
+    ASSERT_EQ(row_groups[1].columns.size(), 1u);
+
+    EXPECT_TRUE(row_groups[0].columns[0].has_min_max);
+    EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[0].columns[0].min_value)), "2024-01-03");
+    EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[0].columns[0].max_value)), "2024-01-05");
+
+    EXPECT_TRUE(row_groups[1].columns[0].has_min_max);
+    EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[1].columns[0].min_value)), "2024-01-01");
+    EXPECT_EQ(DateToString(static_cast<int32_t>(row_groups[1].columns[0].max_value)), "2024-01-09");
 }

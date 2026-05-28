@@ -1,41 +1,43 @@
 #include "io/csv.h"
 
-#include <optional>
 #include <utility>
 
 #include "common/error.h"
 #include "io/file.h"
 
+constexpr char CsvDelimiter = ',';
+constexpr char CsvQuote = '"';
+constexpr char CsvLf = '\n';
+constexpr char CsvCr = '\r';
+constexpr std::string_view CsvQuotedChars = ",\"\n\r";
+
 class CsvCharReader {
    public:
-    explicit CsvCharReader(std::istream& in) : buffer_(in.rdbuf()) {}
-
-    std::optional<char> Read() const {
-        const Traits::int_type next = buffer_->sbumpc();
-        if (Traits::eq_int_type(next, Traits::eof())) {
-            return std::nullopt;
-        }
-        return Traits::to_char_type(next);
-    }
-
-    std::optional<char> Peek() const {
-        const Traits::int_type next = buffer_->sgetc();
-        if (Traits::eq_int_type(next, Traits::eof())) {
-            return std::nullopt;
-        }
-        return Traits::to_char_type(next);
-    }
-
-    void Discard() const { static_cast<void>(Read()); }
+    explicit CsvCharReader(const std::istream& in) : buffer_(in.rdbuf()) {}
 
    private:
     using Traits = std::streambuf::traits_type;
+
+   public:
+    Traits::int_type Read() const { return buffer_->sbumpc(); }
+
+    Traits::int_type Peek() const { return buffer_->sgetc(); }
+
+    static bool IsEof(const Traits::int_type value) { return Traits::eq_int_type(value, Traits::eof()); }
+
+    static char ToChar(const Traits::int_type value) { return Traits::to_char_type(value); }
+
+    void Discard() const {
+        if (!IsEof(Peek())) {
+            buffer_->sbumpc();
+        }
+    }
 
     std::streambuf* buffer_;
 };
 
 static bool NeedsCsvQuotes(const std::string_view value) {
-    return value.find_first_of(",\"\n\r") != std::string_view::npos;
+    return value.find_first_of(CsvQuotedChars) != std::string_view::npos;
 }
 
 CsvReader::CsvReader(std::istream& in) : in_(&in) {}
@@ -74,9 +76,9 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
     bool saw_data = false;
 
     while (true) {
-        const std::optional<char> next = input.Read();
+        const auto next = input.Read();
 
-        if (!next.has_value()) {
+        if (input.IsEof(next)) {
             if (!saw_data) {
                 return false;
             }
@@ -87,13 +89,14 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
         }
 
         saw_data = true;
-        const char ch = *next;
+        const char ch = input.ToChar(next);
 
         if (in_quotes) {
-            if (ch == '"') {
-                if (input.Peek() == '"') {
+            if (ch == CsvQuote) {
+                const auto peek = input.Peek();
+                if (!input.IsEof(peek) && input.ToChar(peek) == CsvQuote) {
                     input.Discard();
-                    row.back().push_back('"');
+                    row.back().push_back(CsvQuote);
                 } else {
                     in_quotes = false;
                 }
@@ -103,26 +106,27 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
             continue;
         }
 
-        if (ch == '"') {
+        if (ch == CsvQuote) {
             if (row.back().empty()) {
                 in_quotes = true;
             } else {
-                row.back().push_back('"');
+                row.back().push_back(CsvQuote);
             }
             continue;
         }
 
-        if (ch == ',') {
+        if (ch == CsvDelimiter) {
             row.emplace_back();
             continue;
         }
 
-        if (ch == '\n') {
+        if (ch == CsvLf) {
             return true;
         }
 
-        if (ch == '\r') {
-            if (input.Peek() == '\n') {
+        if (ch == CsvCr) {
+            const auto peek = input.Peek();
+            if (!input.IsEof(peek) && input.ToChar(peek) == CsvLf) {
                 input.Discard();
             }
             return true;
@@ -161,7 +165,7 @@ void CsvWriter::RebindAfterMove(const bool uses_owned_stream, std::ostream* sour
 void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
     for (size_t i = 0; i < row.size(); ++i) {
         if (i > 0) {
-            *out_ << ',';
+            *out_ << CsvDelimiter;
         }
 
         const std::string& value = row[i];
@@ -170,19 +174,19 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
             continue;
         }
 
-        *out_ << '"';
+        *out_ << CsvQuote;
         for (const char ch : value) {
-            if (ch == '"') {
+            if (ch == CsvQuote) {
                 *out_ << "\"\"";
             } else {
                 *out_ << ch;
             }
         }
 
-        *out_ << '"';
+        *out_ << CsvQuote;
     }
 
-    *out_ << '\n';
+    *out_ << CsvLf;
 
     if (!*out_) {
         throw Error::Io("io", "failed to write csv row");
@@ -203,7 +207,7 @@ std::vector<std::vector<std::string>> ReadRows(const std::filesystem::path& path
     std::vector<std::string> row;
 
     while (reader.ReadRow(row)) {
-        rows.push_back(row);
+        rows.push_back(std::move(row));
     }
 
     return rows;

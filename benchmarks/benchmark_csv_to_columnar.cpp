@@ -4,9 +4,9 @@
 #include <iostream>
 #include <vector>
 
-#include "io/csv.h"
-#include "convert/csv_columnar.h"
 #include "common/error.h"
+#include "convert/csv_columnar.h"
+#include "io/csv.h"
 
 #ifndef COLUMNAR_BENCHMARK_DEFAULT_DATA
 #define COLUMNAR_BENCHMARK_DEFAULT_DATA "benchmarks/hits_sample.csv"
@@ -28,7 +28,7 @@
 #define COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA "benchmarks/schema_sample_new.csv"
 #endif
 
-static constexpr size_t RowsPerGroup = 50000;
+static constexpr size_t RowsPerGroup = 1 << 14;
 
 struct CsvCompareResult {
     bool equal = true;

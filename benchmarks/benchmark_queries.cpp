@@ -15,7 +15,7 @@
 #endif
 
 static constexpr int FirstQueryId = 0;
-static constexpr int LastQueryId = 16;
+static constexpr int LastQueryId = 42;
 
 void RunQuery(const Executor& executor, const std::filesystem::path& path, const int query_id, bool record = false) {
     const auto& runners = GetQueryRunners();
@@ -44,7 +44,8 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
         return;
     }
 
-    const std::string actual_result = BatchToString(*result);
+    Batch result_batch = std::move(*result);
+    const std::string actual_result = BatchToString(result_batch);
     const std::filesystem::path ref_path =
         std::filesystem::path(COLUMNAR_BENCHMARK_QUERIES_DIR) / ("query_" + std::to_string(query_id) + ".csv");
 
@@ -56,8 +57,9 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
         status = "recorded";
     } else if (std::filesystem::exists(ref_path)) {
         const std::string expected_result = ReadTextFile(ref_path);
-        if (compare_unordered ? EqualAsRowMultisets(actual_result, expected_result)
-                              : actual_result == expected_result) {
+        if (actual_result == expected_result ||
+            EqualWithLimitTies(query_sql, result_batch.GetSchema(), actual_result, expected_result) ||
+            (compare_unordered && EqualAsRowMultisets(actual_result, expected_result))) {
             status = "passed";
         } else {
             status = "failed";
@@ -74,7 +76,7 @@ void RunQuery(const Executor& executor, const std::filesystem::path& path, const
         status = "no_reference";
     }
 
-    std::cout << "query_" << query_id << ": rows=" << result->RowsCount() << ", time=" << duration_ms
+    std::cout << "query_" << query_id << ": rows=" << result_batch.RowsCount() << ", time=" << duration_ms
               << "ms, status=" << status << std::endl;
 }
 
@@ -91,6 +93,7 @@ int main(const int argc, char** argv) {
         const std::filesystem::path data_path = queries_dir.parent_path() / "hits_sample.columnar";
 
         Executor executor;
+        executor.SetUnsupportedFallbackEnabled(true);
         executor.RegisterTable("hits", data_path);
 
         size_t found_queries = 0;

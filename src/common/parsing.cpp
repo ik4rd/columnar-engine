@@ -11,6 +11,39 @@
 #include "common/ascii.h"
 #include "common/error.h"
 
+constexpr size_t DateTextLength = 10;
+constexpr size_t DateYearOffset = 0;
+constexpr size_t DateYearLength = 4;
+constexpr size_t DateMonthOffset = 5;
+constexpr size_t DateMonthLength = 2;
+constexpr size_t DateDayOffset = 8;
+constexpr size_t DateDayLength = 2;
+constexpr size_t DateFirstSeparatorIndex = 4;
+constexpr size_t DateSecondSeparatorIndex = 7;
+
+constexpr size_t TimestampMinLength = 19;
+constexpr size_t TimestampDateLength = 10;
+constexpr size_t TimestampSeparatorIndex = 10;
+constexpr size_t TimestampHourOffset = 11;
+constexpr size_t TimestampMinuteOffset = 14;
+constexpr size_t TimestampSecondOffset = 17;
+constexpr size_t TimestampComponentLength = 2;
+constexpr size_t TimestampHourMinuteSeparatorIndex = 13;
+constexpr size_t TimestampMinuteSecondSeparatorIndex = 16;
+constexpr size_t TimestampFractionSeparatorIndex = 19;
+constexpr size_t TimestampFractionDigitsOffset = 20;
+constexpr size_t TimestampMaxFractionDigits = 6;
+
+constexpr unsigned MaxHour = 23;
+constexpr unsigned MaxMinute = 59;
+constexpr unsigned MaxSecond = 59;
+
+constexpr char DateSeparator = '-';
+constexpr char TimestampDateTimeSeparator = ' ';
+constexpr char TimestampAlternativeDateTimeSeparator = 'T';
+constexpr char TimeSeparator = ':';
+constexpr char FractionSeparator = '.';
+
 template <std::integral T>
 bool TryParseInteger(const std::string_view value, T& result) {
     if (value.empty()) {
@@ -25,13 +58,13 @@ bool TryParseInteger(const std::string_view value, T& result) {
 }
 
 template <std::integral T>
-T ParseInteger(const std::string& value, const std::string_view type_name) {
+T ParseInteger(const std::string_view value, const std::string_view type_name) {
     if (value.empty()) {
         throw Error::MalformedData("common", "empty value for " + std::string(type_name));
     }
 
     T result = 0;
-    if (!TryParseInteger(std::string_view(value), result)) {
+    if (!TryParseInteger(value, result)) {
         throw Error::MalformedData("common", "invalid " + std::string(type_name) + " value");
     }
 
@@ -47,7 +80,8 @@ static bool TryParseUnsignedPart(const std::string_view input, const size_t offs
 }
 
 static bool TryParseDatePoint(const std::string_view value, std::chrono::sys_days& result) {
-    if (value.size() != 10 || value[4] != '-' || value[7] != '-') {
+    if (value.size() != DateTextLength || value[DateFirstSeparatorIndex] != DateSeparator ||
+        value[DateSecondSeparatorIndex] != DateSeparator) {
         return false;
     }
 
@@ -55,8 +89,9 @@ static bool TryParseDatePoint(const std::string_view value, std::chrono::sys_day
     unsigned month = 0;
     unsigned day = 0;
 
-    if (!TryParseUnsignedPart(value, 0, 4, year) || !TryParseUnsignedPart(value, 5, 2, month) ||
-        !TryParseUnsignedPart(value, 8, 2, day)) {
+    if (!TryParseUnsignedPart(value, DateYearOffset, DateYearLength, year) ||
+        !TryParseUnsignedPart(value, DateMonthOffset, DateMonthLength, month) ||
+        !TryParseUnsignedPart(value, DateDayOffset, DateDayLength, day)) {
         return false;
     }
 
@@ -101,7 +136,7 @@ std::optional<bool> TryParseBoolean(const std::string_view value) {
     return std::nullopt;
 }
 
-bool ParseBoolean(const std::string& value) {
+bool ParseBoolean(const std::string_view value) {
     const std::optional<bool> result = TryParseBoolean(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid bool value");
@@ -117,7 +152,7 @@ std::optional<int16_t> TryParseInt16(const std::string_view value) {
     return result;
 }
 
-int16_t ParseInt16(const std::string& value) { return ParseInteger<int16_t>(value, "int16"); }
+int16_t ParseInt16(const std::string_view value) { return ParseInteger<int16_t>(value, "int16"); }
 
 std::optional<int32_t> TryParseInt32(const std::string_view value) {
     int32_t result = 0;
@@ -127,7 +162,7 @@ std::optional<int32_t> TryParseInt32(const std::string_view value) {
     return result;
 }
 
-int32_t ParseInt32(const std::string& value) { return ParseInteger<int32_t>(value, "int32"); }
+int32_t ParseInt32(const std::string_view value) { return ParseInteger<int32_t>(value, "int32"); }
 
 std::optional<int64_t> TryParseInt64(const std::string_view value) {
     int64_t result = 0;
@@ -137,7 +172,7 @@ std::optional<int64_t> TryParseInt64(const std::string_view value) {
     return result;
 }
 
-int64_t ParseInt64(const std::string& value) { return ParseInteger<int64_t>(value, "int64"); }
+int64_t ParseInt64(const std::string_view value) { return ParseInteger<int64_t>(value, "int64"); }
 
 std::optional<Int128> TryParseInt128(const std::string_view value) {
     if (value.empty()) {
@@ -187,7 +222,7 @@ std::optional<Int128> TryParseInt128(const std::string_view value) {
     return -static_cast<Int128>(magnitude);
 }
 
-Int128 ParseInt128(const std::string& value) {
+Int128 ParseInt128(const std::string_view value) {
     if (value.empty()) {
         throw Error::MalformedData("common", "empty value for int128");
     }
@@ -216,7 +251,7 @@ std::optional<int32_t> TryParseDate(const std::string_view value) {
     return days_since_epoch;
 }
 
-int32_t ParseDate(const std::string& value) {
+int32_t ParseDate(const std::string_view value) {
     const auto day_point = ParseDatePoint(value, "date");
     const auto days_since_epoch = day_point.time_since_epoch().count();
 
@@ -229,20 +264,22 @@ int32_t ParseDate(const std::string& value) {
 }
 
 std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
-    if (value.size() < 19) {
+    if (value.size() < TimestampMinLength) {
         return std::nullopt;
     }
 
     std::chrono::sys_days day_point{};
-    if (!TryParseDatePoint(value.substr(0, 10), day_point)) {
+    if (!TryParseDatePoint(value.substr(0, TimestampDateLength), day_point)) {
         return std::nullopt;
     }
 
-    if (value[10] != ' ' && value[10] != 'T') {
+    if (value[TimestampSeparatorIndex] != TimestampDateTimeSeparator &&
+        value[TimestampSeparatorIndex] != TimestampAlternativeDateTimeSeparator) {
         return std::nullopt;
     }
 
-    if (value[13] != ':' || value[16] != ':') {
+    if (value[TimestampHourMinuteSeparatorIndex] != TimeSeparator ||
+        value[TimestampMinuteSecondSeparatorIndex] != TimeSeparator) {
         return std::nullopt;
     }
 
@@ -250,34 +287,35 @@ std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
     unsigned minute = 0;
     unsigned second = 0;
 
-    if (!TryParseUnsignedPart(value, 11, 2, hour) || !TryParseUnsignedPart(value, 14, 2, minute) ||
-        !TryParseUnsignedPart(value, 17, 2, second)) {
+    if (!TryParseUnsignedPart(value, TimestampHourOffset, TimestampComponentLength, hour) ||
+        !TryParseUnsignedPart(value, TimestampMinuteOffset, TimestampComponentLength, minute) ||
+        !TryParseUnsignedPart(value, TimestampSecondOffset, TimestampComponentLength, second)) {
         return std::nullopt;
     }
 
-    if (hour > 23 || minute > 59 || second > 59) {
+    if (hour > MaxHour || minute > MaxMinute || second > MaxSecond) {
         return std::nullopt;
     }
 
     int64_t microseconds = 0;
 
-    if (value.size() > 19) {
-        if (value[19] != '.') {
+    if (value.size() > TimestampMinLength) {
+        if (value[TimestampFractionSeparatorIndex] != FractionSeparator) {
             return std::nullopt;
         }
 
-        const size_t digits = value.size() - 20;
-        if (digits == 0 || digits > 6) {
+        const size_t digits = value.size() - TimestampFractionDigitsOffset;
+        if (digits == 0 || digits > TimestampMaxFractionDigits) {
             return std::nullopt;
         }
 
         unsigned fractional = 0;
-        if (!TryParseUnsignedPart(value, 20, digits, fractional)) {
+        if (!TryParseUnsignedPart(value, TimestampFractionDigitsOffset, digits, fractional)) {
             return std::nullopt;
         }
 
         microseconds = static_cast<int64_t>(fractional);
-        for (size_t i = digits; i < 6; ++i) {
+        for (size_t i = digits; i < TimestampMaxFractionDigits; ++i) {
             microseconds *= 10;
         }
     }
@@ -288,7 +326,7 @@ std::optional<int64_t> TryParseTimestamp(const std::string_view value) {
     return std::chrono::duration_cast<std::chrono::microseconds>(timestamp.time_since_epoch()).count();
 }
 
-int64_t ParseTimestamp(const std::string& value) {
+int64_t ParseTimestamp(const std::string_view value) {
     const std::optional<int64_t> result = TryParseTimestamp(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid timestamp value");
@@ -303,7 +341,7 @@ std::optional<char> TryParseCharacter(const std::string_view value) {
     return value[0];
 }
 
-char ParseCharacter(const std::string& value) {
+char ParseCharacter(const std::string_view value) {
     const std::optional<char> result = TryParseCharacter(value);
     if (!result.has_value()) {
         throw Error::MalformedData("common", "invalid char value");
@@ -355,19 +393,19 @@ std::string TimestampToString(const int64_t value) {
     const std::chrono::hh_mm_ss tod{timestamp - day_point};
 
     std::ostringstream out;
-    out << FormatDateParts(std::chrono::year_month_day{day_point}) << ' ' << std::setfill('0') << std::setw(2)
-        << tod.hours().count() << ':' << std::setw(2) << tod.minutes().count() << ':' << std::setw(2)
-        << tod.seconds().count();
+    out << FormatDateParts(std::chrono::year_month_day{day_point}) << TimestampDateTimeSeparator
+        << std::setfill('0') << std::setw(2) << tod.hours().count() << TimeSeparator << std::setw(2)
+        << tod.minutes().count() << TimeSeparator << std::setw(2) << tod.seconds().count();
 
     const int64_t fractional = tod.subseconds().count();
 
     if (fractional != 0) {
         std::string frac = std::to_string(fractional);
-        frac.insert(frac.begin(), 6 - static_cast<std::ptrdiff_t>(frac.size()), '0');
+        frac.insert(frac.begin(), TimestampMaxFractionDigits - static_cast<std::ptrdiff_t>(frac.size()), '0');
         while (!frac.empty() && frac.back() == '0') {
             frac.pop_back();
         }
-        out << '.' << frac;
+        out << FractionSeparator << frac;
     }
 
     return out.str();

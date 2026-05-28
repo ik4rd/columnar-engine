@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -25,6 +26,31 @@ static void FlushWrite(const std::filesystem::path& path, std::ofstream& out) {
     if (!out) {
         throw Error::PathIo("io", path, "write file");
     }
+}
+
+static bool SupportsChunkMinMax(const ColumnType type) { return type != ColumnType::String; }
+
+static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk) {
+    if (!SupportsChunkMinMax(column.Type()) || column.Size() == 0) {
+        return;
+    }
+
+    Int128 min_value = column.ValueAsInt128(0);
+    Int128 max_value = min_value;
+
+    for (size_t row = 1; row < column.Size(); ++row) {
+        const Int128 value = column.ValueAsInt128(row);
+        if (value < min_value) {
+            min_value = value;
+        }
+        if (value > max_value) {
+            max_value = value;
+        }
+    }
+
+    chunk.has_min_max = true;
+    chunk.min_value = min_value;
+    chunk.max_value = max_value;
 }
 
 ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::path& path) {
@@ -53,7 +79,10 @@ ColumnarMetadata ColumnarBatchReader::ReadFileMetadata(const std::filesystem::pa
         throw Error::MalformedData("io", "metadata size exceeds file size", path.string());
     }
 
-    return ReadMetadata(file.StreamAt(file_size - FooterSize - metadata_size));
+    const std::string metadata_blob = file.ReadStringAt(file_size - FooterSize - metadata_size, metadata_size);
+    std::istringstream metadata_stream(metadata_blob);
+
+    return ReadMetadata(metadata_stream);
 }
 
 ColumnarBatchReader::ColumnarBatchReader(const std::filesystem::path& path)
@@ -76,8 +105,8 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
     }
 
     for (size_t col = 0; col < batch.ColumnsCount(); ++col) {
-        const auto& [offset, size] = row_group_columns[col];
-        batch.ReadColumnFrom(col, input_.StreamAt(offset), row_count, size);
+        const auto& chunk = row_group_columns[col];
+        batch.ReadColumnFrom(col, input_.StreamAt(chunk.offset), row_count, chunk.size);
     }
 
     return batch;
@@ -117,11 +146,14 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
 
     for (size_t column_index = 0; column_index < batch.ColumnsCount(); ++column_index) {
         const uint64_t offset = TellWrite(path_, out_);
-        batch.ColumnAt(column_index).WriteTo(out_);
+        const Column& column = batch.ColumnAt(column_index);
+        column.WriteTo(out_);
 
         const uint64_t end = TellWrite(path_, out_);
 
-        group.columns.push_back(ColumnChunkMetadata{offset, end - offset});
+        ColumnChunkMetadata chunk{offset, end - offset};
+        PopulateChunkMinMax(column, chunk);
+        group.columns.push_back(chunk);
     }
 
     metadata_.row_groups.push_back(std::move(group));

@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 
+#include "common/int128.h"
 #include "executor/query_plan.h"
 
 class AggState {
@@ -16,7 +17,10 @@ class AggState {
     virtual ~AggState() = default;
 
     virtual void ConsumeValue(std::string_view value) = 0;
+    virtual void ConsumeInt128(Int128 value);
     virtual void ConsumeRow() = 0;
+    virtual void ConsumeRows(size_t count);
+
     virtual std::string Finalize() const = 0;
 };
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import math
 import pathlib
 import statistics
 import subprocess
@@ -20,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the first N benchmark queries, write CSV stats, and refresh the README benchmark table."
     )
-    parser.add_argument("--count", type=int, default=17, help="Number of first queries to benchmark.")
+    parser.add_argument("--count", type=int, default=43, help="Number of first queries to benchmark.")
     parser.add_argument("--warm-runs", type=int, default=4, help="Number of warm runs after the first measured run.")
     parser.add_argument(
         "--query-dir",
@@ -57,6 +58,24 @@ def parse_args() -> argparse.Namespace:
         default="hits",
         help="Logical table name passed to run-query.",
     )
+    parser.add_argument(
+        "--source-csv",
+        type=pathlib.Path,
+        default=pathlib.Path("benchmarks/hits_sample.csv"),
+        help="Source CSV used to build the benchmark columnar file.",
+    )
+    parser.add_argument(
+        "--schema",
+        type=pathlib.Path,
+        default=pathlib.Path("benchmarks/scheme.csv"),
+        help="Schema CSV used for conversion benchmarks.",
+    )
+    parser.add_argument(
+        "--row-group-size",
+        type=int,
+        default=1 << 14,
+        help="Row group size for the CSV -> columnar conversion benchmark.",
+    )
     return parser.parse_args()
 
 
@@ -72,6 +91,32 @@ def format_ms(value: float) -> str:
     return f"{value:.2f}"
 
 
+def format_seconds(value: float) -> str:
+    return f"{value:.2f}s"
+
+
+def format_ratio(value: float) -> str:
+    return f"{value:.2f}x"
+
+
+def format_percent(value: float) -> str:
+    return f"{value:.1f}%"
+
+
+def format_size(num_bytes: int) -> str:
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+
+    units = ["KB", "MB", "GB", "TB"]
+    value = float(num_bytes)
+    for unit in units:
+        value /= 1024.0
+        if value < 1024.0 or unit == units[-1]:
+            return f"{value:.1f} {unit}"
+
+    return f"{num_bytes} B"
+
+
 def compact_sql(sql: str, max_len: int = 88) -> str:
     normalized = " ".join(sql.split())
     if len(normalized) <= max_len:
@@ -81,6 +126,109 @@ def compact_sql(sql: str, max_len: int = 88) -> str:
 
 def markdown_escape(text: str) -> str:
     return text.replace("|", "\\|")
+
+
+def parse_ms(raw: str) -> float | None:
+    if not raw:
+        return None
+    return float(raw)
+
+
+def percentile(values: list[float], ratio: float) -> float:
+    if not values:
+        raise ValueError("percentile() requires at least one value")
+
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+
+    position = ratio * (len(ordered) - 1)
+    lower_index = math.floor(position)
+    upper_index = math.ceil(position)
+    if lower_index == upper_index:
+        return ordered[lower_index]
+
+    lower_value = ordered[lower_index]
+    upper_value = ordered[upper_index]
+    fraction = position - lower_index
+    return lower_value + (upper_value - lower_value) * fraction
+
+
+def collect_conversion_stats(
+        *,
+        root: pathlib.Path,
+        binary: pathlib.Path,
+        schema_path: pathlib.Path,
+        source_csv_path: pathlib.Path,
+        row_group_size: int,
+) -> dict[str, float | int | str] | None:
+    if not schema_path.exists() or not source_csv_path.exists():
+        return None
+
+    with tempfile.TemporaryDirectory(prefix="readme_conversion_") as temp_dir_name:
+        temp_dir = pathlib.Path(temp_dir_name)
+        output_columnar = temp_dir / "dashboard.columnar"
+        roundtrip_schema = temp_dir / "dashboard_schema.csv"
+        roundtrip_csv = temp_dir / "dashboard_roundtrip.csv"
+
+        convert_command = [
+            str(binary),
+            "convert",
+            "--schema",
+            str(schema_path),
+            "--input",
+            str(source_csv_path),
+            "--output",
+            str(output_columnar),
+            "--row-group-size",
+            str(row_group_size),
+        ]
+        roundtrip_command = [
+            str(binary),
+            "roundtrip",
+            "--input",
+            str(output_columnar),
+            "--schema-output",
+            str(roundtrip_schema),
+            "--csv-output",
+            str(roundtrip_csv),
+        ]
+
+        convert_started_at = time.perf_counter()
+        convert_completed = subprocess.run(convert_command, capture_output=True, text=True)
+        convert_elapsed_seconds = time.perf_counter() - convert_started_at
+        if convert_completed.returncode != 0:
+            message = convert_completed.stderr.strip() or convert_completed.stdout.strip() or "convert failed"
+            raise RuntimeError(message)
+
+        roundtrip_started_at = time.perf_counter()
+        roundtrip_completed = subprocess.run(roundtrip_command, capture_output=True, text=True)
+        roundtrip_elapsed_seconds = time.perf_counter() - roundtrip_started_at
+        if roundtrip_completed.returncode != 0:
+            message = roundtrip_completed.stderr.strip() or roundtrip_completed.stdout.strip() or "roundtrip failed"
+            raise RuntimeError(message)
+
+        source_csv_bytes = source_csv_path.stat().st_size
+        columnar_bytes = output_columnar.stat().st_size
+        roundtrip_csv_bytes = roundtrip_csv.stat().st_size
+
+    return {
+        "source_csv_path": str(source_csv_path.relative_to(root)),
+        "schema_path": str(schema_path.relative_to(root)),
+        "source_csv_bytes": source_csv_bytes,
+        "columnar_bytes": columnar_bytes,
+        "roundtrip_csv_bytes": roundtrip_csv_bytes,
+        "convert_elapsed_seconds": convert_elapsed_seconds,
+        "roundtrip_elapsed_seconds": roundtrip_elapsed_seconds,
+        "compression_ratio": source_csv_bytes / columnar_bytes if columnar_bytes else 0.0,
+        "columnar_vs_csv_percent": (columnar_bytes / source_csv_bytes * 100.0) if source_csv_bytes else 0.0,
+        "convert_throughput_mb_s": (source_csv_bytes / (1024 * 1024)) / convert_elapsed_seconds
+        if convert_elapsed_seconds
+        else 0.0,
+        "roundtrip_throughput_mb_s": (columnar_bytes / (1024 * 1024)) / roundtrip_elapsed_seconds
+        if roundtrip_elapsed_seconds
+        else 0.0,
+    }
 
 
 def run_query(
@@ -146,6 +294,7 @@ def collect_rows(
             warm_min_ms = ""
             warm_max_ms = ""
             warm_median_ms = ""
+            output_csv_bytes = "0"
 
             try:
                 first_run_value = run_query(binary, input_path, query_path, output_path, table_name)
@@ -160,6 +309,9 @@ def collect_rows(
                     warm_min_ms = format_ms(min(warm_values))
                     warm_max_ms = format_ms(max(warm_values))
                     warm_median_ms = format_ms(statistics.median(warm_values))
+
+                if output_path.exists():
+                    output_csv_bytes = str(output_path.stat().st_size)
             except RuntimeError as error:
                 status = "failed"
                 first_error = str(error)
@@ -174,6 +326,7 @@ def collect_rows(
                     "warm_median_ms": warm_median_ms,
                     "warm_min_ms": warm_min_ms,
                     "warm_max_ms": warm_max_ms,
+                    "output_csv_bytes": output_csv_bytes,
                     "status": status,
                     "error": first_error,
                 }
@@ -193,6 +346,7 @@ def write_csv(csv_path: pathlib.Path, rows: list[dict[str, str]]) -> None:
         "warm_median_ms",
         "warm_min_ms",
         "warm_max_ms",
+        "output_csv_bytes",
         "status",
         "error",
     ]
@@ -202,19 +356,181 @@ def write_csv(csv_path: pathlib.Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
-def render_markdown(csv_path: pathlib.Path, rows: list[dict[str, str]], count: int, warm_runs: int) -> str:
-    generated_at = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def query_metric(row: dict[str, str]) -> float:
+    warm_median = parse_ms(row["warm_median_ms"])
+    if warm_median is not None:
+        return warm_median
+
+    first_run = parse_ms(row["first_run_ms"])
+    return first_run or 0.0
+
+
+def heatmap_icon(value: float, median_value: float) -> str:
+    if value <= 0:
+        return "⬜"
+    if value < median_value * 0.9:
+        return "🟩"
+    if value > median_value * 1.1:
+        return "🟥"
+    return "🟦"
+
+
+def render_heatmap(rows: list[dict[str, str]], median_value: float, columns: int = 6) -> list[str]:
     lines = [
-        "## Dashboard",
+        "### Heatmap",
         "",
+        "`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` 0 ms",
         "",
-        "| Query | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
+
+    chunks = [rows[index: index + columns] for index in range(0, len(rows), columns)]
+    lines.append("| " + " | ".join(f"slot {index + 1}" for index in range(columns)) + " |")
+    lines.append("| " + " | ".join("---:" for _ in range(columns)) + " |")
+    for chunk in chunks:
+        padded_chunk = chunk + [None] * (columns - len(chunk))
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    f"Q{int(row['query_id']):02d} {heatmap_icon(query_metric(row), median_value)} "
+                    f"`{format_ms(query_metric(row))}`"
+                )
+                if row is not None
+                else ""
+                for row in padded_chunk
+            )
+            + " |"
+        )
+
+    return lines
+
+
+def render_markdown(
+        csv_path: pathlib.Path,
+        rows: list[dict[str, str]],
+        count: int,
+        warm_runs: int,
+        conversion_stats: dict[str, float | int | str] | None,
+) -> str:
+    generated_at = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok_rows = [row for row in rows if row["status"] == "ok"]
+    warm_values = [query_metric(row) for row in ok_rows if query_metric(row) > 0]
+    first_run_values = [parse_ms(row["first_run_ms"]) for row in ok_rows if parse_ms(row["first_run_ms"]) is not None]
+    first_run_values = [value for value in first_run_values if value is not None]
+    failed_rows = [row for row in rows if row["status"] != "ok"]
+    output_sizes = [int(row["output_csv_bytes"]) for row in ok_rows]
+    median_value = statistics.median(warm_values) if warm_values else 0.0
+    avg_value = statistics.fmean(warm_values) if warm_values else 0.0
+    p95_value = percentile(warm_values, 0.95) if warm_values else 0.0
+    cold_penalty = ((statistics.fmean(first_run_values) / avg_value) - 1.0) * 100.0 if avg_value and first_run_values else 0.0
+    fastest = min(ok_rows, key=query_metric) if ok_rows else None
+    slowest = max(ok_rows, key=query_metric) if ok_rows else None
+    top_slowest = sorted(ok_rows, key=query_metric, reverse=True)[:5]
+    top_fastest = sorted(ok_rows, key=query_metric)[:5]
+    largest_outputs = sorted(ok_rows, key=lambda row: int(row["output_csv_bytes"]), reverse=True)[:5]
+
+    lines = [
+        "## Benchmark Dashboard",
+        "",
+        f"`generated {generated_at}` · `queries {len(rows)}/{count}` · `warm runs {warm_runs}` · [`csv`]({csv_path})",
+        "",
+        "### Summary",
+        "",
+        "| Metric | Value |",
+        "| --- | ---: |",
+        f"| queries ok | {len(ok_rows)} / {len(rows)} |",
+        f"| queries failed | {len(failed_rows)} |",
+        f"| median warm time | {format_ms(median_value)} ms |",
+        f"| average warm time | {format_ms(avg_value)} ms |",
+        f"| p95 warm time | {format_ms(p95_value)} ms |",
+        f"| cold/warm delta | {format_percent(cold_penalty)} |",
+        f"| total output size | {format_size(sum(output_sizes))} |",
+        f"| max output size | {format_size(max(output_sizes)) if output_sizes else '—'} |",
+        f"| fastest query | Q{int(fastest['query_id']):02d} · {format_ms(query_metric(fastest))} ms |" if fastest else "| fastest query | — |",
+        f"| slowest query | Q{int(slowest['query_id']):02d} · {format_ms(query_metric(slowest))} ms |" if slowest else "| slowest query | — |",
+        "",
+    ]
+
+    if conversion_stats is not None:
+        lines.extend(
+            [
+                "### Storage",
+                "",
+                "| Metric | Value |",
+                "| --- | ---: |",
+                f"| source csv | `{conversion_stats['source_csv_path']}` |",
+                f"| schema | `{conversion_stats['schema_path']}` |",
+                f"| source size | {format_size(int(conversion_stats['source_csv_bytes']))} |",
+                f"| columnar size | {format_size(int(conversion_stats['columnar_bytes']))} |",
+                f"| roundtrip csv size | {format_size(int(conversion_stats['roundtrip_csv_bytes']))} |",
+                f"| compression ratio | {format_ratio(float(conversion_stats['compression_ratio']))} |",
+                f"| columnar / csv | {format_percent(float(conversion_stats['columnar_vs_csv_percent']))} |",
+                f"| csv -> columnar | {format_seconds(float(conversion_stats['convert_elapsed_seconds']))} |",
+                f"| columnar -> csv | {format_seconds(float(conversion_stats['roundtrip_elapsed_seconds']))} |",
+                f"| convert throughput | {float(conversion_stats['convert_throughput_mb_s']):.1f} MB/s |",
+                f"| roundtrip throughput | {float(conversion_stats['roundtrip_throughput_mb_s']):.1f} MB/s |",
+                "",
+            ]
+        )
+
+    lines.extend(render_heatmap(rows, median_value))
+    lines.extend(
+        [
+            "### Largest Result Sets",
+            "",
+            "| Query | Output | Warm median, ms | SQL |",
+            "| --- | ---: | ---: | --- |",
+        ]
+    )
+    for row in largest_outputs:
+        lines.append(
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {format_size(int(row['output_csv_bytes']))} | "
+            f"{format_ms(query_metric(row))} | {markdown_escape(compact_sql(row['sql'], 64))} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### Fastest Queries",
+            "",
+            "| Query | SQL | Warm median, ms | First run, ms |",
+            "| --- | --- | ---: | ---: |",
+        ]
+    )
+    for row in top_fastest:
+        lines.append(
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
+            f"{format_ms(query_metric(row))} | {row['first_run_ms'] or '—'} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### Slowest Queries",
+            "",
+            "| Query | SQL | Warm median, ms | Warm max, ms |",
+            "| --- | --- | ---: | ---: |",
+        ]
+    )
+    for row in top_slowest:
+        lines.append(
+            f"| [Q{int(row['query_id']):02d}]({row['query_file']}) | {markdown_escape(compact_sql(row['sql'], 72))} | "
+            f"{format_ms(query_metric(row))} | {row['warm_max_ms'] or '—'} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### Query Table",
+            "",
+            "| Query | Output CSV | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
 
     for row in rows:
         query_file = row["query_file"]
-        query_label = f"[{row['query_id']}]({query_file})"
+        query_label = f"[Q{int(row['query_id']):02d}]({query_file})"
         status = row["status"]
         if row["error"]:
             status = f"{status}: {markdown_escape(compact_sql(row['error'], max_len=48))}"
@@ -224,6 +540,7 @@ def render_markdown(csv_path: pathlib.Path, rows: list[dict[str, str]], count: i
             + " | ".join(
                 [
                     query_label,
+                    format_size(int(row["output_csv_bytes"])),
                     row["first_run_ms"] or "—",
                     row["warm_avg_ms"] or "—",
                     row["warm_median_ms"] or "—",
@@ -270,6 +587,8 @@ def main() -> int:
     query_dir = resolve_path(args.query_dir, root)
     csv_path = resolve_path(args.csv_out, root)
     readme_path = resolve_path(args.readme, root)
+    source_csv_path = resolve_path(args.source_csv, root)
+    schema_path = resolve_path(args.schema, root)
 
     if not binary.exists():
         raise SystemExit(f"binary not found: {binary}")
@@ -287,8 +606,21 @@ def main() -> int:
         warm_runs=args.warm_runs,
         table_name=args.table_name,
     )
+    conversion_stats = collect_conversion_stats(
+        root=root,
+        binary=binary,
+        schema_path=schema_path,
+        source_csv_path=source_csv_path,
+        row_group_size=args.row_group_size,
+    )
     write_csv(csv_path, rows)
-    markdown_block = render_markdown(csv_path.relative_to(root), rows, args.count, args.warm_runs)
+    markdown_block = render_markdown(
+        csv_path.relative_to(root),
+        rows,
+        args.count,
+        args.warm_runs,
+        conversion_stats,
+    )
     update_readme(readme_path, markdown_block)
     print(f"updated {readme_path.relative_to(root)} from {csv_path.relative_to(root)} with {len(rows)} row(s)")
     return 0

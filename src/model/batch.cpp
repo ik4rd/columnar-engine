@@ -54,11 +54,52 @@ void Batch::Reserve(const size_t n) const {
     }
 }
 
-void Batch::AppendValueFromString(const size_t column_index, const std::string& value) const {
+void Batch::AppendValueFromString(const size_t column_index, const std::string_view value) const {
     if (column_index >= columns_.size()) {
         throw Error::OutOfRange("model", "column index out of range");
     }
     columns_[column_index]->AppendFromString(value);
+}
+
+void Batch::AppendValueFromColumn(const size_t column_index, const Column& source, const size_t row) const {
+    if (column_index >= columns_.size()) {
+        throw Error::OutOfRange("model", "column index out of range");
+    }
+    columns_[column_index]->AppendFromColumn(source, row);
+}
+
+void Batch::AppendColumnRange(const size_t column_index, const Column& source, const size_t begin,
+                              const size_t count) const {
+    if (column_index >= columns_.size()) {
+        throw Error::OutOfRange("model", "column index out of range");
+    }
+    columns_[column_index]->AppendRangeFromColumn(source, begin, count);
+}
+
+void Batch::AppendColumnSelected(const size_t column_index, const Column& source,
+                                 const std::span<const size_t> rows) const {
+    if (column_index >= columns_.size()) {
+        throw Error::OutOfRange("model", "column index out of range");
+    }
+    columns_[column_index]->AppendSelectedFromColumn(source, rows);
+}
+
+void Batch::AppendRowsRangeFromBatch(const Batch& source, const size_t begin, const size_t count) const {
+    if (source.ColumnsCount() != ColumnsCount()) {
+        throw Error::InconsistentData("model", "batch column count mismatch");
+    }
+    for (size_t column = 0; column < ColumnsCount(); ++column) {
+        AppendColumnRange(column, source.ColumnAt(column), begin, count);
+    }
+}
+
+void Batch::AppendRowsSelectedFromBatch(const Batch& source, const std::span<const size_t> rows) const {
+    if (source.ColumnsCount() != ColumnsCount()) {
+        throw Error::InconsistentData("model", "batch column count mismatch");
+    }
+    for (size_t column = 0; column < ColumnsCount(); ++column) {
+        AppendColumnSelected(column, source.ColumnAt(column), rows);
+    }
 }
 
 void Batch::ReadColumnFrom(const size_t column_index, std::istream& in, const uint32_t row_count,
