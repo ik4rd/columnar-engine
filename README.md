@@ -5,7 +5,7 @@
 <!-- benchmark-table:start -->
 ## Benchmark Dashboard
 
-`generated 2026-05-28 13:26:56` · `queries 43/43` · `warm runs 4` · [`csv`](benchmarks/results/readme_benchmarks.csv)
+`generated 2026-05-28 14:14:38` · `queries 43/43` · `warm runs 4` · [`csv`](benchmarks/results/readme_benchmarks.csv)
 
 ### Summary
 
@@ -13,14 +13,14 @@
 | --- | ---: |
 | queries ok | 43 / 43 |
 | queries failed | 0 |
-| median warm time | 239.79 ms |
-| average warm time | 274.57 ms |
-| p95 warm time | 813.63 ms |
-| cold/warm delta | 6.7% |
+| median warm time | 227.39 ms |
+| average warm time | 227.85 ms |
+| p95 warm time | 469.27 ms |
+| cold/warm delta | 4.1% |
 | total output size | 20.3 KB |
 | max output size | 6.0 KB |
-| fastest query | Q06 · 4.20 ms |
-| slowest query | Q18 · 1146.61 ms |
+| fastest query | Q19 · 4.30 ms |
+| slowest query | Q28 · 961.46 ms |
 
 ### Storage
 
@@ -34,10 +34,10 @@
 | roundtrip csv size | 743.0 MB |
 | compression ratio | 6.71x |
 | columnar / csv | 14.9% |
-| csv -> columnar | 5.52s |
-| columnar -> csv | 9.65s |
-| convert throughput | 145.4 MB/s |
-| roundtrip throughput | 12.4 MB/s |
+| csv -> columnar | 5.65s |
+| columnar -> csv | 9.55s |
+| convert throughput | 142.2 MB/s |
+| roundtrip throughput | 12.5 MB/s |
 
 ### Heatmap
 
@@ -45,89 +45,89 @@
 
 | slot 1 | slot 2 | slot 3 | slot 4 | slot 5 | slot 6 |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| Q00 🟩 `5.33` | Q01 🟩 `7.51` | Q02 🟩 `18.46` | Q03 🟩 `14.22` | Q04 🟩 `142.67` | Q05 🟩 `127.92` |
-| Q06 🟩 `4.20` | Q07 🟩 `6.58` | Q08 🟩 `184.89` | Q09 🟩 `200.71` | Q10 🟥 `266.04` | Q11 🟥 `308.16` |
-| Q12 🟦 `228.27` | Q13 🟦 `244.72` | Q14 🟦 `229.88` | Q15 🟩 `69.88` | Q16 🟩 `139.03` | Q17 🟩 `149.92` |
-| Q18 🟥 `1146.61` | Q19 🟩 `4.85` | Q20 🟩 `144.36` | Q21 🟥 `283.42` | Q22 🟥 `371.82` | Q23 🟦 `245.27` |
-| Q24 🟥 `275.45` | Q25 🟥 `329.49` | Q26 🟥 `269.75` | Q27 🟥 `439.36` | Q28 🟥 `957.04` | Q29 🟥 `390.44` |
-| Q30 🟦 `239.79` | Q31 🟦 `261.03` | Q32 🟥 `828.89` | Q33 🟥 `369.78` | Q34 🟥 `482.41` | Q35 🟥 `676.27` |
-| Q36 🟥 `324.34` | Q37 🟦 `235.02` | Q38 🟩 `69.98` | Q39 🟥 `416.78` | Q40 🟩 `90.83` | Q41 🟩 `32.00` |
-| Q42 🟥 `573.07` |  |  |  |  |  |
+| Q00 🟩 `5.66` | Q01 🟩 `8.52` | Q02 🟩 `18.69` | Q03 🟩 `15.81` | Q04 🟩 `167.19` | Q05 🟩 `142.57` |
+| Q06 🟩 `4.81` | Q07 🟩 `8.51` | Q08 🟩 `191.42` | Q09 🟦 `204.68` | Q10 🟥 `266.03` | Q11 🟥 `267.35` |
+| Q12 🟦 `225.01` | Q13 🟦 `239.70` | Q14 🟦 `228.39` | Q15 🟩 `70.37` | Q16 🟩 `120.24` | Q17 🟩 `141.30` |
+| Q18 🟥 `334.36` | Q19 🟩 `4.30` | Q20 🟩 `142.30` | Q21 🟥 `273.15` | Q22 🟥 `365.64` | Q23 🟦 `242.96` |
+| Q24 🟥 `271.73` | Q25 🟦 `222.25` | Q26 🟥 `271.67` | Q27 🟥 `420.53` | Q28 🟥 `961.46` | Q29 🟥 `390.66` |
+| Q30 🟦 `232.35` | Q31 🟥 `254.79` | Q32 🟥 `727.78` | Q33 🟥 `369.53` | Q34 🟥 `408.60` | Q35 🟦 `227.39` |
+| Q36 🟥 `352.00` | Q37 🟦 `240.26` | Q38 🟩 `82.36` | Q39 🟥 `474.69` | Q40 🟩 `96.72` | Q41 🟩 `35.08` |
+| Q42 🟩 `68.79` |  |  |  |  |  |
 ### Largest Result Sets
 
 | Query | Output | Warm median, ms | SQL |
 | --- | ---: | ---: | --- |
-| [Q22](benchmarks/queries/query_22.sql) | 6.0 KB | 371.82 | SELECT SearchPhrase, MIN(URL), MIN(Title), COUNT(*) AS c, COUNT… |
-| [Q23](benchmarks/queries/query_23.sql) | 2.6 KB | 245.27 | SELECT * FROM hits WHERE URL LIKE '%google%' ORDER BY EventTime… |
-| [Q29](benchmarks/queries/query_29.sql) | 990 B | 390.44 | SELECT SUM(ResolutionWidth), SUM(ResolutionWidth + 1), SUM(Reso… |
-| [Q39](benchmarks/queries/query_39.sql) | 835 B | 416.78 | SELECT TraficSourceID, SearchEngineID, AdvEngineID, CASE WHEN (… |
-| [Q24](benchmarks/queries/query_24.sql) | 658 B | 275.45 | SELECT SearchPhrase FROM hits WHERE SearchPhrase <> '' ORDER BY… |
+| [Q22](benchmarks/queries/query_22.sql) | 6.0 KB | 365.64 | SELECT SearchPhrase, MIN(URL), MIN(Title), COUNT(*) AS c, COUNT… |
+| [Q23](benchmarks/queries/query_23.sql) | 2.6 KB | 242.96 | SELECT * FROM hits WHERE URL LIKE '%google%' ORDER BY EventTime… |
+| [Q29](benchmarks/queries/query_29.sql) | 990 B | 390.66 | SELECT SUM(ResolutionWidth), SUM(ResolutionWidth + 1), SUM(Reso… |
+| [Q39](benchmarks/queries/query_39.sql) | 835 B | 474.69 | SELECT TraficSourceID, SearchEngineID, AdvEngineID, CASE WHEN (… |
+| [Q24](benchmarks/queries/query_24.sql) | 658 B | 271.73 | SELECT SearchPhrase FROM hits WHERE SearchPhrase <> '' ORDER BY… |
 
 ### Fastest Queries
 
 | Query | SQL | Warm median, ms | First run, ms |
 | --- | --- | ---: | ---: |
-| [Q06](benchmarks/queries/query_6.sql) | SELECT MIN(EventDate), MAX(EventDate) FROM hits; | 4.20 | 4.73 |
-| [Q19](benchmarks/queries/query_19.sql) | SELECT UserID FROM hits WHERE UserID = 435090932899640449; | 4.85 | 5.58 |
-| [Q00](benchmarks/queries/query_0.sql) | SELECT COUNT(*) FROM hits; | 5.33 | 10.91 |
-| [Q07](benchmarks/queries/query_7.sql) | SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY … | 6.58 | 6.60 |
-| [Q01](benchmarks/queries/query_1.sql) | SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0; | 7.51 | 14.12 |
+| [Q19](benchmarks/queries/query_19.sql) | SELECT UserID FROM hits WHERE UserID = 435090932899640449; | 4.30 | 5.03 |
+| [Q06](benchmarks/queries/query_6.sql) | SELECT MIN(EventDate), MAX(EventDate) FROM hits; | 4.81 | 4.83 |
+| [Q00](benchmarks/queries/query_0.sql) | SELECT COUNT(*) FROM hits; | 5.66 | 6.73 |
+| [Q07](benchmarks/queries/query_7.sql) | SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY … | 8.51 | 11.26 |
+| [Q01](benchmarks/queries/query_1.sql) | SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0; | 8.52 | 7.83 |
 
 ### Slowest Queries
 
 | Query | SQL | Warm median, ms | Warm max, ms |
 | --- | --- | ---: | ---: |
-| [Q18](benchmarks/queries/query_18.sql) | SELECT UserID, extract(minute FROM EventTime) AS m, SearchPhrase, COUNT… | 1146.61 | 1176.15 |
-| [Q28](benchmarks/queries/query_28.sql) | SELECT REGEXP_REPLACE(Referer, '^https?://(?:www\.)?([^/]+)/.*$', '\1')… | 957.04 | 967.25 |
-| [Q32](benchmarks/queries/query_32.sql) | SELECT WatchID, ClientIP, COUNT(*) AS c, SUM(IsRefresh), AVG(Resolution… | 828.89 | 953.89 |
-| [Q35](benchmarks/queries/query_35.sql) | SELECT ClientIP, ClientIP - 1, ClientIP - 2, ClientIP - 3, COUNT(*) AS … | 676.27 | 678.94 |
-| [Q42](benchmarks/queries/query_42.sql) | SELECT DATE_TRUNC('minute', EventTime) AS M, COUNT(*) AS PageViews FROM… | 573.07 | 574.43 |
+| [Q28](benchmarks/queries/query_28.sql) | SELECT REGEXP_REPLACE(Referer, '^https?://(?:www\.)?([^/]+)/.*$', '\1')… | 961.46 | 965.33 |
+| [Q32](benchmarks/queries/query_32.sql) | SELECT WatchID, ClientIP, COUNT(*) AS c, SUM(IsRefresh), AVG(Resolution… | 727.78 | 799.88 |
+| [Q39](benchmarks/queries/query_39.sql) | SELECT TraficSourceID, SearchEngineID, AdvEngineID, CASE WHEN (SearchEn… | 474.69 | 479.44 |
+| [Q27](benchmarks/queries/query_27.sql) | SELECT CounterID, AVG(STRLEN(URL)) AS l, COUNT(*) AS c FROM hits WHERE … | 420.53 | 423.62 |
+| [Q34](benchmarks/queries/query_34.sql) | SELECT 1, URL, COUNT(*) AS c FROM hits GROUP BY 1, URL ORDER BY c DESC … | 408.60 | 497.95 |
 
 ### Query Table
 
 | Query | Output CSV | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| [Q00](benchmarks/queries/query_0.sql) | 7 B | 10.91 | 5.73 | 5.33 | 5.06 | 7.21 | ok |
-| [Q01](benchmarks/queries/query_1.sql) | 6 B | 14.12 | 7.41 | 7.51 | 6.92 | 7.72 | ok |
-| [Q02](benchmarks/queries/query_2.sql) | 18 B | 27.96 | 18.37 | 18.46 | 17.43 | 19.11 | ok |
-| [Q03](benchmarks/queries/query_3.sql) | 20 B | 24.73 | 14.17 | 14.22 | 13.58 | 14.67 | ok |
-| [Q04](benchmarks/queries/query_4.sql) | 6 B | 142.46 | 143.75 | 142.67 | 142.39 | 147.26 | ok |
-| [Q05](benchmarks/queries/query_5.sql) | 6 B | 137.41 | 127.97 | 127.92 | 127.70 | 128.33 | ok |
-| [Q06](benchmarks/queries/query_6.sql) | 22 B | 4.73 | 4.21 | 4.20 | 4.11 | 4.35 | ok |
-| [Q07](benchmarks/queries/query_7.sql) | 31 B | 6.60 | 6.58 | 6.58 | 6.55 | 6.64 | ok |
-| [Q08](benchmarks/queries/query_8.sql) | 81 B | 187.86 | 185.13 | 184.89 | 184.61 | 186.12 | ok |
-| [Q09](benchmarks/queries/query_9.sql) | 237 B | 199.68 | 200.89 | 200.71 | 200.13 | 202.00 | ok |
-| [Q10](benchmarks/queries/query_10.sql) | 102 B | 276.16 | 266.05 | 266.04 | 263.92 | 268.23 | ok |
-| [Q11](benchmarks/queries/query_11.sql) | 116 B | 276.72 | 309.33 | 308.16 | 267.94 | 353.04 | ok |
-| [Q12](benchmarks/queries/query_12.sql) | 387 B | 410.85 | 229.06 | 228.27 | 225.02 | 234.66 | ok |
-| [Q13](benchmarks/queries/query_13.sql) | 350 B | 243.61 | 249.32 | 244.72 | 239.30 | 268.53 | ok |
-| [Q14](benchmarks/queries/query_14.sql) | 400 B | 228.50 | 230.86 | 229.88 | 226.83 | 236.84 | ok |
-| [Q15](benchmarks/queries/query_15.sql) | 236 B | 74.99 | 69.83 | 69.88 | 69.21 | 70.34 | ok |
-| [Q16](benchmarks/queries/query_16.sql) | 244 B | 123.59 | 135.96 | 139.03 | 119.77 | 146.01 | ok |
-| [Q17](benchmarks/queries/query_17.sql) | 414 B | 186.73 | 152.43 | 149.92 | 145.57 | 164.29 | ok |
-| [Q18](benchmarks/queries/query_18.sql) | 264 B | 1168.73 | 1151.55 | 1146.61 | 1136.85 | 1176.15 | ok |
-| [Q19](benchmarks/queries/query_19.sql) | 0 B | 5.58 | 4.83 | 4.85 | 4.65 | 4.96 | ok |
-| [Q20](benchmarks/queries/query_20.sql) | 3 B | 188.34 | 144.23 | 144.36 | 142.56 | 145.65 | ok |
-| [Q21](benchmarks/queries/query_21.sql) | 162 B | 277.03 | 282.07 | 283.42 | 270.81 | 290.61 | ok |
-| [Q22](benchmarks/queries/query_22.sql) | 6.0 KB | 410.96 | 372.51 | 371.82 | 362.17 | 384.20 | ok |
-| [Q23](benchmarks/queries/query_23.sql) | 2.6 KB | 276.18 | 245.86 | 245.27 | 242.46 | 250.46 | ok |
-| [Q24](benchmarks/queries/query_24.sql) | 658 B | 272.21 | 287.04 | 275.45 | 272.69 | 324.55 | ok |
-| [Q25](benchmarks/queries/query_25.sql) | 382 B | 287.75 | 410.16 | 329.49 | 263.83 | 717.82 | ok |
-| [Q26](benchmarks/queries/query_26.sql) | 658 B | 316.19 | 270.07 | 269.75 | 268.76 | 272.01 | ok |
-| [Q27](benchmarks/queries/query_27.sql) | 26 B | 464.09 | 448.40 | 439.36 | 421.28 | 493.62 | ok |
-| [Q28](benchmarks/queries/query_28.sql) | 556 B | 1003.27 | 958.87 | 957.04 | 954.14 | 967.25 | ok |
-| [Q29](benchmarks/queries/query_29.sql) | 990 B | 395.02 | 390.10 | 390.44 | 387.37 | 392.13 | ok |
-| [Q30](benchmarks/queries/query_30.sql) | 244 B | 256.21 | 238.89 | 239.79 | 235.62 | 240.37 | ok |
-| [Q31](benchmarks/queries/query_31.sql) | 398 B | 299.84 | 261.53 | 261.03 | 258.93 | 265.14 | ok |
-| [Q32](benchmarks/queries/query_32.sql) | 376 B | 986.27 | 854.79 | 828.89 | 807.48 | 953.89 | ok |
-| [Q33](benchmarks/queries/query_33.sql) | 464 B | 378.58 | 374.65 | 369.78 | 363.09 | 395.96 | ok |
-| [Q34](benchmarks/queries/query_34.sql) | 484 B | 473.26 | 480.15 | 482.41 | 408.94 | 546.83 | ok |
-| [Q35](benchmarks/queries/query_35.sql) | 493 B | 676.69 | 675.28 | 676.27 | 669.64 | 678.94 | ok |
-| [Q36](benchmarks/queries/query_36.sql) | 569 B | 340.63 | 324.75 | 324.34 | 321.71 | 328.61 | ok |
-| [Q37](benchmarks/queries/query_37.sql) | 550 B | 249.18 | 234.70 | 235.02 | 233.13 | 235.62 | ok |
-| [Q38](benchmarks/queries/query_38.sql) | 480 B | 75.87 | 70.08 | 69.98 | 69.94 | 70.44 | ok |
-| [Q39](benchmarks/queries/query_39.sql) | 835 B | 489.41 | 416.60 | 416.78 | 408.36 | 424.48 | ok |
-| [Q40](benchmarks/queries/query_40.sql) | 356 B | 106.21 | 91.04 | 90.83 | 90.28 | 92.23 | ok |
-| [Q41](benchmarks/queries/query_41.sql) | 132 B | 37.17 | 32.00 | 32.00 | 31.92 | 32.07 | ok |
-| [Q42](benchmarks/queries/query_42.sql) | 240 B | 580.31 | 572.39 | 573.07 | 568.98 | 574.43 | ok |
+| [Q00](benchmarks/queries/query_0.sql) | 7 B | 6.73 | 5.73 | 5.66 | 5.04 | 6.58 | ok |
+| [Q01](benchmarks/queries/query_1.sql) | 6 B | 7.83 | 8.39 | 8.52 | 7.40 | 9.11 | ok |
+| [Q02](benchmarks/queries/query_2.sql) | 18 B | 25.17 | 18.62 | 18.69 | 18.22 | 18.89 | ok |
+| [Q03](benchmarks/queries/query_3.sql) | 20 B | 14.89 | 16.28 | 15.81 | 14.92 | 18.60 | ok |
+| [Q04](benchmarks/queries/query_4.sql) | 6 B | 169.19 | 166.66 | 167.19 | 160.12 | 172.16 | ok |
+| [Q05](benchmarks/queries/query_5.sql) | 6 B | 158.88 | 142.99 | 142.57 | 139.13 | 147.68 | ok |
+| [Q06](benchmarks/queries/query_6.sql) | 22 B | 4.83 | 4.81 | 4.81 | 4.51 | 5.09 | ok |
+| [Q07](benchmarks/queries/query_7.sql) | 31 B | 11.26 | 9.06 | 8.51 | 8.09 | 11.12 | ok |
+| [Q08](benchmarks/queries/query_8.sql) | 81 B | 220.05 | 191.69 | 191.42 | 188.73 | 195.20 | ok |
+| [Q09](benchmarks/queries/query_9.sql) | 237 B | 205.60 | 204.66 | 204.68 | 204.17 | 205.11 | ok |
+| [Q10](benchmarks/queries/query_10.sql) | 102 B | 273.84 | 266.00 | 266.03 | 265.52 | 266.41 | ok |
+| [Q11](benchmarks/queries/query_11.sql) | 116 B | 268.04 | 267.38 | 267.35 | 267.27 | 267.58 | ok |
+| [Q12](benchmarks/queries/query_12.sql) | 387 B | 224.63 | 224.93 | 225.01 | 224.44 | 225.28 | ok |
+| [Q13](benchmarks/queries/query_13.sql) | 350 B | 240.61 | 239.63 | 239.70 | 238.61 | 240.50 | ok |
+| [Q14](benchmarks/queries/query_14.sql) | 400 B | 228.67 | 228.32 | 228.39 | 227.04 | 229.47 | ok |
+| [Q15](benchmarks/queries/query_15.sql) | 236 B | 71.09 | 70.54 | 70.37 | 69.94 | 71.46 | ok |
+| [Q16](benchmarks/queries/query_16.sql) | 244 B | 122.74 | 120.44 | 120.24 | 119.31 | 121.99 | ok |
+| [Q17](benchmarks/queries/query_17.sql) | 414 B | 141.73 | 141.49 | 141.30 | 140.31 | 143.04 | ok |
+| [Q18](benchmarks/queries/query_18.sql) | 264 B | 369.08 | 335.98 | 334.36 | 333.21 | 342.01 | ok |
+| [Q19](benchmarks/queries/query_19.sql) | 0 B | 5.03 | 4.30 | 4.30 | 4.27 | 4.34 | ok |
+| [Q20](benchmarks/queries/query_20.sql) | 3 B | 143.32 | 142.33 | 142.30 | 142.00 | 142.71 | ok |
+| [Q21](benchmarks/queries/query_21.sql) | 162 B | 271.64 | 272.93 | 273.15 | 271.58 | 273.83 | ok |
+| [Q22](benchmarks/queries/query_22.sql) | 6.0 KB | 366.39 | 365.99 | 365.64 | 364.45 | 368.23 | ok |
+| [Q23](benchmarks/queries/query_23.sql) | 2.6 KB | 249.63 | 242.91 | 242.96 | 242.01 | 243.72 | ok |
+| [Q24](benchmarks/queries/query_24.sql) | 658 B | 271.33 | 271.81 | 271.73 | 271.32 | 272.46 | ok |
+| [Q25](benchmarks/queries/query_25.sql) | 382 B | 223.93 | 222.37 | 222.25 | 221.78 | 223.21 | ok |
+| [Q26](benchmarks/queries/query_26.sql) | 658 B | 271.34 | 271.66 | 271.67 | 271.41 | 271.90 | ok |
+| [Q27](benchmarks/queries/query_27.sql) | 26 B | 421.81 | 421.00 | 420.53 | 419.31 | 423.62 | ok |
+| [Q28](benchmarks/queries/query_28.sql) | 556 B | 966.80 | 961.41 | 961.46 | 957.40 | 965.33 | ok |
+| [Q29](benchmarks/queries/query_29.sql) | 990 B | 396.16 | 390.69 | 390.66 | 387.70 | 393.73 | ok |
+| [Q30](benchmarks/queries/query_30.sql) | 244 B | 236.87 | 232.38 | 232.35 | 232.17 | 232.65 | ok |
+| [Q31](benchmarks/queries/query_31.sql) | 398 B | 262.18 | 254.79 | 254.79 | 252.74 | 256.84 | ok |
+| [Q32](benchmarks/queries/query_32.sql) | 376 B | 967.89 | 741.95 | 727.78 | 712.38 | 799.88 | ok |
+| [Q33](benchmarks/queries/query_33.sql) | 464 B | 368.98 | 380.07 | 369.53 | 362.34 | 418.87 | ok |
+| [Q34](benchmarks/queries/query_34.sql) | 484 B | 386.18 | 427.59 | 408.60 | 395.22 | 497.95 | ok |
+| [Q35](benchmarks/queries/query_35.sql) | 493 B | 149.27 | 215.79 | 227.39 | 164.34 | 244.05 | ok |
+| [Q36](benchmarks/queries/query_36.sql) | 569 B | 367.61 | 349.09 | 352.00 | 328.04 | 364.33 | ok |
+| [Q37](benchmarks/queries/query_37.sql) | 550 B | 255.09 | 253.91 | 240.26 | 238.20 | 296.91 | ok |
+| [Q38](benchmarks/queries/query_38.sql) | 480 B | 78.61 | 81.87 | 82.36 | 72.82 | 89.95 | ok |
+| [Q39](benchmarks/queries/query_39.sql) | 835 B | 546.84 | 468.97 | 474.69 | 447.05 | 479.44 | ok |
+| [Q40](benchmarks/queries/query_40.sql) | 356 B | 113.76 | 96.55 | 96.72 | 94.74 | 98.03 | ok |
+| [Q41](benchmarks/queries/query_41.sql) | 132 B | 39.03 | 35.20 | 35.08 | 34.74 | 35.88 | ok |
+| [Q42](benchmarks/queries/query_42.sql) | 240 B | 78.57 | 68.56 | 68.79 | 67.35 | 69.30 | ok |
 <!-- benchmark-table:end -->
