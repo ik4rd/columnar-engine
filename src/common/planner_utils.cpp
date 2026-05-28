@@ -41,7 +41,7 @@ void ValidateColumnQualifier(const Query& query, const ColumnRef& column) {
     throw Error::InvalidArgument("executor", "unknown table qualifier '" + column.qualifier + "'");
 }
 
-static std::string UnescapeSqlString(const std::string_view text) {
+std::string UnescapeSqlString(const std::string_view text) {
     if (text.size() < SqlStringQuoteCount || text.front() != SqlStringQuote || text.back() != SqlStringQuote) {
         throw Error::InvalidArgument("executor", "invalid string literal");
     }

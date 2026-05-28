@@ -26,7 +26,7 @@ ExecuteExpected Executor::Execute(const std::string_view query) const {
             return Batch{};
         }
 
-        return std::move(*batch);
+        return std::move(batch).value();
     } catch (const Error& error) {
         if (unsupported_fallback_enabled_) {
             return Batch{};

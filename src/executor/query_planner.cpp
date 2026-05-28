@@ -334,24 +334,9 @@ static std::optional<Int128> TryNumericLiteralValue(const ExprPtr& expr) {
     }
 }
 
-static std::string NormalizeStringLiteral(const std::string_view text) {
-    std::string result;
-
-    for (size_t i = 1; i + 1 < text.size(); ++i) {
-        if (text[i] == '\'' && i + 2 < text.size() && text[i + 1] == '\'') {
-            result.push_back('\'');
-            ++i;
-            continue;
-        }
-        result.push_back(text[i]);
-    }
-
-    return result;
-}
-
 static std::string LiteralTextForEval(const QueryLiteral& literal) {
     if (literal.kind == LiteralKind::String) {
-        return NormalizeStringLiteral(literal.text);
+        return UnescapeSqlString(literal.text);
     }
     return literal.text;
 }
@@ -391,7 +376,7 @@ static std::optional<Int128> TryLiteralValueForColumnType(const QueryLiteral& li
             return std::nullopt;
         }
 
-        const std::string normalized = NormalizeStringLiteral(literal.text);
+        const std::string normalized = UnescapeSqlString(literal.text);
         switch (type) {
             case ColumnType::Boolean:
                 return ParseBoolean(normalized) ? 1 : 0;

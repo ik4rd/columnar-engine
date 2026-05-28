@@ -43,6 +43,7 @@ class ColumnarBatchWriter final : public BatchWriter {
     void Write(const Batch& batch) override;
     void Flush() override;
 
+    void Finalize() &;
     void Finalize() &&;
 
     const ColumnarMetadata& GetMetadata() const { return metadata_; }

@@ -25,7 +25,7 @@ void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::f
         batch_writer.Write(*batch);
     }
 
-    std::move(batch_writer).Finalize();
+    batch_writer.Finalize();
 }
 
 void ConvertColumnarToCsv(const std::filesystem::path& columnar_path, const std::filesystem::path& schema_path,

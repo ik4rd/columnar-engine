@@ -161,6 +161,8 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
 
 void ColumnarBatchWriter::Flush() { FlushWrite(path_, out_); }
 
+void ColumnarBatchWriter::Finalize() & { std::move(*this).Finalize(); }
+
 void ColumnarBatchWriter::Finalize() && {
     if (finalized_) {
         throw Error::InvalidState("io", "writer already finalized", path_.string());

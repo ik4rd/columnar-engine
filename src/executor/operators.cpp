@@ -245,19 +245,7 @@ static std::string NormalizeLiteralForEval(const QueryLiteral& literal) {
         return literal.text;
     }
 
-    std::string result;
-    const std::string_view text = literal.text;
-
-    for (size_t i = 1; i + 1 < text.size(); ++i) {
-        if (text[i] == '\'' && i + 2 < text.size() && text[i + 1] == '\'') {
-            result.push_back('\'');
-            ++i;
-            continue;
-        }
-        result.push_back(text[i]);
-    }
-
-    return result;
+    return UnescapeSqlString(literal.text);
 }
 
 static std::optional<size_t> TryFindBatchColumn(const Schema& schema, const std::string_view name) {
@@ -270,6 +258,10 @@ static std::optional<size_t> TryFindBatchColumn(const Schema& schema, const std:
 }
 
 static Int128 EvalInt(const std::string& value) { return ParseInt128(value); }
+
+static bool IsAggregateLookupFunction(const std::string_view name) {
+    return name == "COUNT" || name == "SUM" || name == "AVG" || name == "MIN" || name == "MAX";
+}
 
 static std::string FormatAggregateExprName(const ExprSpec& expr) {
     const std::string name = ToUpperAscii(expr.function_name);
@@ -294,21 +286,29 @@ static std::string FormatAggregateExprName(const ExprSpec& expr) {
 static std::string EvalExpr(const ExprPtr& expr, const Batch& batch, size_t row);
 static bool EvaluatePredicate(const PredicatePtr& predicate, const Batch& batch, size_t row);
 
-static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t row) {
+static std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const Batch& batch, const size_t row) {
     const std::string name = ToUpperAscii(expr.function_name);
+    if (!IsAggregateLookupFunction(name)) {
+        return std::nullopt;
+    }
 
-    if (name == "COUNT" || name == "SUM" || name == "AVG" || name == "MIN" || name == "MAX") {
-        if (const auto column = TryFindBatchColumn(batch.GetSchema(), FormatAggregateExprName(expr));
-            column.has_value()) {
-            return batch.ColumnAt(*column).ValueAsString(row);
-        }
-        if (const auto column = TryFindBatchColumn(batch.GetSchema(), FallbackAggregateAlias); column.has_value()) {
-            return batch.ColumnAt(*column).ValueAsString(row);
-        }
-        if (const auto column = TryFindBatchColumn(batch.GetSchema(), PageViewsAlias); column.has_value()) {
+    const std::string formatted_name = FormatAggregateExprName(expr);
+    for (const std::string_view candidate_name :
+         {std::string_view{formatted_name}, FallbackAggregateAlias, PageViewsAlias}) {
+        if (const auto column = TryFindBatchColumn(batch.GetSchema(), candidate_name); column.has_value()) {
             return batch.ColumnAt(*column).ValueAsString(row);
         }
     }
+
+    return std::nullopt;
+}
+
+static std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t row) {
+    if (const auto aggregate_value = TryResolveAggregateValue(expr, batch, row); aggregate_value.has_value()) {
+        return std::move(*aggregate_value);
+    }
+
+    const std::string name = ToUpperAscii(expr.function_name);
 
     if (name == "STRLEN" || name == "LENGTH") {
         return std::to_string(EvalExpr(expr.arguments.at(0), batch, row).size());
@@ -639,6 +639,29 @@ static void SelectRowsMatchingPredicate(const PredicatePtr& predicate, const Bat
     }
 }
 
+template <typename Binding>
+static Schema BuildAggregateOutputSchema(const std::vector<Binding>& bindings) {
+    Schema schema;
+    schema.columns.reserve(bindings.size());
+
+    for (const auto& binding : bindings) {
+        schema.columns.push_back(ColumnSchema(binding.aggregate.output_name, AggregateOutputType(binding.aggregate)));
+    }
+
+    return schema;
+}
+
+static Schema BuildSelectOutputSchema(const std::vector<PlannedSelectItem>& select_items) {
+    Schema schema;
+    schema.columns.reserve(select_items.size());
+
+    for (const auto& item : select_items) {
+        schema.columns.push_back(ColumnSchema(item.output_name, item.output_type));
+    }
+
+    return schema;
+}
+
 class FilterOperator final : public Operator {
    public:
     FilterOperator(std::unique_ptr<Operator> child, PredicatePtr filter)
@@ -930,15 +953,7 @@ class AggOperator final : public Operator {
             }
         }
 
-        Schema schema;
-        schema.columns.reserve(bindings_.size());
-
-        for (const auto& binding : bindings_) {
-            schema.columns.push_back(
-                ColumnSchema(binding.aggregate.output_name, AggregateOutputType(binding.aggregate)));
-        }
-
-        Batch result(schema);
+        Batch result(BuildAggregateOutputSchema(bindings_));
 
         for (size_t i = 0; i < bindings_.size(); ++i) {
             result.AppendValueFromString(i, bindings_[i].state->Finalize());
@@ -1009,13 +1024,7 @@ class GroupAggOperator final : public Operator {
             }
         }
 
-        Schema schema;
-        schema.columns.reserve(select_items_.size());
-
-        for (const auto& item : select_items_) {
-            schema.columns.push_back(ColumnSchema(item.output_name, item.output_type));
-        }
-
+        const Schema schema = BuildSelectOutputSchema(select_items_);
         std::vector<size_t> output_order = BuildOutputOrder();
         Batch result(schema, output_order.size());
 
@@ -1185,12 +1194,7 @@ class GroupAggTopKOperator final : public Operator {
             }
         }
 
-        Schema schema;
-        schema.columns.reserve(select_items_.size());
-        for (const auto& item : select_items_) {
-            schema.columns.push_back(ColumnSchema(item.output_name, item.output_type));
-        }
-
+        const Schema schema = BuildSelectOutputSchema(select_items_);
         const std::vector<size_t> top_groups = BuildTopGroupIndexes();
         Batch result(schema, top_groups.size());
 
@@ -1587,6 +1591,27 @@ class OffsetOperator final : public Operator {
     size_t remaining_;
 };
 
+static void ApplyOrderOffsetLimit(std::unique_ptr<Operator>& root, const PlannedQuery& planned,
+                                  bool& limit_applied_by_top_k) {
+    if (!planned.order_by.empty()) {
+        if (planned.limit.has_value() && planned.offset == 0) {
+            root =
+                std::make_unique<TopKOperator>(std::move(root), planned.order_by, planned.select_items, *planned.limit);
+            limit_applied_by_top_k = true;
+        } else {
+            root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
+        }
+    }
+
+    if (planned.offset > 0) {
+        root = std::make_unique<OffsetOperator>(std::move(root), planned.offset);
+    }
+
+    if (planned.limit.has_value() && !limit_applied_by_top_k) {
+        root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
+    }
+}
+
 std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
     if (planned.metadata_count_only) {
         return std::make_unique<MetadataCountOperator>(planned.table_path, planned.aggregates.front().output_name);
@@ -1605,21 +1630,7 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
 
     if (planned.plain_select) {
         bool limit_applied_by_top_k = false;
-        if (!planned.order_by.empty()) {
-            if (planned.limit.has_value() && planned.offset == 0) {
-                root = std::make_unique<TopKOperator>(std::move(root), planned.order_by, planned.select_items,
-                                                      *planned.limit);
-                limit_applied_by_top_k = true;
-            } else {
-                root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
-            }
-        }
-        if (planned.offset > 0) {
-            root = std::make_unique<OffsetOperator>(std::move(root), planned.offset);
-        }
-        if (planned.limit.has_value() && !limit_applied_by_top_k) {
-            root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
-        }
+        ApplyOrderOffsetLimit(root, planned, limit_applied_by_top_k);
 
         auto projection =
             std::make_unique<ProjectionOperator>(std::move(root), planned.plain_select_items, planned.table_schema);
@@ -1647,23 +1658,7 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
         root = std::make_unique<AggOperator>(std::move(root), planned.aggregates, planned.filter);
     }
 
-    if (!planned.order_by.empty()) {
-        if (planned.limit.has_value() && planned.offset == 0) {
-            root =
-                std::make_unique<TopKOperator>(std::move(root), planned.order_by, planned.select_items, *planned.limit);
-            limit_applied_by_top_k = true;
-        } else {
-            root = std::make_unique<OrderByOperator>(std::move(root), planned.order_by, planned.select_items);
-        }
-    }
-
-    if (planned.offset > 0) {
-        root = std::make_unique<OffsetOperator>(std::move(root), planned.offset);
-    }
-
-    if (planned.limit.has_value() && !limit_applied_by_top_k) {
-        root = std::make_unique<LimitOperator>(std::move(root), *planned.limit);
-    }
+    ApplyOrderOffsetLimit(root, planned, limit_applied_by_top_k);
 
     return root;
 }

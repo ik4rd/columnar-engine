@@ -9,6 +9,7 @@
 
 size_t FindColumnIndex(const Schema& schema, std::string_view column_name);
 void ValidateColumnQualifier(const Query& query, const ColumnRef& column);
+std::string UnescapeSqlString(std::string_view text);
 std::string NormalizeLiteral(const QueryLiteral& literal, ColumnType type);
 
 bool SameColumnName(std::string_view lhs, std::string_view rhs);
