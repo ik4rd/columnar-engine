@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <chrono>
 #include <compare>
+#include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <utility>
 
@@ -75,6 +77,205 @@ struct AggBinding {
     PlannedAgg aggregate;
 
     std::unique_ptr<AggState> state;
+};
+
+class CompactAggState {
+   public:
+    explicit CompactAggState(const PlannedAgg& aggregate) : type_(aggregate.input_type) {
+        if (aggregate.distinct || aggregate.function == nullptr) {
+            fallback_ = CreateAggState(aggregate);
+            return;
+        }
+
+        const std::string name = ToUpperAscii(aggregate.function->canonical_name);
+        if (name == "COUNT") {
+            kind_ = Kind::Count;
+        } else if (name == "SUM") {
+            kind_ = Kind::Sum;
+        } else if (name == "AVG") {
+            kind_ = Kind::Avg;
+        } else if (name == "MIN") {
+            kind_ = Kind::Extremum;
+            is_min_ = true;
+        } else if (name == "MAX") {
+            kind_ = Kind::Extremum;
+            is_min_ = false;
+        } else {
+            fallback_ = CreateAggState(aggregate);
+        }
+    }
+
+    void ConsumeValue(const std::string_view value) {
+        if (fallback_) {
+            fallback_->ConsumeValue(value);
+            return;
+        }
+
+        switch (kind_) {
+            case Kind::Count:
+                ConsumeRow();
+                return;
+            case Kind::Sum:
+                sum_ += ParseColumnValueAsInt128(type_, value);
+                return;
+            case Kind::Avg:
+                sum_ += ParseColumnValueAsInt128(type_, value);
+                ++count_;
+                return;
+            case Kind::Extremum:
+                ConsumeExtremum(value);
+        }
+    }
+
+    void ConsumeInt128(const Int128 value) {
+        if (fallback_) {
+            fallback_->ConsumeInt128(value);
+            return;
+        }
+
+        switch (kind_) {
+            case Kind::Count:
+                ConsumeRow();
+                return;
+            case Kind::Sum:
+                sum_ += value;
+                return;
+            case Kind::Avg:
+                sum_ += value;
+                ++count_;
+                return;
+            case Kind::Extremum:
+                if (!typed_extremum_.has_value() || (is_min_ ? value < *typed_extremum_ : value > *typed_extremum_)) {
+                    typed_extremum_ = value;
+                }
+        }
+    }
+
+    void ConsumeRow() {
+        if (fallback_) {
+            fallback_->ConsumeRow();
+            return;
+        }
+
+        if (kind_ != Kind::Count) {
+            throw Error::InvalidState("executor", "aggregate requires a value");
+        }
+
+        ++count_;
+    }
+
+    void ConsumeRows(const size_t count) {
+        if (fallback_) {
+            fallback_->ConsumeRows(count);
+            return;
+        }
+
+        if (kind_ != Kind::Count) {
+            throw Error::InvalidState("executor", "aggregate requires a value");
+        }
+
+        count_ += count;
+    }
+
+    std::string Finalize() const {
+        if (fallback_) {
+            return fallback_->Finalize();
+        }
+
+        switch (kind_) {
+            case Kind::Count:
+                return std::to_string(count_);
+            case Kind::Sum:
+                return Int128ToString(sum_);
+            case Kind::Avg:
+                return count_ == 0 ? "0" : Int128ToString(sum_ / static_cast<Int128>(count_));
+            case Kind::Extremum:
+                if (typed_extremum_.has_value()) {
+                    return FormatInt128Value(type_, *typed_extremum_);
+                }
+                return string_extremum_.value_or("");
+        }
+
+        return {};
+    }
+
+    Int128 FinalizeInt(const ColumnType output_type) const {
+        if (fallback_) {
+            return ParseColumnValueAsInt128(output_type, fallback_->Finalize());
+        }
+
+        switch (kind_) {
+            case Kind::Count:
+                return count_;
+            case Kind::Sum:
+                return sum_;
+            case Kind::Avg:
+                return count_ == 0 ? 0 : sum_ / static_cast<Int128>(count_);
+            case Kind::Extremum:
+                return typed_extremum_.value_or(0);
+        }
+
+        return 0;
+    }
+
+   private:
+    enum class Kind {
+        Count,
+        Sum,
+        Avg,
+        Extremum,
+    };
+
+    void ConsumeExtremum(const std::string_view value) {
+        if (IsNumericColumnType(type_) || type_ == ColumnType::Date || type_ == ColumnType::Timestamp ||
+            type_ == ColumnType::Boolean || type_ == ColumnType::Character) {
+            ConsumeInt128(ParseColumnValueAsInt128(type_, value));
+            return;
+        }
+
+        if (!string_extremum_.has_value() ||
+            (is_min_ ? value < std::string_view(*string_extremum_) : value > std::string_view(*string_extremum_))) {
+            string_extremum_ = std::string(value);
+        }
+    }
+
+    Kind kind_ = Kind::Count;
+    ColumnType type_ = ColumnType::String;
+    bool is_min_ = true;
+
+    Int128 sum_ = 0;
+    uint64_t count_ = 0;
+
+    std::optional<Int128> typed_extremum_;
+    std::optional<std::string> string_extremum_;
+    std::unique_ptr<AggState> fallback_;
+};
+
+void ConsumeCompactAggRow(const PlannedAgg& aggregate, const Batch& batch, const size_t row, CompactAggState& state) {
+    if (aggregate.direct_numeric_argument) {
+        state.ConsumeInt128(batch.ColumnAt(aggregate.column_index).ValueAsInt128(row) +
+                            aggregate.direct_numeric_offset);
+        return;
+    }
+
+    if (aggregate.argument_kind == AggArgumentKind::Column) {
+        if (aggregate.input_type != ColumnType::String) {
+            if (const auto typed_value = TryEvalTypedGroupKeyInt(aggregate.argument, batch, row);
+                typed_value.has_value()) {
+                state.ConsumeInt128(*typed_value);
+                return;
+            }
+        }
+        state.ConsumeValue(EvalExpr(aggregate.argument, batch, row));
+        return;
+    }
+
+    state.ConsumeRow();
+}
+
+struct FinalizedAggregateValues {
+    std::vector<std::string> values;
+    std::vector<Int128> int_values;
 };
 
 struct GroupKeyComponent {
@@ -376,37 +577,30 @@ class GroupAggOperator final : public Operator {
 
                 TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
 
-                size_t group_index = 0;
-                const auto it = group_indexes_.find(key);
-                if (it == group_indexes_.end()) {
-                    group_index = groups_.size();
-                    group_indexes_.emplace(key, group_index);
-
-                    groups_.push_back(GroupState{
-                        .key_values = std::move(key.values),
+                auto it = groups_.find(key);
+                if (it == groups_.end()) {
+                    GroupState group{
                         .states = CreateStates(),
-                        .aggregate_values = {},
-                        .aggregate_int_values = {},
-                        .aggregate_values_finalized = false,
-                    });
-                } else {
-                    group_index = it->second;
+                        .finalized_aggregates = nullptr,
+                        .ordinal = next_group_ordinal_++,
+                    };
+                    it = groups_.emplace(std::move(key), std::move(group)).first;
                 }
 
-                GroupState& group = groups_[group_index];
+                GroupState& group = it->second;
                 for (size_t i = 0; i < bindings_.size(); ++i) {
-                    ConsumeAggRow(bindings_[i].aggregate, *batch, row, *group.states[i]);
+                    ConsumeCompactAggRow(bindings_[i].aggregate, *batch, row, group.states[i]);
                 }
             }
         }
 
         const Schema schema = BuildSelectOutputSchema(select_items_);
-        const std::vector<size_t> output_order = BuildOutputOrder();
+        const std::vector<const GroupEntry*> output_order = BuildOutputOrder();
         Batch result(schema, groups_.size());
 
-        for (const size_t group_index : output_order) {
-            if (GroupMatchesHaving(groups_[group_index], schema)) {
-                AppendGroupToBatch(groups_[group_index], result);
+        for (const GroupEntry* entry : output_order) {
+            if (GroupMatchesHaving(entry->first, entry->second, schema)) {
+                AppendGroupToBatch(entry->first, entry->second, result);
             }
         }
 
@@ -415,83 +609,86 @@ class GroupAggOperator final : public Operator {
 
    private:
     struct GroupState {
-        std::vector<GroupKeyComponent> key_values;
+        std::vector<CompactAggState> states;
 
-        std::vector<std::unique_ptr<AggState>> states;
-
-        mutable std::vector<std::string> aggregate_values;
-        mutable std::vector<Int128> aggregate_int_values;
-
-        mutable bool aggregate_values_finalized = false;
+        mutable std::unique_ptr<FinalizedAggregateValues> finalized_aggregates;
+        size_t ordinal = 0;
     };
+
+    using GroupMap = std::unordered_map<TypedGroupKey, GroupState, TypedGroupKeyHash, TypedGroupKeyEqual>;
+    using GroupEntry = GroupMap::value_type;
 
     struct GroupAggBinding {
         PlannedAgg aggregate;
     };
 
-    std::vector<std::unique_ptr<AggState>> CreateStates() const {
-        std::vector<std::unique_ptr<AggState>> states;
+    std::vector<CompactAggState> CreateStates() const {
+        std::vector<CompactAggState> states;
         states.reserve(bindings_.size());
 
         for (const auto& binding : bindings_) {
-            states.push_back(CreateAggState(binding.aggregate));
+            states.emplace_back(binding.aggregate);
         }
 
         return states;
     }
 
-    void FinalizeAggregateValues(const GroupState& group) const {
-        if (group.aggregate_values_finalized) {
-            return;
+    const FinalizedAggregateValues& FinalizeAggregateValues(const GroupState& group) const {
+        if (group.finalized_aggregates) {
+            return *group.finalized_aggregates;
         }
 
-        group.aggregate_values.reserve(group.states.size());
-        group.aggregate_int_values.reserve(group.states.size());
+        auto finalized = std::make_unique<FinalizedAggregateValues>();
+        finalized->values.reserve(group.states.size());
+        finalized->int_values.reserve(group.states.size());
 
         for (size_t i = 0; i < group.states.size(); ++i) {
-            std::string value = group.states[i]->Finalize();
+            std::string value = group.states[i].Finalize();
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
-            group.aggregate_int_values.push_back(type == ColumnType::String ? 0
-                                                                            : ParseColumnValueAsInt128(type, value));
-            group.aggregate_values.push_back(std::move(value));
+            finalized->int_values.push_back(type == ColumnType::String ? 0 : ParseColumnValueAsInt128(type, value));
+            finalized->values.push_back(std::move(value));
         }
 
-        group.aggregate_values_finalized = true;
+        group.finalized_aggregates = std::move(finalized);
+        return *group.finalized_aggregates;
     }
 
-    void AppendGroupToBatch(const GroupState& group, const Batch& batch) const {
-        FinalizeAggregateValues(group);
+    void AppendGroupToBatch(const TypedGroupKey& key, const GroupState& group, const Batch& batch) const {
+        const FinalizedAggregateValues& finalized = FinalizeAggregateValues(group);
 
         for (size_t column = 0; column < select_items_.size(); ++column) {
             const PlannedSelectItem& item = select_items_[column];
             if (item.kind == SelectItemKind::GroupKey) {
-                batch.AppendValueFromString(column, FormatGroupKeyValue(group.key_values[item.index]));
+                batch.AppendValueFromString(column, FormatGroupKeyValue(key.values[item.index]));
             } else {
-                batch.AppendValueFromString(column, group.aggregate_values[item.index]);
+                batch.AppendValueFromString(column, finalized.values[item.index]);
             }
         }
     }
 
-    bool GroupMatchesHaving(const GroupState& group, const Schema& schema) const {
+    bool GroupMatchesHaving(const TypedGroupKey& key, const GroupState& group, const Schema& schema) const {
         if (!having_) {
             return true;
         }
 
         const Batch row(schema, 1);
-        AppendGroupToBatch(group, row);
+        AppendGroupToBatch(key, group, row);
 
         return EvaluatePredicate(having_, row, 0);
     }
 
-    std::vector<size_t> BuildOutputOrder() const {
-        std::vector<size_t> order;
+    std::vector<const GroupEntry*> BuildOutputOrder() const {
+        std::vector<const GroupEntry*> order;
         order.reserve(groups_.size());
 
-        for (size_t i = 0; i < groups_.size(); ++i) {
-            order.push_back(i);
+        for (const auto& entry : groups_) {
+            order.push_back(&entry);
         }
 
         if (!sort_by_group_keys_) {
+            std::ranges::sort(order, [](const GroupEntry* lhs, const GroupEntry* rhs) {
+                return lhs->second.ordinal < rhs->second.ordinal;
+            });
             return order;
         }
 
@@ -507,19 +704,17 @@ class GroupAggOperator final : public Operator {
             return order;
         }
 
-        std::ranges::sort(order, [&](const size_t lhs_index, const size_t rhs_index) {
-            const GroupState& lhs = groups_[lhs_index];
-            const GroupState& rhs = groups_[rhs_index];
+        std::ranges::sort(order, [&](const GroupEntry* lhs, const GroupEntry* rhs) {
             for (const size_t column : group_key_columns) {
                 const PlannedSelectItem& item = select_items_[column];
                 const std::strong_ordering comparison =
-                    CompareGroupKeyValue(lhs.key_values[item.index], rhs.key_values[item.index]);
+                    CompareGroupKeyValue(lhs->first.values[item.index], rhs->first.values[item.index]);
                 if (comparison != 0) {
                     return comparison < 0;
                 }
             }
 
-            return false;
+            return lhs->second.ordinal < rhs->second.ordinal;
         });
 
         return order;
@@ -535,8 +730,8 @@ class GroupAggOperator final : public Operator {
     PredicatePtr having_;
 
     StringArena string_arena_;
-    std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
-    std::vector<GroupState> groups_;
+    GroupMap groups_;
+    size_t next_group_ordinal_ = 0;
 
     bool sort_by_group_keys_ = false;
     bool returned_ = false;
@@ -577,36 +772,29 @@ class GroupAggTopKOperator final : public Operator {
 
                 TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
 
-                size_t group_index = 0;
-                const auto it = group_indexes_.find(key);
-                if (it == group_indexes_.end()) {
-                    group_index = groups_.size();
-                    group_indexes_.emplace(key, group_index);
-
-                    groups_.push_back(GroupState{
-                        .key_values = std::move(key.values),
+                auto it = groups_.find(key);
+                if (it == groups_.end()) {
+                    GroupState group{
                         .states = CreateStates(),
-                        .aggregate_values = {},
-                        .aggregate_int_values = {},
-                        .aggregate_values_finalized = false,
-                    });
-                } else {
-                    group_index = it->second;
+                        .finalized_aggregates = nullptr,
+                        .ordinal = next_group_ordinal_++,
+                    };
+                    it = groups_.emplace(std::move(key), std::move(group)).first;
                 }
 
-                GroupState& group = groups_[group_index];
+                GroupState& group = it->second;
                 for (size_t i = 0; i < bindings_.size(); ++i) {
-                    ConsumeAggRow(bindings_[i].aggregate, *batch, row, *group.states[i]);
+                    ConsumeCompactAggRow(bindings_[i].aggregate, *batch, row, group.states[i]);
                 }
             }
         }
 
         const Schema schema = BuildSelectOutputSchema(select_items_);
-        const std::vector<size_t> top_groups = BuildTopGroupIndexes();
+        const std::vector<const GroupEntry*> top_groups = BuildTopGroups();
         Batch result(schema, top_groups.size());
 
-        for (const size_t group_index : top_groups) {
-            AppendGroupToBatch(groups_[group_index], result);
+        for (const GroupEntry* entry : top_groups) {
+            AppendGroupToBatch(entry->first, entry->second, result);
         }
 
         return result;
@@ -614,66 +802,63 @@ class GroupAggTopKOperator final : public Operator {
 
    private:
     struct GroupState {
-        std::vector<GroupKeyComponent> key_values;
+        std::vector<CompactAggState> states;
 
-        std::vector<std::unique_ptr<AggState>> states;
-
-        mutable std::vector<std::string> aggregate_values;
-        mutable std::vector<Int128> aggregate_int_values;
-
-        mutable bool aggregate_values_finalized = false;
+        mutable std::unique_ptr<FinalizedAggregateValues> finalized_aggregates;
+        size_t ordinal = 0;
     };
+
+    using GroupMap = std::unordered_map<TypedGroupKey, GroupState, TypedGroupKeyHash, TypedGroupKeyEqual>;
+    using GroupEntry = GroupMap::value_type;
 
     struct GroupAggBinding {
         PlannedAgg aggregate;
     };
 
-    std::vector<std::unique_ptr<AggState>> CreateStates() const {
-        std::vector<std::unique_ptr<AggState>> states;
+    std::vector<CompactAggState> CreateStates() const {
+        std::vector<CompactAggState> states;
         states.reserve(bindings_.size());
 
         for (const auto& binding : bindings_) {
-            states.push_back(CreateAggState(binding.aggregate));
+            states.emplace_back(binding.aggregate);
         }
 
         return states;
     }
 
-    void FinalizeAggregateValues(const GroupState& group) const {
-        if (group.aggregate_values_finalized) {
-            return;
+    const FinalizedAggregateValues& FinalizeAggregateValues(const GroupState& group) const {
+        if (group.finalized_aggregates) {
+            return *group.finalized_aggregates;
         }
 
-        group.aggregate_values.reserve(group.states.size());
-        group.aggregate_int_values.reserve(group.states.size());
+        auto finalized = std::make_unique<FinalizedAggregateValues>();
+        finalized->values.reserve(group.states.size());
+        finalized->int_values.reserve(group.states.size());
 
         for (size_t i = 0; i < group.states.size(); ++i) {
-            std::string value = group.states[i]->Finalize();
+            std::string value = group.states[i].Finalize();
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
-            group.aggregate_int_values.push_back(type == ColumnType::String ? 0
-                                                                            : ParseColumnValueAsInt128(type, value));
-            group.aggregate_values.push_back(std::move(value));
+            finalized->int_values.push_back(type == ColumnType::String ? 0 : ParseColumnValueAsInt128(type, value));
+            finalized->values.push_back(std::move(value));
         }
 
-        group.aggregate_values_finalized = true;
+        group.finalized_aggregates = std::move(finalized);
+        return *group.finalized_aggregates;
     }
 
-    bool OrdersBefore(const size_t lhs_index, const size_t rhs_index) const {
-        const GroupState& lhs = groups_[lhs_index];
-        const GroupState& rhs = groups_[rhs_index];
-
+    bool OrdersBefore(const GroupEntry* lhs, const GroupEntry* rhs) const {
         for (const PlannedOrderBy& order : order_by_) {
             const PlannedSelectItem& item = select_items_[order.result_column_index];
             std::strong_ordering comparison = std::strong_ordering::equal;
 
             if (item.kind == SelectItemKind::GroupKey) {
-                comparison = CompareGroupKeyValue(lhs.key_values[item.index], rhs.key_values[item.index]);
+                comparison = CompareGroupKeyValue(lhs->first.values[item.index], rhs->first.values[item.index]);
             } else {
-                FinalizeAggregateValues(lhs);
-                FinalizeAggregateValues(rhs);
-                comparison = item.output_type == ColumnType::String
-                                 ? lhs.aggregate_values[item.index] <=> rhs.aggregate_values[item.index]
-                                 : lhs.aggregate_int_values[item.index] <=> rhs.aggregate_int_values[item.index];
+                comparison =
+                    item.output_type == ColumnType::String
+                        ? lhs->second.states[item.index].Finalize() <=> rhs->second.states[item.index].Finalize()
+                        : lhs->second.states[item.index].FinalizeInt(item.output_type) <=>
+                              rhs->second.states[item.index].FinalizeInt(item.output_type);
             }
 
             if (comparison != 0) {
@@ -681,44 +866,46 @@ class GroupAggTopKOperator final : public Operator {
             }
         }
 
-        return lhs_index < rhs_index;
+        return lhs->second.ordinal < rhs->second.ordinal;
     }
 
-    void AppendGroupToBatch(const GroupState& group, const Batch& batch) const {
-        FinalizeAggregateValues(group);
+    void AppendGroupToBatch(const TypedGroupKey& key, const GroupState& group, const Batch& batch) const {
+        const FinalizedAggregateValues& finalized = FinalizeAggregateValues(group);
 
         for (size_t column = 0; column < select_items_.size(); ++column) {
             const PlannedSelectItem& item = select_items_[column];
             if (item.kind == SelectItemKind::GroupKey) {
-                batch.AppendValueFromString(column, FormatGroupKeyValue(group.key_values[item.index]));
+                batch.AppendValueFromString(column, FormatGroupKeyValue(key.values[item.index]));
             } else {
-                batch.AppendValueFromString(column, group.aggregate_values[item.index]);
+                batch.AppendValueFromString(column, finalized.values[item.index]);
             }
         }
     }
 
-    std::vector<size_t> BuildTopGroupIndexes() const {
-        std::vector<size_t> top_groups;
+    std::vector<const GroupEntry*> BuildTopGroups() const {
+        std::vector<const GroupEntry*> top_groups;
         top_groups.reserve(limit_);
 
-        for (size_t i = 0; i < groups_.size(); ++i) {
+        for (const auto& entry : groups_) {
+            const GroupEntry* group = &entry;
             if (top_groups.size() < limit_) {
-                top_groups.push_back(i);
-                std::ranges::push_heap(top_groups,
-                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+                top_groups.push_back(group);
+                std::ranges::push_heap(
+                    top_groups, [&](const GroupEntry* lhs, const GroupEntry* rhs) { return OrdersBefore(lhs, rhs); });
                 continue;
             }
 
-            if (OrdersBefore(i, top_groups.front())) {
-                std::ranges::pop_heap(top_groups,
-                                      [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
-                top_groups.back() = i;
-                std::ranges::push_heap(top_groups,
-                                       [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+            if (OrdersBefore(group, top_groups.front())) {
+                std::ranges::pop_heap(
+                    top_groups, [&](const GroupEntry* lhs, const GroupEntry* rhs) { return OrdersBefore(lhs, rhs); });
+                top_groups.back() = group;
+                std::ranges::push_heap(
+                    top_groups, [&](const GroupEntry* lhs, const GroupEntry* rhs) { return OrdersBefore(lhs, rhs); });
             }
         }
 
-        std::ranges::sort(top_groups, [&](const size_t lhs, const size_t rhs) { return OrdersBefore(lhs, rhs); });
+        std::ranges::sort(top_groups,
+                          [&](const GroupEntry* lhs, const GroupEntry* rhs) { return OrdersBefore(lhs, rhs); });
 
         return top_groups;
     }
@@ -735,8 +922,8 @@ class GroupAggTopKOperator final : public Operator {
     size_t limit_ = 0;
 
     StringArena string_arena_;
-    std::unordered_map<TypedGroupKey, size_t, TypedGroupKeyHash, TypedGroupKeyEqual> group_indexes_;
-    mutable std::vector<GroupState> groups_;
+    mutable GroupMap groups_;
+    size_t next_group_ordinal_ = 0;
 
     bool returned_ = false;
 };

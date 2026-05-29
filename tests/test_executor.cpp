@@ -195,6 +195,43 @@ TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
+TEST(executor, supports_top_k_group_by_multiple_numeric_keys_with_compact_aggregates) {
+    const TempFile schema_file("executor_schema");
+    const TempFile data_file("executor_data");
+    const TempFile columnar_file("executor_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"WatchID", "int64"},
+                                      {"ClientIP", "int32"},
+                                      {"IsRefresh", "int16"},
+                                      {"ResolutionWidth", "int16"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"10", "1", "1", "100"},
+                                    {"10", "1", "0", "200"},
+                                    {"10", "1", "1", "300"},
+                                    {"11", "1", "1", "400"},
+                                    {"11", "1", "0", "600"},
+                                    {"10", "2", "1", "800"},
+                                });
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    Executor executor;
+    executor.RegisterTable("hits", columnar_file.Path());
+
+    auto result = executor.Execute(
+        "SELECT WatchID, ClientIP, COUNT(*) AS c, SUM(IsRefresh), AVG(ResolutionWidth) FROM hits GROUP BY WatchID, "
+        "ClientIP ORDER BY c DESC LIMIT 2;");
+    ASSERT_TRUE(result.has_value()) << result.error().what();
+
+    EXPECT_EQ(BatchColumnNames(result.value()),
+              (std::vector<std::string>{"WatchID", "ClientIP", "c", "SUM(IsRefresh)", "AVG(ResolutionWidth)"}));
+    EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
+                                             {"10", "1", "3", "2", "200"},
+                                             {"11", "1", "2", "1", "500"},
+                                         }));
+}
+
 TEST(executor, executes_basic_aggregate_queries) {
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0;");
