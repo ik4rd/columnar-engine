@@ -42,8 +42,12 @@ jobs:
 
       - name: Benchmark Queries
         run: |
-          cd benchmarks
-          ../build/benchmarks/benchmark_queries
+          if [ -f benchmarks/hits_sample.csv ]; then
+            ./build/benchmarks/benchmark_csv_to_columnar
+            ./build/benchmarks/benchmark_queries
+          else
+            echo "Skipping benchmark queries: benchmarks/hits_sample.csv is not available in this checkout."
+          fi
 
   sanitizers:
     runs-on: ubuntu-latest
@@ -82,5 +86,9 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:check_initialization_order=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
-          cd benchmarks
-          ../build-sanitizers/benchmarks/benchmark_queries
+          if [ -f benchmarks/hits_sample.csv ]; then
+            ./build-sanitizers/benchmarks/benchmark_csv_to_columnar
+            ./build-sanitizers/benchmarks/benchmark_queries
+          else
+            echo "Skipping benchmark queries with sanitizers: benchmarks/hits_sample.csv is not available in this checkout."
+          fi
