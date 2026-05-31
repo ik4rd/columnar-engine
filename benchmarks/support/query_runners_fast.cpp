@@ -26,7 +26,7 @@ struct Int128Hash {
         const UInt128 raw = static_cast<UInt128>(value);
         const uint64_t low = static_cast<uint64_t>(raw);
         const uint64_t high = static_cast<uint64_t>(raw >> 64);
-        return std::hash<uint64_t>{}(low ^ high + hash_magic + (low << 6) + (low >> 2));
+        return std::hash<uint64_t>{}(low ^ (high + hash_magic + (low << 6) + (low >> 2)));
     }
 };
 
@@ -34,7 +34,7 @@ struct Int128PairHash {
     size_t operator()(const std::pair<Int128, Int128>& value) const noexcept {
         const size_t lhs = Int128Hash{}(value.first);
         const size_t rhs = Int128Hash{}(value.second);
-        return lhs ^ rhs + hash_magic + (lhs << 6) + (lhs >> 2);
+        return lhs ^ (rhs + hash_magic + (lhs << 6) + (lhs >> 2));
     }
 };
 
