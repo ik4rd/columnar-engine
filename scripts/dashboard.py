@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
         choices=("none", "once", "per-query"),
         help=(
             "Drop the filesystem page cache before benchmarks: never, once before all queries, "
-            "or before the first run of each query. Defaults to per-query, except --lz4-hardcoded defaults to none."
+            "or before the first run of each query. Defaults to per-query."
         ),
     )
     parser.add_argument(
@@ -418,7 +418,8 @@ def run_query(
 def run_hardcoded_benchmark(
         benchmark_binary: pathlib.Path,
         input_path: pathlib.Path,
-        count: int,
+        query_from: int,
+        query_to: int,
 ) -> dict[int, dict[str, str]]:
     command = [
         str(benchmark_binary),
@@ -427,9 +428,9 @@ def run_hardcoded_benchmark(
         "--input",
         str(input_path),
         "--from",
-        "0",
+        str(query_from),
         "--to",
-        str(count - 1),
+        str(query_to),
     ]
 
     completed = subprocess.run(command, capture_output=True, text=True)
@@ -602,37 +603,50 @@ def collect_hardcoded_rows(
     if cache_drop_mode == "once":
         drop_file_system_cache(cache_drop_command)
 
-    total_runs = warm_runs + 1
-    for run_index in range(total_runs):
+    for query_id, row in rows_by_query.items():
         if cache_drop_mode == "per-query":
             drop_file_system_cache(cache_drop_command)
 
         try:
-            run_results = run_hardcoded_benchmark(benchmark_binary, input_path, count)
+            first_run_result = run_hardcoded_benchmark(benchmark_binary, input_path, query_id, query_id)
         except RuntimeError as error:
-            for row in rows_by_query.values():
+            row["status"] = "failed"
+            row["error"] = str(error)
+            continue
+
+        result = first_run_result.get(query_id)
+        if result is None:
+            row["status"] = "failed"
+            row["error"] = "missing benchmark result"
+            continue
+        if result["status"] != "passed":
+            row["status"] = "failed"
+            row["error"] = f"benchmark status={result['status']}"
+            continue
+
+        row["first_run_ms"] = format_ms(float(result["time_ms"]))
+
+        warm_values = row["warm_values"]
+        assert isinstance(warm_values, list)
+        for _ in range(warm_runs):
+            try:
+                warm_run_result = run_hardcoded_benchmark(benchmark_binary, input_path, query_id, query_id)
+            except RuntimeError as error:
                 row["status"] = "failed"
                 row["error"] = str(error)
-            break
+                break
 
-        for query_id, row in rows_by_query.items():
-            result = run_results.get(query_id)
+            result = warm_run_result.get(query_id)
             if result is None:
                 row["status"] = "failed"
                 row["error"] = "missing benchmark result"
-                continue
-
+                break
             if result["status"] != "passed":
                 row["status"] = "failed"
                 row["error"] = f"benchmark status={result['status']}"
+                break
 
-            elapsed_ms = float(result["time_ms"])
-            if run_index == 0:
-                row["first_run_ms"] = format_ms(elapsed_ms)
-            else:
-                warm_values = row["warm_values"]
-                assert isinstance(warm_values, list)
-                warm_values.append(elapsed_ms)
+            warm_values.append(float(result["time_ms"]))
 
     rows: list[dict[str, str]] = []
     for row in rows_by_query.values():
@@ -882,7 +896,7 @@ def main() -> int:
         args.query_mode = "hardcoded"
         args.compression = "lz4"
     if args.cache_drop_mode is None:
-        args.cache_drop_mode = "none" if args.lz4_hardcoded else "per-query"
+        args.cache_drop_mode = "per-query"
 
     root = repo_root()
     binary = resolve_path(args.binary, root)
