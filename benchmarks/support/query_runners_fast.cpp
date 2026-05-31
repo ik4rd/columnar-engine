@@ -26,7 +26,7 @@ struct Int128Hash {
         const UInt128 raw = static_cast<UInt128>(value);
         const uint64_t low = static_cast<uint64_t>(raw);
         const uint64_t high = static_cast<uint64_t>(raw >> 64);
-        return std::hash<uint64_t>{}(low ^ (high + hash_magic + (low << 6) + (low >> 2)));
+        return std::hash<uint64_t>{}(low ^ high + hash_magic + (low << 6) + (low >> 2));
     }
 };
 
@@ -34,38 +34,44 @@ struct Int128PairHash {
     size_t operator()(const std::pair<Int128, Int128>& value) const noexcept {
         const size_t lhs = Int128Hash{}(value.first);
         const size_t rhs = Int128Hash{}(value.second);
-        return lhs ^ (rhs + hash_magic + (lhs << 6) + (lhs >> 2));
+        return lhs ^ rhs + hash_magic + (lhs << 6) + (lhs >> 2);
     }
 };
 
 struct SearchPhraseGroup {
     std::string_view key;
-    uint64_t count = 0;
     std::string_view min_url;
+
+    uint64_t count = 0;
     size_t ordinal = 0;
 };
 
 struct SearchPhraseStats {
     std::string_view key;
-    uint64_t count = 0;
     std::string_view min_url;
     std::string_view min_title;
+
     std::unordered_set<Int128, Int128Hash> distinct_users;
+
+    uint64_t count = 0;
     size_t ordinal = 0;
 };
 
 struct IntGroupStats {
     Int128 key1 = 0;
     Int128 key2 = 0;
+
     uint64_t count = 0;
     Int128 sum_refresh = 0;
     Int128 sum_width = 0;
+
     size_t ordinal = 0;
 };
 
 struct SearchPhraseOrderRow {
     Int128 event_time = 0;
     std::string_view search_phrase;
+
     size_t ordinal = 0;
 };
 
@@ -101,7 +107,7 @@ static std::unique_ptr<Operator> ScanColumns(const std::filesystem::path& path, 
     return CreateScanOperator(path, std::move(projection_indexes), {});
 }
 
-static bool Contains(std::string_view haystack, std::string_view needle) {
+static bool Contains(const std::string_view haystack, const std::string_view needle) {
     return haystack.find(needle) != std::string_view::npos;
 }
 

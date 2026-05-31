@@ -31,5 +31,6 @@ class Executor {
     static ExecuteExpected ExecutePlanned(const PlannedQuery& planned);
 
     std::unordered_map<std::string, std::filesystem::path> tables_;
+
     bool unsupported_fallback_enabled_ = false;
 };

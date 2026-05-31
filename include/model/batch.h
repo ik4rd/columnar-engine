@@ -42,5 +42,6 @@ class Batch {
 
    private:
     Schema schema_;
+
     std::vector<std::unique_ptr<MutableColumn>> columns_;
 };

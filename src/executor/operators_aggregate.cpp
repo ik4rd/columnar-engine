@@ -538,7 +538,9 @@ class AggOperator final : public Operator {
    private:
     std::unique_ptr<Operator> child_;
     PredicatePtr filter_;
+
     std::vector<AggBinding> bindings_;
+
     bool returned_ = false;
 };
 
@@ -612,6 +614,7 @@ class GroupAggOperator final : public Operator {
         std::vector<CompactAggState> states;
 
         mutable std::unique_ptr<FinalizedAggregateValues> finalized_aggregates;
+
         size_t ordinal = 0;
     };
 

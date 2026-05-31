@@ -288,6 +288,7 @@ class RowOrdering {
 
    private:
     std::vector<PlannedOrderBy> order_by_;
+
     const std::vector<Batch>* batches_ = nullptr;
 };
 
@@ -570,6 +571,7 @@ class LimitOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     size_t remaining_;
 };
 
@@ -597,6 +599,7 @@ class OffsetOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     size_t remaining_;
 };
 
