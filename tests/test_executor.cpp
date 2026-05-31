@@ -178,6 +178,65 @@ TEST(executor, supports_order_by_limit_top_k_in_result_order) {
                                 }));
 }
 
+TEST(executor, supports_select_star_order_by_non_first_column) {
+    const Batch batch = BuildHitsTable("SELECT * FROM hits ORDER BY EventDate ASC LIMIT 3;");
+
+    EXPECT_EQ(BatchColumnNames(batch),
+              (std::vector<std::string>{"AdvEngineID", "ResolutionWidth", "UserID", "RegionID", "MobilePhone",
+                                        "MobilePhoneModel", "SearchEngineID", "SearchPhrase", "EventDate"}));
+    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
+                                    {"7", "500", "5", "20", "true", "iPhone", "1", "gamma", "2024-01-01"},
+                                    {"7", "200", "2", "20", "true", "iPhone", "1", "beta", "2024-01-03"},
+                                    {"0", "100", "1", "10", "false", "", "1", "alpha", "2024-01-05"},
+                                }));
+}
+
+TEST(executor, supports_plain_select_order_by_hidden_typed_column) {
+    const Batch batch =
+        BuildHitsTable("SELECT SearchPhrase FROM hits WHERE SearchPhrase != '' ORDER BY EventDate ASC LIMIT 3;");
+
+    EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"SearchPhrase", "EventDate"}));
+    EXPECT_EQ(BatchRows(batch), (std::vector<std::vector<std::string>>{
+                                    {"gamma", "2024-01-01"},
+                                    {"beta", "2024-01-03"},
+                                    {"alpha", "2024-01-05"},
+                                }));
+}
+
+TEST(executor, supports_clickbench_star_order_by_projected_column) {
+    const TempFile schema_file("executor_schema");
+    const TempFile data_file("executor_data");
+    const TempFile columnar_file("executor_columnar");
+
+    WriteRows(schema_file.Path(), {
+                                      {"WatchID", "int64"},
+                                      {"EventTime", "timestamp"},
+                                      {"URL", "string"},
+                                      {"Title", "string"},
+                                      {"SearchPhrase", "string"},
+                                  });
+    WriteRows(data_file.Path(), {
+                                    {"1", "2024-01-05 00:00:00", "http://example.com", "other", "skip"},
+                                    {"2", "2024-01-03 00:00:00", "http://google.com/a", "first", "a"},
+                                    {"3", "2024-01-01 00:00:00", "https://google.com/b", "second", "b"},
+                                    {"4", "2024-01-04 00:00:00", "http://google.com/c", "third", "c"},
+                                });
+    ConvertCsvToColumnar(schema_file.Path(), data_file.Path(), columnar_file.Path(), 2);
+
+    Executor executor;
+    executor.RegisterTable("hits", columnar_file.Path());
+
+    auto result = executor.Execute("SELECT * FROM hits WHERE URL LIKE '%google%' ORDER BY EventTime ASC LIMIT 2;");
+    ASSERT_TRUE(result.has_value()) << result.error().what();
+
+    EXPECT_EQ(BatchColumnNames(result.value()),
+              (std::vector<std::string>{"WatchID", "EventTime", "URL", "Title"}));
+    EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
+                                             {"3", "2024-01-01 00:00:00", "https://google.com/b", "second"},
+                                             {"2", "2024-01-03 00:00:00", "http://google.com/a", "first"},
+                                         }));
+}
+
 TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
     const Batch batch = BuildHitsTable(
         "SELECT RegionID, SUM(AdvEngineID), COUNT(*) AS c, AVG(ResolutionWidth), COUNT(DISTINCT UserID) "

@@ -6,6 +6,7 @@
 #include "common/error.h"
 #include "common/parsing.h"
 #include "executor/comparison_utils.h"
+#include "executor/operators_internal.h"
 #include "executor/query_utils.h"
 #include "executor/typed_value_utils.h"
 #include "io/columnar_batch.h"
@@ -117,6 +118,21 @@ static ExprPtr ResolveGroupByExpression(const Query& query_ast, const ExprPtr& e
     }
 
     return expr;
+}
+
+static std::optional<size_t> FindProjectedOrderColumn(const Schema& schema, const SelectItemSpec& item,
+                                                      const ExprPtr& expression) {
+    for (size_t i = 0; i < schema.columns.size(); ++i) {
+        if (SameColumnName(schema.columns[i].name, item.output_name)) {
+            return i;
+        }
+    }
+
+    if (expression && expression->kind == ExprKind::Column) {
+        return TryFindBatchColumn(schema, expression->column.name);
+    }
+
+    return std::nullopt;
 }
 
 static void AddProjectionIndex(std::vector<size_t>& indexes, const size_t index) {
@@ -631,33 +647,23 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
 
     if (planned.plain_select) {
         planned.plain_order_by = query.order_by;
+        const bool has_star_select = std::ranges::any_of(planned.plain_select_items, [](const SelectItemSpec& item) {
+            return item.expression && item.expression->kind == ExprKind::Star;
+        });
 
         for (const auto& order_item : query.order_by) {
-            size_t column_index = 0;
             const auto selected = FindSelectItem(query, order_item.item);
             const ExprPtr order_expression =
                 selected.has_value() ? query.select_items[*selected].expression : order_item.item.expression;
             const ColumnType type = ColumnTypeOf(query, schema, order_expression);
             CollectColumnsFromExpr(query, schema, order_expression, projection_indexes);
 
-            if (selected.has_value()) {
-                column_index = *selected;
-            } else if (order_expression && order_expression->kind == ExprKind::Column) {
-                column_index = planned.plain_select_items.size();
-            } else {
-                throw Error::InvalidArgument("executor", "ORDER BY expression is not supported in plain SELECT");
-            }
-
             planned.order_by.push_back(PlannedOrderBy{
-                .result_column_index = column_index,
+                .result_column_index = 0,
                 .descending = order_item.descending,
                 .value_type = type,
             });
         }
-
-        const bool has_star_select = std::ranges::any_of(planned.plain_select_items, [](const SelectItemSpec& item) {
-            return item.expression && item.expression->kind == ExprKind::Star;
-        });
 
         for (const auto& order_item : query.order_by) {
             if (!order_item.item.expression || order_item.item.expression->kind == ExprKind::Star) {
@@ -686,6 +692,21 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
                     .output_name = order_item.item.output_name,
                 });
             }
+        }
+
+        const Schema output_schema = ProjectionOutputSchema(planned.plain_select_items, planned.table_schema);
+        for (size_t i = 0; i < query.order_by.size(); ++i) {
+            const auto selected = FindSelectItem(query, query.order_by[i].item);
+            const ExprPtr order_expression =
+                selected.has_value() ? query.select_items[*selected].expression : query.order_by[i].item.expression;
+            const std::optional<size_t> projected_index =
+                FindProjectedOrderColumn(output_schema, query.order_by[i].item, order_expression);
+
+            if (!projected_index.has_value()) {
+                throw Error::InvalidArgument("executor", "ORDER BY expression is not supported in plain SELECT");
+            }
+
+            planned.order_by[i].result_column_index = *projected_index;
         }
     } else {
         for (const auto& order_item : query.order_by) {

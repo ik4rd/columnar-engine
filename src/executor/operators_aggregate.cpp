@@ -646,10 +646,16 @@ class GroupAggOperator final : public Operator {
         finalized->int_values.reserve(group.states.size());
 
         for (size_t i = 0; i < group.states.size(); ++i) {
-            std::string value = group.states[i].Finalize();
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
-            finalized->int_values.push_back(type == ColumnType::String ? 0 : ParseColumnValueAsInt128(type, value));
-            finalized->values.push_back(std::move(value));
+            if (type == ColumnType::String) {
+                finalized->int_values.push_back(0);
+                finalized->values.push_back(group.states[i].Finalize());
+                continue;
+            }
+
+            const Int128 value = group.states[i].FinalizeInt(type);
+            finalized->int_values.push_back(value);
+            finalized->values.push_back(FormatInt128Value(type, value));
         }
 
         group.finalized_aggregates = std::move(finalized);
@@ -839,10 +845,16 @@ class GroupAggTopKOperator final : public Operator {
         finalized->int_values.reserve(group.states.size());
 
         for (size_t i = 0; i < group.states.size(); ++i) {
-            std::string value = group.states[i].Finalize();
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
-            finalized->int_values.push_back(type == ColumnType::String ? 0 : ParseColumnValueAsInt128(type, value));
-            finalized->values.push_back(std::move(value));
+            if (type == ColumnType::String) {
+                finalized->int_values.push_back(0);
+                finalized->values.push_back(group.states[i].Finalize());
+                continue;
+            }
+
+            const Int128 value = group.states[i].FinalizeInt(type);
+            finalized->int_values.push_back(value);
+            finalized->values.push_back(FormatInt128Value(type, value));
         }
 
         group.finalized_aggregates = std::move(finalized);
@@ -850,6 +862,9 @@ class GroupAggTopKOperator final : public Operator {
     }
 
     bool OrdersBefore(const GroupEntry* lhs, const GroupEntry* rhs) const {
+        const FinalizedAggregateValues& lhs_finalized = FinalizeAggregateValues(lhs->second);
+        const FinalizedAggregateValues& rhs_finalized = FinalizeAggregateValues(rhs->second);
+
         for (const PlannedOrderBy& order : order_by_) {
             const PlannedSelectItem& item = select_items_[order.result_column_index];
             std::strong_ordering comparison = std::strong_ordering::equal;
@@ -857,11 +872,9 @@ class GroupAggTopKOperator final : public Operator {
             if (item.kind == SelectItemKind::GroupKey) {
                 comparison = CompareGroupKeyValue(lhs->first.values[item.index], rhs->first.values[item.index]);
             } else {
-                comparison =
-                    item.output_type == ColumnType::String
-                        ? lhs->second.states[item.index].Finalize() <=> rhs->second.states[item.index].Finalize()
-                        : lhs->second.states[item.index].FinalizeInt(item.output_type) <=>
-                              rhs->second.states[item.index].FinalizeInt(item.output_type);
+                comparison = item.output_type == ColumnType::String
+                                 ? lhs_finalized.values[item.index] <=> rhs_finalized.values[item.index]
+                                 : lhs_finalized.int_values[item.index] <=> rhs_finalized.int_values[item.index];
             }
 
             if (comparison != 0) {

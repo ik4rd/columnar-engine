@@ -257,6 +257,11 @@ struct RowRef {
 
 std::strong_ordering CompareColumnRows(const Column& lhs_column, const size_t lhs_row, const Column& rhs_column,
                                        const size_t rhs_row, const ColumnType type) {
+    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String && rhs_column.Type() == ColumnType::String) {
+        return ParseColumnValueAsInt128(type, lhs_column.ValueAsString(lhs_row)) <=>
+               ParseColumnValueAsInt128(type, rhs_column.ValueAsString(rhs_row));
+    }
+
     if (type != ColumnType::String) {
         return lhs_column.ValueAsInt128(lhs_row) <=> rhs_column.ValueAsInt128(rhs_row);
     }
