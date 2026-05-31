@@ -640,10 +640,10 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
             const ColumnType type = ColumnTypeOf(query, schema, order_expression);
             CollectColumnsFromExpr(query, schema, order_expression, projection_indexes);
 
-            if (order_expression && order_expression->kind == ExprKind::Column) {
-                column_index = FindColumnIndex(schema, order_expression->column.name);
-            } else if (selected.has_value()) {
+            if (selected.has_value()) {
                 column_index = *selected;
+            } else if (order_expression && order_expression->kind == ExprKind::Column) {
+                column_index = planned.plain_select_items.size();
             } else {
                 throw Error::InvalidArgument("executor", "ORDER BY expression is not supported in plain SELECT");
             }
@@ -713,16 +713,6 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
             projection_indexes.push_back(0);
         }
         planned.projection_indexes = std::move(projection_indexes);
-    }
-
-    if (planned.plain_select) {
-        for (PlannedOrderBy& order : planned.order_by) {
-            const std::optional<size_t> projected_index =
-                ProjectedIndexOf(planned.projection_indexes, order.result_column_index);
-            if (projected_index.has_value()) {
-                order.result_column_index = *projected_index;
-            }
-        }
     }
 
     for (PlannedAgg& aggregate : planned.aggregates) {
