@@ -29,6 +29,7 @@
 #endif
 
 static constexpr size_t RowsPerGroup = 1 << 14;
+static constexpr auto DefaultCompression = Compression::Lz4;
 
 struct CsvCompareResult {
     bool equal = true;
@@ -76,7 +77,7 @@ int main(const int argc, char** argv) {
         const std::filesystem::path roundtrip_data_path = COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_DATA;
 
         const auto csv_to_columnar_started_at = std::chrono::steady_clock::now();
-        ConvertCsvToColumnar(schema_path, data_path, output_path, rows_per_group);
+        ConvertCsvToColumnar(schema_path, data_path, output_path, rows_per_group, DefaultCompression);
         const auto csv_to_columnar_finished_at = std::chrono::steady_clock::now();
 
         const auto columnar_to_csv_started_at = std::chrono::steady_clock::now();
@@ -97,6 +98,7 @@ int main(const int argc, char** argv) {
         std::cout << "schema: " << schema_path << std::endl
                   << "data: " << data_path << std::endl
                   << "columnar_output: " << output_path << std::endl
+                  << "compression: " << CompressionName(DefaultCompression) << std::endl
                   << "roundtrip_schema: " << roundtrip_schema_path << std::endl
                   << "roundtrip_data: " << roundtrip_data_path << std::endl
                   << "rows_per_group: " << rows_per_group << std::endl
