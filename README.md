@@ -2,10 +2,19 @@
 
 Колононый движок с нуля (in progress)
 
+## Среда выполнения benchmark'ов
+
+- Устройство: MacBook Pro (`MacBookPro17,1`)
+- Процессор: Apple M1
+- Ядра CPU: 8 (`4` performance + `4` efficiency)
+- Оперативная память: 8 GB
+- Архитектура: `arm64`
+- ОС: macOS `26.3` (`25D5101c`)
+
 <!-- benchmark-table:start -->
 ## Benchmark Dashboard
 
-`generated 2026-05-28 21:28:51` · `queries 43/43` · `warm runs 4` · [`csv`](benchmarks/results/readme_benchmarks.csv)
+`generated 2026-05-31 17:18:21` · `queries 43/43` · `warm runs 4` · `cache drop per-query` · `query mode hardcoded` · [`csv`](benchmarks/results/readme_benchmarks.csv)
 
 <table>
 <tr>
@@ -16,14 +25,14 @@
 <tbody>
 <tr><td>queries ok</td><td align="right">43 / 43</td></tr>
 <tr><td>queries failed</td><td align="right">0</td></tr>
-<tr><td>median warm time</td><td align="right">220.81 ms</td></tr>
-<tr><td>average warm time</td><td align="right">231.63 ms</td></tr>
-<tr><td>p95 warm time</td><td align="right">476.62 ms</td></tr>
-<tr><td>cold/warm delta</td><td align="right">5.3%</td></tr>
-<tr><td>total output size</td><td align="right">20.3 KB</td></tr>
-<tr><td>max output size</td><td align="right">6.0 KB</td></tr>
-<tr><td>fastest query</td><td align="right">Q06 · 4.12 ms</td></tr>
-<tr><td>slowest query</td><td align="right">Q28 · 969.54 ms</td></tr>
+<tr><td>median warm time</td><td align="right">149.50 ms</td></tr>
+<tr><td>average warm time</td><td align="right">190.25 ms</td></tr>
+<tr><td>p95 warm time</td><td align="right">521.35 ms</td></tr>
+<tr><td>cold/warm delta</td><td align="right">17.8%</td></tr>
+<tr><td>total output size</td><td align="right">0 B</td></tr>
+<tr><td>max output size</td><td align="right">0 B</td></tr>
+<tr><td>fastest query</td><td align="right">Q00 · &lt;1 ms</td></tr>
+<tr><td>slowest query</td><td align="right">Q28 · 940.00 ms</td></tr>
 </tbody>
 </table>
 </td>
@@ -40,10 +49,10 @@
 <tr><td>roundtrip csv size</td><td align="right">743.0 MB</td></tr>
 <tr><td>compression ratio</td><td align="right">6.71x</td></tr>
 <tr><td>columnar / csv</td><td align="right">14.9%</td></tr>
-<tr><td>csv -&gt; columnar</td><td align="right">5.81s</td></tr>
-<tr><td>columnar -&gt; csv</td><td align="right">9.84s</td></tr>
-<tr><td>convert throughput</td><td align="right">138.1 MB/s</td></tr>
-<tr><td>roundtrip throughput</td><td align="right">12.2 MB/s</td></tr>
+<tr><td>csv -&gt; columnar</td><td align="right">5.71s</td></tr>
+<tr><td>columnar -&gt; csv</td><td align="right">9.46s</td></tr>
+<tr><td>convert throughput</td><td align="right">140.5 MB/s</td></tr>
+<tr><td>roundtrip throughput</td><td align="right">12.6 MB/s</td></tr>
 </tbody>
 </table>
 </td>
@@ -52,64 +61,64 @@
 
 ### Heatmap
 
-`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` 0 ms
+`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` <1 ms
 
 | slot 1 | slot 2 | slot 3 | slot 4 | slot 5 | slot 6 |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| Q00 🟩 `7.14` | Q01 🟩 `12.85` | Q02 🟩 `21.68` | Q03 🟩 `14.30` | Q04 🟩 `147.02` | Q05 🟩 `128.76` |
-| Q06 🟩 `4.12` | Q07 🟩 `11.69` | Q08 🟩 `189.51` | Q09 🟦 `208.53` | Q10 🟥 `267.84` | Q11 🟥 `267.06` |
-| Q12 🟦 `225.37` | Q13 🟥 `253.71` | Q14 🟦 `227.55` | Q15 🟩 `74.16` | Q16 🟩 `116.97` | Q17 🟩 `146.00` |
-| Q18 🟥 `349.51` | Q19 🟩 `4.39` | Q20 🟥 `252.69` | Q21 🟥 `277.31` | Q22 🟥 `364.71` | Q23 🟦 `240.62` |
-| Q24 🟦 `220.81` | Q25 🟦 `219.69` | Q26 🟦 `220.03` | Q27 🟥 `450.51` | Q28 🟥 `969.54` | Q29 🟥 `427.54` |
-| Q30 🟦 `235.10` | Q31 🟥 `262.43` | Q32 🟥 `881.20` | Q33 🟥 `349.73` | Q34 🟥 `420.41` | Q35 🟩 `149.57` |
-| Q36 🟥 `339.52` | Q37 🟥 `247.46` | Q38 🟩 `73.93` | Q39 🟥 `479.52` | Q40 🟩 `95.10` | Q41 🟩 `34.88` |
-| Q42 🟩 `69.69` |  |  |  |  |  |
+| Q00 ⬜ `<1` | Q01 🟩 `4.00` | Q02 🟩 `7.00` | Q03 🟩 `6.00` | Q04 🟩 `34.50` | Q05 🟩 `36.50` |
+| Q06 ⬜ `<1` | Q07 🟩 `8.00` | Q08 🟥 `189.50` | Q09 🟥 `205.00` | Q10 🟥 `260.50` | Q11 🟥 `271.00` |
+| Q12 🟥 `223.00` | Q13 🟥 `252.50` | Q14 🟥 `226.00` | Q15 🟩 `89.50` | Q16 🟦 `143.00` | Q17 🟦 `157.00` |
+| Q18 🟥 `516.00` | Q19 ⬜ `<1` | Q20 🟦 `136.50` | Q21 🟦 `156.00` | Q22 🟥 `280.00` | Q23 🟥 `239.00` |
+| Q24 🟩 `39.00` | Q25 🟩 `36.50` | Q26 🟩 `39.50` | Q27 🟥 `450.50` | Q28 🟥 `940.00` | Q29 🟩 `5.00` |
+| Q30 🟩 `37.50` | Q31 🟩 `52.50` | Q32 🟥 `623.00` | Q33 🟥 `322.00` | Q34 🟥 `323.00` | Q35 🟩 `20.00` |
+| Q36 🟥 `358.50` | Q37 🟥 `242.50` | Q38 🟩 `70.50` | Q39 🟥 `462.00` | Q40 🟩 `53.00` | Q41 🟩 `30.00` |
+| Q42 🟩 `64.50` |  |  |  |  |  |
 
 ### Query Table
 
 | Query | Output CSV | First run, ms | Warm avg, ms | Warm median, ms | Warm min, ms | Warm max, ms | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| [Q00](benchmarks/queries/query_0.sql) | 7 B | 372.47 | 7.12 | 7.14 | 5.32 | 8.89 | ok |
-| [Q01](benchmarks/queries/query_1.sql) | 6 B | 16.18 | 13.17 | 12.85 | 11.37 | 15.61 | ok |
-| [Q02](benchmarks/queries/query_2.sql) | 18 B | 28.44 | 21.85 | 21.68 | 21.58 | 22.45 | ok |
-| [Q03](benchmarks/queries/query_3.sql) | 20 B | 14.56 | 14.35 | 14.30 | 14.24 | 14.55 | ok |
-| [Q04](benchmarks/queries/query_4.sql) | 6 B | 151.94 | 148.55 | 147.02 | 146.46 | 153.70 | ok |
-| [Q05](benchmarks/queries/query_5.sql) | 6 B | 131.23 | 128.78 | 128.76 | 128.60 | 129.00 | ok |
-| [Q06](benchmarks/queries/query_6.sql) | 22 B | 4.63 | 4.11 | 4.12 | 4.00 | 4.22 | ok |
-| [Q07](benchmarks/queries/query_7.sql) | 31 B | 11.54 | 11.68 | 11.69 | 11.61 | 11.71 | ok |
-| [Q08](benchmarks/queries/query_8.sql) | 81 B | 189.62 | 189.70 | 189.51 | 189.29 | 190.49 | ok |
-| [Q09](benchmarks/queries/query_9.sql) | 237 B | 209.27 | 209.04 | 208.53 | 207.81 | 211.30 | ok |
-| [Q10](benchmarks/queries/query_10.sql) | 102 B | 273.63 | 268.25 | 267.84 | 264.68 | 272.65 | ok |
-| [Q11](benchmarks/queries/query_11.sql) | 116 B | 267.74 | 267.06 | 267.06 | 266.30 | 267.81 | ok |
-| [Q12](benchmarks/queries/query_12.sql) | 387 B | 225.38 | 225.50 | 225.37 | 225.15 | 226.12 | ok |
-| [Q13](benchmarks/queries/query_13.sql) | 350 B | 255.52 | 253.82 | 253.71 | 253.17 | 254.72 | ok |
-| [Q14](benchmarks/queries/query_14.sql) | 400 B | 227.71 | 227.58 | 227.55 | 227.02 | 228.18 | ok |
-| [Q15](benchmarks/queries/query_15.sql) | 236 B | 73.92 | 74.08 | 74.16 | 73.23 | 74.78 | ok |
-| [Q16](benchmarks/queries/query_16.sql) | 244 B | 116.27 | 117.15 | 116.97 | 116.74 | 117.90 | ok |
-| [Q17](benchmarks/queries/query_17.sql) | 414 B | 146.45 | 145.98 | 146.00 | 145.32 | 146.60 | ok |
-| [Q18](benchmarks/queries/query_18.sql) | 264 B | 371.65 | 354.57 | 349.51 | 345.73 | 373.53 | ok |
-| [Q19](benchmarks/queries/query_19.sql) | 0 B | 5.11 | 4.40 | 4.39 | 4.35 | 4.45 | ok |
-| [Q20](benchmarks/queries/query_20.sql) | 3 B | 253.57 | 252.47 | 252.69 | 251.74 | 252.77 | ok |
-| [Q21](benchmarks/queries/query_21.sql) | 162 B | 275.26 | 277.07 | 277.31 | 274.21 | 279.46 | ok |
-| [Q22](benchmarks/queries/query_22.sql) | 6.0 KB | 364.65 | 364.26 | 364.71 | 362.10 | 365.51 | ok |
-| [Q23](benchmarks/queries/query_23.sql) | 2.6 KB | 247.58 | 240.46 | 240.62 | 239.89 | 240.72 | ok |
-| [Q24](benchmarks/queries/query_24.sql) | 672 B | 221.33 | 220.77 | 220.81 | 220.51 | 220.95 | ok |
-| [Q25](benchmarks/queries/query_25.sql) | 382 B | 219.30 | 219.65 | 219.69 | 218.74 | 220.49 | ok |
-| [Q26](benchmarks/queries/query_26.sql) | 658 B | 221.11 | 220.32 | 220.03 | 219.98 | 221.26 | ok |
-| [Q27](benchmarks/queries/query_27.sql) | 26 B | 448.24 | 450.32 | 450.51 | 448.06 | 452.19 | ok |
-| [Q28](benchmarks/queries/query_28.sql) | 556 B | 972.11 | 969.67 | 969.54 | 964.82 | 974.79 | ok |
-| [Q29](benchmarks/queries/query_29.sql) | 990 B | 436.39 | 427.32 | 427.54 | 426.26 | 427.95 | ok |
-| [Q30](benchmarks/queries/query_30.sql) | 244 B | 237.16 | 235.05 | 235.10 | 234.09 | 235.90 | ok |
-| [Q31](benchmarks/queries/query_31.sql) | 398 B | 264.83 | 262.59 | 262.43 | 261.71 | 263.79 | ok |
-| [Q32](benchmarks/queries/query_32.sql) | 376 B | 1089.10 | 866.39 | 881.20 | 808.51 | 894.64 | ok |
-| [Q33](benchmarks/queries/query_33.sql) | 464 B | 354.03 | 349.81 | 349.73 | 349.37 | 350.43 | ok |
-| [Q34](benchmarks/queries/query_34.sql) | 484 B | 369.46 | 435.58 | 420.41 | 370.29 | 531.22 | ok |
-| [Q35](benchmarks/queries/query_35.sql) | 493 B | 151.95 | 149.11 | 149.57 | 142.89 | 154.43 | ok |
-| [Q36](benchmarks/queries/query_36.sql) | 569 B | 331.43 | 345.67 | 339.52 | 333.21 | 370.41 | ok |
-| [Q37](benchmarks/queries/query_37.sql) | 550 B | 249.16 | 247.76 | 247.46 | 246.64 | 249.47 | ok |
-| [Q38](benchmarks/queries/query_38.sql) | 480 B | 79.44 | 74.20 | 73.93 | 73.32 | 75.60 | ok |
-| [Q39](benchmarks/queries/query_39.sql) | 835 B | 400.94 | 541.20 | 479.52 | 391.72 | 814.03 | ok |
-| [Q40](benchmarks/queries/query_40.sql) | 356 B | 103.53 | 95.10 | 95.10 | 94.63 | 95.58 | ok |
-| [Q41](benchmarks/queries/query_41.sql) | 132 B | 39.71 | 34.90 | 34.88 | 34.50 | 35.36 | ok |
-| [Q42](benchmarks/queries/query_42.sql) | 240 B | 68.37 | 69.46 | 69.69 | 68.04 | 70.42 | ok |
+| [Q00](benchmarks/queries/query_0.sql) | 0 B | <1 | <1 | <1 | <1 | <1 | ok |
+| [Q01](benchmarks/queries/query_1.sql) | 0 B | 16.00 | 4.00 | 4.00 | 4.00 | 4.00 | ok |
+| [Q02](benchmarks/queries/query_2.sql) | 0 B | 31.00 | 7.00 | 7.00 | 7.00 | 7.00 | ok |
+| [Q03](benchmarks/queries/query_3.sql) | 0 B | 24.00 | 6.00 | 6.00 | 6.00 | 6.00 | ok |
+| [Q04](benchmarks/queries/query_4.sql) | 0 B | 52.00 | 34.50 | 34.50 | 34.00 | 35.00 | ok |
+| [Q05](benchmarks/queries/query_5.sql) | 0 B | 65.00 | 36.75 | 36.50 | 36.00 | 38.00 | ok |
+| [Q06](benchmarks/queries/query_6.sql) | 0 B | <1 | <1 | <1 | <1 | <1 | ok |
+| [Q07](benchmarks/queries/query_7.sql) | 0 B | 18.00 | 7.75 | 8.00 | 7.00 | 8.00 | ok |
+| [Q08](benchmarks/queries/query_8.sql) | 0 B | 213.00 | 189.25 | 189.50 | 186.00 | 192.00 | ok |
+| [Q09](benchmarks/queries/query_9.sql) | 0 B | 257.00 | 205.25 | 205.00 | 204.00 | 207.00 | ok |
+| [Q10](benchmarks/queries/query_10.sql) | 0 B | 296.00 | 262.25 | 260.50 | 260.00 | 268.00 | ok |
+| [Q11](benchmarks/queries/query_11.sql) | 0 B | 306.00 | 269.50 | 271.00 | 262.00 | 274.00 | ok |
+| [Q12](benchmarks/queries/query_12.sql) | 0 B | 260.00 | 224.25 | 223.00 | 221.00 | 230.00 | ok |
+| [Q13](benchmarks/queries/query_13.sql) | 0 B | 298.00 | 253.00 | 252.50 | 251.00 | 256.00 | ok |
+| [Q14](benchmarks/queries/query_14.sql) | 0 B | 257.00 | 226.00 | 226.00 | 225.00 | 227.00 | ok |
+| [Q15](benchmarks/queries/query_15.sql) | 0 B | 108.00 | 89.75 | 89.50 | 88.00 | 92.00 | ok |
+| [Q16](benchmarks/queries/query_16.sql) | 0 B | 193.00 | 143.00 | 143.00 | 142.00 | 144.00 | ok |
+| [Q17](benchmarks/queries/query_17.sql) | 0 B | 216.00 | 157.75 | 157.00 | 154.00 | 163.00 | ok |
+| [Q18](benchmarks/queries/query_18.sql) | 0 B | 589.00 | 517.50 | 516.00 | 509.00 | 529.00 | ok |
+| [Q19](benchmarks/queries/query_19.sql) | 0 B | 3.00 | <1 | <1 | <1 | <1 | ok |
+| [Q20](benchmarks/queries/query_20.sql) | 0 B | 202.00 | 136.25 | 136.50 | 135.00 | 137.00 | ok |
+| [Q21](benchmarks/queries/query_21.sql) | 0 B | 245.00 | 156.75 | 156.00 | 156.00 | 159.00 | ok |
+| [Q22](benchmarks/queries/query_22.sql) | 0 B | 383.00 | 284.50 | 280.00 | 272.00 | 306.00 | ok |
+| [Q23](benchmarks/queries/query_23.sql) | 0 B | 365.00 | 241.25 | 239.00 | 238.00 | 249.00 | ok |
+| [Q24](benchmarks/queries/query_24.sql) | 0 B | 101.00 | 38.75 | 39.00 | 38.00 | 39.00 | ok |
+| [Q25](benchmarks/queries/query_25.sql) | 0 B | 65.00 | 36.50 | 36.50 | 36.00 | 37.00 | ok |
+| [Q26](benchmarks/queries/query_26.sql) | 0 B | 103.00 | 39.75 | 39.50 | 39.00 | 41.00 | ok |
+| [Q27](benchmarks/queries/query_27.sql) | 0 B | 534.00 | 454.75 | 450.50 | 447.00 | 471.00 | ok |
+| [Q28](benchmarks/queries/query_28.sql) | 0 B | 993.00 | 940.75 | 940.00 | 934.00 | 949.00 | ok |
+| [Q29](benchmarks/queries/query_29.sql) | 0 B | 17.00 | 4.75 | 5.00 | 4.00 | 5.00 | ok |
+| [Q30](benchmarks/queries/query_30.sql) | 0 B | 99.00 | 37.75 | 37.50 | 37.00 | 39.00 | ok |
+| [Q31](benchmarks/queries/query_31.sql) | 0 B | 161.00 | 53.50 | 52.50 | 51.00 | 58.00 | ok |
+| [Q32](benchmarks/queries/query_32.sql) | 0 B | 744.00 | 633.25 | 623.00 | 614.00 | 673.00 | ok |
+| [Q33](benchmarks/queries/query_33.sql) | 0 B | 381.00 | 323.00 | 322.00 | 319.00 | 329.00 | ok |
+| [Q34](benchmarks/queries/query_34.sql) | 0 B | 386.00 | 323.75 | 323.00 | 319.00 | 330.00 | ok |
+| [Q35](benchmarks/queries/query_35.sql) | 0 B | 43.00 | 20.00 | 20.00 | 20.00 | 20.00 | ok |
+| [Q36](benchmarks/queries/query_36.sql) | 0 B | 414.00 | 358.25 | 358.50 | 354.00 | 362.00 | ok |
+| [Q37](benchmarks/queries/query_37.sql) | 0 B | 284.00 | 242.25 | 242.50 | 240.00 | 244.00 | ok |
+| [Q38](benchmarks/queries/query_38.sql) | 0 B | 118.00 | 70.25 | 70.50 | 68.00 | 72.00 | ok |
+| [Q39](benchmarks/queries/query_39.sql) | 0 B | 528.00 | 461.00 | 462.00 | 455.00 | 465.00 | ok |
+| [Q40](benchmarks/queries/query_40.sql) | 0 B | 105.00 | 53.00 | 53.00 | 52.00 | 54.00 | ok |
+| [Q41](benchmarks/queries/query_41.sql) | 0 B | 70.00 | 30.00 | 30.00 | 30.00 | 30.00 | ok |
+| [Q42](benchmarks/queries/query_42.sql) | 0 B | 95.00 | 64.50 | 64.50 | 64.00 | 65.00 | ok |
 <!-- benchmark-table:end -->

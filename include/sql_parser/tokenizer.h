@@ -78,6 +78,7 @@ class Token {
 
    private:
     std::string text_;
+
     size_t offset_ = 0;
 };
 
@@ -161,6 +162,7 @@ class Tokenizer {
 
    private:
     std::string query_;
+
     size_t pos_ = 0;
 };
 

@@ -10,6 +10,8 @@ target_link_libraries(benchmark_csv_to_columnar
 add_executable(benchmark_queries
         benchmark_queries.cpp
         support/query_result_checks.cpp
+        support/query_runners.cpp
+        support/query_runners_fast.cpp
         support/query_result_checks.h
         support/query_runners.h
 )

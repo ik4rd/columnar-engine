@@ -30,6 +30,7 @@ constexpr bool HasAggCallFeature(const AggCallFeature features, const AggCallFea
 
 struct AggFuncDefinition {
     std::string_view canonical_name;
+
     AggCallFeature call_features = AggCallFeature::None;
     AggTypeSupport supports_type = nullptr;
     AggFactory factory = nullptr;

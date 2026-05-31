@@ -11,7 +11,8 @@ columnar_path="$2"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 build_dir="${BUILD_DIR:-build}"
-row_group_size="${ROW_GROUP_SIZE:-50000}"
+row_group_size="${ROW_GROUP_SIZE:-16384}"
+compression="${COLUMNAR_COMPRESSION:-lz4}"
 schema_path="${COLUMNAR_SCHEMA:-${repo_dir}/benchmarks/scheme.csv}"
 binary="${repo_dir}/${build_dir}/columnar_engine"
 
@@ -35,4 +36,5 @@ mkdir -p "$(dirname "${columnar_path}")"
   --schema "${schema_path}" \
   --input "${input_csv}" \
   --output "${columnar_path}" \
-  --row-group-size "${row_group_size}"
+  --row-group-size "${row_group_size}" \
+  --compression "${compression}"

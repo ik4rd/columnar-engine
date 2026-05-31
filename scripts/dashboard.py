@@ -6,7 +6,12 @@ import argparse
 import csv
 import datetime as dt
 import math
+import os
 import pathlib
+import platform
+import re
+import shlex
+import shutil
 import statistics
 import subprocess
 import sys
@@ -15,6 +20,7 @@ import time
 
 README_START = "<!-- benchmark-table:start -->"
 README_END = "<!-- benchmark-table:end -->"
+QUERY_LINE_RE = re.compile(r"^query_(\d+): rows=(\d+), time=(\d+)ms, status=([a-z_]+)")
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +46,23 @@ def parse_args() -> argparse.Namespace:
         type=pathlib.Path,
         default=pathlib.Path("build/src/columnar_engine"),
         help="Path to the columnar_engine binary.",
+    )
+    parser.add_argument(
+        "--benchmark-binary",
+        type=pathlib.Path,
+        default=pathlib.Path("build/benchmarks/benchmark_queries"),
+        help="Path to the benchmark_queries binary used by --query-mode hardcoded.",
+    )
+    parser.add_argument(
+        "--query-mode",
+        default="parser",
+        choices=("parser", "hardcoded"),
+        help="Run queries through columnar_engine run-query or benchmark_queries hardcoded plans.",
+    )
+    parser.add_argument(
+        "--lz4-hardcoded",
+        action="store_true",
+        help="Shortcut: convert --source-csv to a temporary lz4 columnar file and run hardcoded ClickBench queries.",
     )
     parser.add_argument(
         "--csv-out",
@@ -82,6 +105,19 @@ def parse_args() -> argparse.Namespace:
         choices=("none", "lz4"),
         help="Compression codec for the CSV -> columnar conversion benchmark.",
     )
+    parser.add_argument(
+        "--cache-drop-mode",
+        default=None,
+        choices=("none", "once", "per-query"),
+        help=(
+            "Drop the filesystem page cache before benchmarks: never, once before all queries, "
+            "or before the first run of each query. Defaults to per-query."
+        ),
+    )
+    parser.add_argument(
+        "--cache-drop-command",
+        help="Override the OS-specific cache drop command, for example: 'sudo purge'.",
+    )
     return parser.parse_args()
 
 
@@ -93,8 +129,26 @@ def resolve_path(path: pathlib.Path, root: pathlib.Path) -> pathlib.Path:
     return path if path.is_absolute() else root / path
 
 
+def display_path(path: pathlib.Path, root: pathlib.Path) -> pathlib.Path:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return path
+
+
 def format_ms(value: float) -> str:
     return f"{value:.2f}"
+
+
+def render_ms(value: float) -> str:
+    return "<1" if value == 0 else format_ms(value)
+
+
+def render_ms_text(value: str) -> str:
+    parsed = parse_ms(value)
+    if parsed is None:
+        return value or "—"
+    return render_ms(parsed)
 
 
 def format_seconds(value: float) -> str:
@@ -192,6 +246,8 @@ def collect_conversion_stats(
         source_csv_path: pathlib.Path,
         row_group_size: int,
         compression: str,
+        drop_cache: bool,
+        cache_drop_command: str | None,
 ) -> dict[str, float | int | str] | None:
     if not schema_path.exists() or not source_csv_path.exists():
         return None
@@ -227,12 +283,18 @@ def collect_conversion_stats(
             str(roundtrip_csv),
         ]
 
+        if drop_cache:
+            drop_file_system_cache(cache_drop_command)
+
         convert_started_at = time.perf_counter()
         convert_completed = subprocess.run(convert_command, capture_output=True, text=True)
         convert_elapsed_seconds = time.perf_counter() - convert_started_at
         if convert_completed.returncode != 0:
             message = convert_completed.stderr.strip() or convert_completed.stdout.strip() or "convert failed"
             raise RuntimeError(message)
+
+        if drop_cache:
+            drop_file_system_cache(cache_drop_command)
 
         roundtrip_started_at = time.perf_counter()
         roundtrip_completed = subprocess.run(roundtrip_command, capture_output=True, text=True)
@@ -263,6 +325,61 @@ def collect_conversion_stats(
         if roundtrip_elapsed_seconds
         else 0.0,
     }
+
+
+def default_cache_drop_command() -> list[str] | None:
+    system = platform.system()
+    if system == "Darwin":
+        purge = shutil.which("purge")
+        return [purge] if purge else None
+
+    if system == "Linux":
+        return ["__linux_drop_caches__"]
+
+    return None
+
+
+def run_cache_drop_command(command: list[str]) -> None:
+    if not command:
+        raise RuntimeError("cache drop command is empty")
+
+    if command == ["__linux_drop_caches__"]:
+        subprocess.run(["sync"], check=True)
+        drop_caches_path = pathlib.Path("/proc/sys/vm/drop_caches")
+        if os.geteuid() == 0:
+            drop_caches_path.write_text("3\n", encoding="utf-8")
+            return
+
+        try:
+            completed = subprocess.run(
+                ["sudo", "-n", "tee", str(drop_caches_path)],
+                input="3\n",
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError("cache drop requires root or sudo on Linux") from error
+    else:
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True)
+        except FileNotFoundError as error:
+            raise RuntimeError(f"cache drop command not found: {command[0]}") from error
+
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        message = stderr or stdout or f"exit code {completed.returncode}"
+        raise RuntimeError(message)
+
+
+def drop_file_system_cache(cache_drop_command: str | None) -> None:
+    command = shlex.split(cache_drop_command) if cache_drop_command else default_cache_drop_command()
+    if command is None:
+        raise RuntimeError(
+            "cache drop is not supported on this OS; pass --cache-drop-mode none or --cache-drop-command"
+        )
+
+    run_cache_drop_command(command)
 
 
 def run_query(
@@ -298,6 +415,84 @@ def run_query(
     return elapsed_ms
 
 
+def run_hardcoded_benchmark(
+        benchmark_binary: pathlib.Path,
+        input_path: pathlib.Path,
+        query_from: int,
+        query_to: int,
+) -> dict[int, dict[str, str]]:
+    command = [
+        str(benchmark_binary),
+        "--mode",
+        "hardcoded",
+        "--input",
+        str(input_path),
+        "--from",
+        str(query_from),
+        "--to",
+        str(query_to),
+    ]
+
+    completed = subprocess.run(command, capture_output=True, text=True)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        message = stderr or stdout or f"exit code {completed.returncode}"
+        raise RuntimeError(message)
+
+    parsed: dict[int, dict[str, str]] = {}
+    for line in completed.stdout.splitlines():
+        match = QUERY_LINE_RE.match(line)
+        if not match:
+            continue
+        query_id, result_rows, elapsed_ms, status = match.groups()
+        parsed[int(query_id)] = {
+            "rows": result_rows,
+            "time_ms": elapsed_ms,
+            "status": status,
+        }
+
+    if not parsed:
+        raise RuntimeError("benchmark_queries produced no query timing rows")
+
+    return parsed
+
+
+def convert_columnar(
+        *,
+        binary: pathlib.Path,
+        schema_path: pathlib.Path,
+        source_csv_path: pathlib.Path,
+        output_columnar: pathlib.Path,
+        row_group_size: int,
+        compression: str,
+) -> float:
+    output_columnar.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        str(binary),
+        "convert",
+        "--schema",
+        str(schema_path),
+        "--input",
+        str(source_csv_path),
+        "--output",
+        str(output_columnar),
+        "--row-group-size",
+        str(row_group_size),
+        "--compression",
+        compression,
+    ]
+
+    started_at = time.perf_counter()
+    completed = subprocess.run(command, capture_output=True, text=True)
+    elapsed_seconds = time.perf_counter() - started_at
+    if completed.returncode != 0:
+        message = completed.stderr.strip() or completed.stdout.strip() or "convert failed"
+        raise RuntimeError(message)
+
+    return elapsed_seconds
+
+
 def collect_rows(
         *,
         root: pathlib.Path,
@@ -307,11 +502,16 @@ def collect_rows(
         count: int,
         warm_runs: int,
         table_name: str,
+        cache_drop_mode: str,
+        cache_drop_command: str | None,
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
 
     with tempfile.TemporaryDirectory(prefix="readme_benchmarks_") as temp_dir_name:
         temp_dir = pathlib.Path(temp_dir_name)
+
+        if cache_drop_mode == "once":
+            drop_file_system_cache(cache_drop_command)
 
         for query_id in range(count):
             query_path = query_dir / f"query_{query_id}.sql"
@@ -329,6 +529,9 @@ def collect_rows(
             warm_max_ms = ""
             warm_median_ms = ""
             output_csv_bytes = "0"
+
+            if cache_drop_mode == "per-query":
+                drop_file_system_cache(cache_drop_command)
 
             try:
                 first_run_value = run_query(binary, input_path, query_path, output_path, table_name)
@@ -365,6 +568,101 @@ def collect_rows(
                     "error": first_error,
                 }
             )
+
+    return rows
+
+
+def collect_hardcoded_rows(
+        *,
+        root: pathlib.Path,
+        benchmark_binary: pathlib.Path,
+        input_path: pathlib.Path,
+        query_dir: pathlib.Path,
+        count: int,
+        warm_runs: int,
+        cache_drop_mode: str,
+        cache_drop_command: str | None,
+) -> list[dict[str, str]]:
+    rows_by_query: dict[int, dict[str, str | list[float]]] = {}
+
+    for query_id in range(count):
+        query_path = query_dir / f"query_{query_id}.sql"
+        if not query_path.exists():
+            break
+        rows_by_query[query_id] = {
+            "query_id": str(query_id),
+            "query_file": str(query_path.relative_to(root)),
+            "sql": query_path.read_text(encoding="utf-8").strip(),
+            "first_run_ms": "",
+            "warm_values": [],
+            "output_csv_bytes": "0",
+            "status": "ok",
+            "error": "",
+        }
+
+    if cache_drop_mode == "once":
+        drop_file_system_cache(cache_drop_command)
+
+    for query_id, row in rows_by_query.items():
+        if cache_drop_mode == "per-query":
+            drop_file_system_cache(cache_drop_command)
+
+        try:
+            first_run_result = run_hardcoded_benchmark(benchmark_binary, input_path, query_id, query_id)
+        except RuntimeError as error:
+            row["status"] = "failed"
+            row["error"] = str(error)
+            continue
+
+        result = first_run_result.get(query_id)
+        if result is None:
+            row["status"] = "failed"
+            row["error"] = "missing benchmark result"
+            continue
+        if result["status"] != "passed":
+            row["status"] = "failed"
+            row["error"] = f"benchmark status={result['status']}"
+            continue
+
+        row["first_run_ms"] = format_ms(float(result["time_ms"]))
+
+        warm_values = row["warm_values"]
+        assert isinstance(warm_values, list)
+        for _ in range(warm_runs):
+            try:
+                warm_run_result = run_hardcoded_benchmark(benchmark_binary, input_path, query_id, query_id)
+            except RuntimeError as error:
+                row["status"] = "failed"
+                row["error"] = str(error)
+                break
+
+            result = warm_run_result.get(query_id)
+            if result is None:
+                row["status"] = "failed"
+                row["error"] = "missing benchmark result"
+                break
+            if result["status"] != "passed":
+                row["status"] = "failed"
+                row["error"] = f"benchmark status={result['status']}"
+                break
+
+            warm_values.append(float(result["time_ms"]))
+
+    rows: list[dict[str, str]] = []
+    for row in rows_by_query.values():
+        warm_values = row.pop("warm_values")
+        assert isinstance(warm_values, list)
+        if warm_values:
+            row["warm_avg_ms"] = format_ms(sum(warm_values) / len(warm_values))
+            row["warm_median_ms"] = format_ms(statistics.median(warm_values))
+            row["warm_min_ms"] = format_ms(min(warm_values))
+            row["warm_max_ms"] = format_ms(max(warm_values))
+        else:
+            row["warm_avg_ms"] = ""
+            row["warm_median_ms"] = ""
+            row["warm_min_ms"] = ""
+            row["warm_max_ms"] = ""
+        rows.append({key: str(value) for key, value in row.items()})
 
     return rows
 
@@ -413,7 +711,7 @@ def render_heatmap(rows: list[dict[str, str]], median_value: float, columns: int
     lines = [
         "### Heatmap",
         "",
-        "`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` 0 ms",
+        "`🟩` быстрее медианы · `🟦` около медианы · `🟥` медленнее медианы · `⬜` <1 ms",
         "",
     ]
 
@@ -427,7 +725,7 @@ def render_heatmap(rows: list[dict[str, str]], median_value: float, columns: int
             + " | ".join(
                 (
                     f"Q{int(row['query_id']):02d} {heatmap_icon(query_metric(row), median_value)} "
-                    f"`{format_ms(query_metric(row))}`"
+                    f"`{render_ms(query_metric(row))}`"
                 )
                 if row is not None
                 else ""
@@ -444,6 +742,8 @@ def render_markdown(
         rows: list[dict[str, str]],
         count: int,
         warm_runs: int,
+        cache_drop_mode: str,
+        query_mode: str,
         conversion_stats: dict[str, float | int | str] | None,
 ) -> str:
     generated_at = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -462,26 +762,27 @@ def render_markdown(
     summary_rows = [
         ("queries ok", f"{len(ok_rows)} / {len(rows)}"),
         ("queries failed", str(len(failed_rows))),
-        ("median warm time", f"{format_ms(median_value)} ms"),
-        ("average warm time", f"{format_ms(avg_value)} ms"),
-        ("p95 warm time", f"{format_ms(p95_value)} ms"),
+        ("median warm time", f"{render_ms(median_value)} ms"),
+        ("average warm time", f"{render_ms(avg_value)} ms"),
+        ("p95 warm time", f"{render_ms(p95_value)} ms"),
         ("cold/warm delta", format_percent(cold_penalty)),
         ("total output size", format_size(sum(output_sizes))),
         ("max output size", format_size(max(output_sizes)) if output_sizes else "—"),
         (
             "fastest query",
-            f"Q{int(fastest['query_id']):02d} · {format_ms(query_metric(fastest))} ms" if fastest else "—",
+            f"Q{int(fastest['query_id']):02d} · {render_ms(query_metric(fastest))} ms" if fastest else "—",
         ),
         (
             "slowest query",
-            f"Q{int(slowest['query_id']):02d} · {format_ms(query_metric(slowest))} ms" if slowest else "—",
+            f"Q{int(slowest['query_id']):02d} · {render_ms(query_metric(slowest))} ms" if slowest else "—",
         ),
     ]
 
     lines = [
         "## Benchmark Dashboard",
         "",
-        f"`generated {generated_at}` · `queries {len(rows)}/{count}` · `warm runs {warm_runs}` · [`csv`]({csv_path})",
+        f"`generated {generated_at}` · `queries {len(rows)}/{count}` · `warm runs {warm_runs}` · "
+        f"`cache drop {cache_drop_mode}` · `query mode {query_mode}` · [`csv`]({csv_path})",
         "",
     ]
 
@@ -552,11 +853,11 @@ def render_markdown(
                 [
                     query_label,
                     format_size(int(row["output_csv_bytes"])),
-                    row["first_run_ms"] or "—",
-                    row["warm_avg_ms"] or "—",
-                    row["warm_median_ms"] or "—",
-                    row["warm_min_ms"] or "—",
-                    row["warm_max_ms"] or "—",
+                    render_ms_text(row["first_run_ms"]),
+                    render_ms_text(row["warm_avg_ms"]),
+                    render_ms_text(row["warm_median_ms"]),
+                    render_ms_text(row["warm_min_ms"]),
+                    render_ms_text(row["warm_max_ms"]),
                     status,
                 ]
             )
@@ -591,9 +892,15 @@ def main() -> int:
         raise SystemExit("--count must be > 0")
     if args.warm_runs < 0:
         raise SystemExit("--warm-runs must be >= 0")
+    if args.lz4_hardcoded:
+        args.query_mode = "hardcoded"
+        args.compression = "lz4"
+    if args.cache_drop_mode is None:
+        args.cache_drop_mode = "per-query"
 
     root = repo_root()
     binary = resolve_path(args.binary, root)
+    benchmark_binary = resolve_path(args.benchmark_binary, root)
     input_path = resolve_path(args.input, root)
     query_dir = resolve_path(args.query_dir, root)
     csv_path = resolve_path(args.csv_out, root)
@@ -603,38 +910,71 @@ def main() -> int:
 
     if not binary.exists():
         raise SystemExit(f"binary not found: {binary}")
-    if not input_path.exists():
+    if args.query_mode == "hardcoded" and not benchmark_binary.exists():
+        raise SystemExit(f"benchmark binary not found: {benchmark_binary}")
+    if not args.lz4_hardcoded and not input_path.exists():
         raise SystemExit(f"input file not found: {input_path}")
     if not query_dir.exists():
         raise SystemExit(f"query directory not found: {query_dir}")
 
-    rows = collect_rows(
-        root=root,
-        binary=binary,
-        input_path=input_path,
-        query_dir=query_dir,
-        count=args.count,
-        warm_runs=args.warm_runs,
-        table_name=args.table_name,
-    )
-    conversion_stats = collect_conversion_stats(
-        root=root,
-        binary=binary,
-        schema_path=schema_path,
-        source_csv_path=source_csv_path,
-        row_group_size=args.row_group_size,
-        compression=args.compression,
-    )
-    write_csv(csv_path, rows)
-    markdown_block = render_markdown(
-        csv_path.relative_to(root),
-        rows,
-        args.count,
-        args.warm_runs,
-        conversion_stats,
-    )
-    update_readme(readme_path, markdown_block)
-    print(f"updated {readme_path.relative_to(root)} from {csv_path.relative_to(root)} with {len(rows)} row(s)")
+    with tempfile.TemporaryDirectory(prefix="dashboard_lz4_hardcoded_") as temp_dir_name:
+        if args.lz4_hardcoded:
+            input_path = pathlib.Path(temp_dir_name) / "hits_lz4.columnar"
+            convert_columnar(
+                binary=binary,
+                schema_path=schema_path,
+                source_csv_path=source_csv_path,
+                output_columnar=input_path,
+                row_group_size=args.row_group_size,
+                compression="lz4",
+            )
+
+        if args.query_mode == "hardcoded":
+            rows = collect_hardcoded_rows(
+                root=root,
+                benchmark_binary=benchmark_binary,
+                input_path=input_path,
+                query_dir=query_dir,
+                count=args.count,
+                warm_runs=args.warm_runs,
+                cache_drop_mode=args.cache_drop_mode,
+                cache_drop_command=args.cache_drop_command,
+            )
+        else:
+            rows = collect_rows(
+                root=root,
+                binary=binary,
+                input_path=input_path,
+                query_dir=query_dir,
+                count=args.count,
+                warm_runs=args.warm_runs,
+                table_name=args.table_name,
+                cache_drop_mode=args.cache_drop_mode,
+                cache_drop_command=args.cache_drop_command,
+            )
+
+        conversion_stats = collect_conversion_stats(
+            root=root,
+            binary=binary,
+            schema_path=schema_path,
+            source_csv_path=source_csv_path,
+            row_group_size=args.row_group_size,
+            compression=args.compression,
+            drop_cache=args.cache_drop_mode != "none",
+            cache_drop_command=args.cache_drop_command,
+        )
+        write_csv(csv_path, rows)
+        markdown_block = render_markdown(
+            display_path(csv_path, root),
+            rows,
+            args.count,
+            args.warm_runs,
+            args.cache_drop_mode,
+            args.query_mode,
+            conversion_stats,
+        )
+        update_readme(readme_path, markdown_block)
+    print(f"updated {display_path(readme_path, root)} from {display_path(csv_path, root)} with {len(rows)} row(s)")
     return 0
 
 

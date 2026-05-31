@@ -10,9 +10,11 @@
 
 struct FileMetadata {
     uintmax_t size = 0;
+
+    std::filesystem::file_time_type last_write_time;
+
     bool is_regular = false;
     bool is_directory = false;
-    std::filesystem::file_time_type last_write_time;
 };
 
 std::optional<FileMetadata> GetFileMetadata(const std::filesystem::path& path);
@@ -45,6 +47,7 @@ class InputFile {
 
    private:
     std::filesystem::path path_;
+
     std::ifstream in_;
 };
 

@@ -64,6 +64,7 @@ class SumAS final : public AggState {
 
    private:
     ColumnType type_;
+
     Int128 sum_ = 0;
 };
 
@@ -87,6 +88,7 @@ class AvgAS final : public AggState {
 
    private:
     ColumnType type_;
+
     Int128 sum_ = 0;
     uint64_t count_ = 0;
 };
@@ -124,6 +126,7 @@ class ExtremumAS final : public AggState {
    private:
     ColumnType type_;
     bool is_min_ = true;
+
     std::optional<std::string> extremum_;
     std::optional<Int128> typed_extremum_;
 };
@@ -144,6 +147,7 @@ class DistinctAS final : public AggState {
 
    private:
     std::unique_ptr<AggState> nested_;
+
     StringArena arena_;
     StringViewSet seen_;
 };

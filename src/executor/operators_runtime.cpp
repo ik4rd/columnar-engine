@@ -257,6 +257,11 @@ struct RowRef {
 
 std::strong_ordering CompareColumnRows(const Column& lhs_column, const size_t lhs_row, const Column& rhs_column,
                                        const size_t rhs_row, const ColumnType type) {
+    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String && rhs_column.Type() == ColumnType::String) {
+        return ParseColumnValueAsInt128(type, lhs_column.ValueAsString(lhs_row)) <=>
+               ParseColumnValueAsInt128(type, rhs_column.ValueAsString(rhs_row));
+    }
+
     if (type != ColumnType::String) {
         return lhs_column.ValueAsInt128(lhs_row) <=> rhs_column.ValueAsInt128(rhs_row);
     }
@@ -288,6 +293,7 @@ class RowOrdering {
 
    private:
     std::vector<PlannedOrderBy> order_by_;
+
     const std::vector<Batch>* batches_ = nullptr;
 };
 
@@ -570,6 +576,7 @@ class LimitOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     size_t remaining_;
 };
 
@@ -597,6 +604,7 @@ class OffsetOperator final : public Operator {
 
    private:
     std::unique_ptr<Operator> child_;
+
     size_t remaining_;
 };
 

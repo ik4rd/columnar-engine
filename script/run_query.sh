@@ -13,7 +13,9 @@ log_path="$4"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 build_dir="${BUILD_DIR:-build}"
+query_mode="${QUERY_MODE:-hardcoded}"
 binary="${repo_dir}/${build_dir}/columnar_engine"
+benchmark_binary="${repo_dir}/${build_dir}/benchmarks/benchmark_queries"
 query_file="${repo_dir}/benchmarks/queries/query_${query_num}.sql"
 
 mkdir -p "$(dirname "${output_csv}")"
@@ -30,6 +32,36 @@ query_file=${query_file}
 message=Add SQL text to benchmarks/queries/query_${query_num}.sql
 EOF
   return 0 2>/dev/null
+fi
+
+if [[ "${query_mode}" == "hardcoded" ]]; then
+  if [[ ! -x "${benchmark_binary}" ]]; then
+    cat > "${log_path}" <<EOF
+query_num=${query_num}
+status=missing_binary
+columnar_path=${columnar_path}
+binary=${benchmark_binary}
+message=Run ./script/build.sh before executing hardcoded benchmark queries.
+EOF
+    exit 1
+  fi
+
+  if "${benchmark_binary}" \
+    --hardcoded \
+    --strict-status \
+    --input "${columnar_path}" \
+    --from "${query_num}" \
+    --to "${query_num}" \
+    --output-csv "${output_csv}" > "${log_path}" 2>&1; then
+    printf 'query_num=%s\nstatus=ok\nmode=hardcoded\ncolumnar_path=%s\nquery_file=%s\n' \
+      "${query_num}" "${columnar_path}" "${query_file}" >> "${log_path}"
+  else
+    status=$?
+    printf 'query_num=%s\nstatus=failed\nmode=hardcoded\ncolumnar_path=%s\nquery_file=%s\nexit_code=%s\n' \
+      "${query_num}" "${columnar_path}" "${query_file}" "${status}" >> "${log_path}"
+    exit "${status}"
+  fi
+  exit 0
 fi
 
 if [[ ! -x "${binary}" ]]; then
@@ -52,11 +84,11 @@ if "${binary}" run-query \
   --output "${output_csv}" \
   --table-name hits \
   --query-file "${query_file}" > "${log_path}" 2>&1; then
-  printf 'query_num=%s\nstatus=ok\ncolumnar_path=%s\nquery_file=%s\n' \
+  printf 'query_num=%s\nstatus=ok\nmode=parser\ncolumnar_path=%s\nquery_file=%s\n' \
     "${query_num}" "${columnar_path}" "${query_file}" >> "${log_path}"
 else
   status=$?
-  printf 'query_num=%s\nstatus=failed\ncolumnar_path=%s\nquery_file=%s\nexit_code=%s\n' \
+  printf 'query_num=%s\nstatus=failed\nmode=parser\ncolumnar_path=%s\nquery_file=%s\nexit_code=%s\n' \
     "${query_num}" "${columnar_path}" "${query_file}" "${status}" >> "${log_path}"
   exit "${status}"
 fi

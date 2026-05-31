@@ -2,8 +2,8 @@ WatchID,int64
 JavaEnable,int16
 Title,string
 GoodEvent,int16
-EventTime,TIMESTAMP
-EventDate,DATE
+EventTime,timestamp
+EventDate,date
 CounterID,int32
 ClientIP,int32
 RegionID,int32
@@ -43,7 +43,7 @@ IsArtifical,int16
 WindowClientWidth,int16
 WindowClientHeight,int16
 ClientTimeZone,int16
-ClientEventTime,TIMESTAMP
+ClientEventTime,timestamp
 SilverlightVersion1,int16
 SilverlightVersion2,int16
 SilverlightVersion3,int32
@@ -62,7 +62,7 @@ IsParameter,int16
 DontCountHits,int16
 WithHash,int16
 HitColor,string
-LocalEventTime,TIMESTAMP
+LocalEventTime,timestamp
 Age,int16
 Sex,int16
 Income,int16
