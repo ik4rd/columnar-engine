@@ -23,19 +23,50 @@ static constexpr int LastQueryId = 42;
 
 enum class QueryRunStatus {
     Passed,
+    Executed,
     Failed,
     Skipped,
     Recorded,
     NoReference,
 };
 
+enum class ReferenceCheckMode {
+    Auto,
+    Always,
+    Never,
+};
+
 static std::string_view ModeName(const QueryExecutionMode mode) {
     return mode == QueryExecutionMode::Parser ? "parser" : "hardcoded";
 }
 
+static std::string_view ReferenceCheckModeName(const ReferenceCheckMode mode) {
+    switch (mode) {
+        case ReferenceCheckMode::Auto:
+            return "auto";
+        case ReferenceCheckMode::Always:
+            return "always";
+        case ReferenceCheckMode::Never:
+            return "never";
+    }
+
+    return "unknown";
+}
+
+static bool LooksLikeSampleInput(const std::filesystem::path& data_path, const std::filesystem::path& queries_dir) {
+    const std::filesystem::path sample_path = queries_dir.parent_path() / "hits_sample.columnar";
+    std::error_code error;
+    if (std::filesystem::equivalent(data_path, sample_path, error)) {
+        return true;
+    }
+
+    return data_path.filename() == sample_path.filename();
+}
+
 QueryRunStatus RunQuery(const Executor& executor, const std::filesystem::path& path, const int query_id,
                         const QueryExecutionMode mode, const PlannedQuery* planned_query, bool record = false,
-                        const std::optional<std::filesystem::path>& output_csv = std::nullopt) {
+                        const std::optional<std::filesystem::path>& output_csv = std::nullopt,
+                        const bool check_reference = true) {
     const std::string query_sql = std::filesystem::exists(path) ? ReadTextFile(path) : "";
     const bool compare_unordered = QueryUsesGroupBy(query_sql);
 
@@ -86,6 +117,11 @@ QueryRunStatus RunQuery(const Executor& executor, const std::filesystem::path& p
         std::cout << "query_" << query_id << ": rows=" << result_batch.RowsCount() << ", time=" << duration_ms
                   << "ms, status=" << status << std::endl;
         return QueryRunStatus::Recorded;
+    } else if (!check_reference) {
+        status = "executed";
+        std::cout << "query_" << query_id << ": rows=" << result_batch.RowsCount() << ", time=" << duration_ms
+                  << "ms, status=" << status << std::endl;
+        return QueryRunStatus::Executed;
     } else if (std::filesystem::exists(ref_path)) {
         const std::string expected_result = ReadTextFile(ref_path);
         if (actual_result == expected_result ||
@@ -123,6 +159,7 @@ int main(const int argc, char** argv) {
     try {
         bool record = false;
         bool strict_status = false;
+        auto reference_check_mode = ReferenceCheckMode::Auto;
 
         auto mode = QueryExecutionMode::Hardcoded;
 
@@ -138,6 +175,10 @@ int main(const int argc, char** argv) {
                 record = true;
             } else if (arg == "--strict-status") {
                 strict_status = true;
+            } else if (arg == "--check-reference") {
+                reference_check_mode = ReferenceCheckMode::Always;
+            } else if (arg == "--skip-reference-check") {
+                reference_check_mode = ReferenceCheckMode::Never;
             } else if (arg == "--parser") {
                 mode = QueryExecutionMode::Parser;
             } else if (arg == "--hardcoded") {
@@ -182,6 +223,11 @@ int main(const int argc, char** argv) {
         const std::filesystem::path queries_dir = COLUMNAR_BENCHMARK_QUERIES_DIR;
         const std::filesystem::path data_path =
             input_path.empty() ? queries_dir.parent_path() / "hits_sample.columnar" : input_path;
+        const bool check_reference = reference_check_mode == ReferenceCheckMode::Always
+                                         ? true
+                                         : reference_check_mode == ReferenceCheckMode::Never
+                                               ? false
+                                               : LooksLikeSampleInput(data_path, queries_dir);
 
         Executor executor;
         executor.SetUnsupportedFallbackEnabled(true);
@@ -202,6 +248,8 @@ int main(const int argc, char** argv) {
         std::cout << "queries_dir=" << queries_dir << std::endl;
         std::cout << "input=" << data_path << std::endl;
         std::cout << "mode=" << ModeName(mode) << std::endl;
+        std::cout << "reference_check=" << (check_reference ? "enabled" : "disabled")
+                  << " (mode=" << ReferenceCheckModeName(reference_check_mode) << ")" << std::endl;
 
         for (int query_id = from_query; query_id <= to_query; ++query_id) {
             const std::filesystem::path query_path = queries_dir / ("query_" + std::to_string(query_id) + ".sql");
@@ -212,7 +260,7 @@ int main(const int argc, char** argv) {
                 const PlannedQuery* planned_query =
                     hardcoded_plans[query_id].has_value() ? &*hardcoded_plans[query_id] : nullptr;
                 const QueryRunStatus status =
-                    RunQuery(executor, query_path, query_id, mode, planned_query, record, output_csv);
+                    RunQuery(executor, query_path, query_id, mode, planned_query, record, output_csv, check_reference);
                 if (status == QueryRunStatus::Failed) {
                     saw_failure = true;
                 }
