@@ -7,6 +7,7 @@ packages=(
   ninja-build
   git
   ca-certificates
+  liblz4-dev
 )
 
 if ! command -v apt-get >/dev/null 2>&1; then
