@@ -55,6 +55,7 @@ CsvReader& CsvReader::operator=(CsvReader&& other) noexcept {
         RebindAfterMove(other.in_ == &other.owned_in_, other.in_);
         other.in_ = nullptr;
     }
+
     return *this;
 }
 
@@ -85,6 +86,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
             if (in_quotes) {
                 throw Error::MalformedData("io", "unexpected EOF inside quoted field");
             }
+
             return true;
         }
 
@@ -94,6 +96,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
         if (in_quotes) {
             if (ch == CsvQuote) {
                 const auto peek = input.Peek();
+
                 if (!input.IsEof(peek) && input.ToChar(peek) == CsvQuote) {
                     input.Discard();
                     row.back().push_back(CsvQuote);
@@ -103,6 +106,7 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
             } else {
                 row.back().push_back(ch);
             }
+
             continue;
         }
 
@@ -126,9 +130,11 @@ bool CsvReader::ReadRow(std::vector<std::string>& row) const {
 
         if (ch == CsvCr) {
             const auto peek = input.Peek();
+
             if (!input.IsEof(peek) && input.ToChar(peek) == CsvLf) {
                 input.Discard();
             }
+
             return true;
         }
 
@@ -151,6 +157,7 @@ CsvWriter& CsvWriter::operator=(CsvWriter&& other) noexcept {
         RebindAfterMove(other.out_ == &other.owned_out_, other.out_);
         other.out_ = nullptr;
     }
+
     return *this;
 }
 
@@ -169,6 +176,7 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
         }
 
         const std::string& value = row[i];
+
         if (!NeedsCsvQuotes(value)) {
             *out_ << value;
             continue;
@@ -182,7 +190,6 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
                 *out_ << ch;
             }
         }
-
         *out_ << CsvQuote;
     }
 
@@ -195,6 +202,7 @@ void CsvWriter::WriteRow(const std::vector<std::string>& row) const {
 
 void CsvWriter::Flush() const {
     out_->flush();
+
     if (!*out_) {
         throw Error::Io("io", "failed to write csv");
     }

@@ -96,6 +96,7 @@ int RunQuery(const argparse::ArgumentParser& command) {
                            std::filesystem::path(command.get<std::string>("--input")));
 
     const ExecuteExpected result = executor.Execute(query);
+
     if (!result.has_value()) {
         throw result.error();
     }

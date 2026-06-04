@@ -134,6 +134,66 @@ static std::vector<const typename Map::mapped_type*> OrderGroupsByCount(const Ma
     return ordered;
 }
 
+constexpr uint64_t max_group_reserve = 1 << 27;
+
+static uint64_t TotalRowCount(const ColumnarBatchReader& reader) {
+    uint64_t rows = 0;
+
+    for (const auto& row_group : reader.GetMetadata().row_groups) {
+        rows += row_group.row_count;
+    }
+
+    return rows;
+}
+
+namespace detail {
+
+struct OrderRow {
+    Int128 event_time = 0;
+    std::string phrase;
+    size_t ordinal = 0;
+};
+
+struct OrderRowView {
+    Int128 event_time = 0;
+    std::string_view phrase;
+    size_t ordinal = 0;
+};
+
+inline OrderRowView ViewOf(const OrderRow& row) { return {row.event_time, row.phrase, row.ordinal}; }
+
+}  // namespace detail
+
+using detail::OrderRow;
+using detail::OrderRowView;
+
+template <typename Better>
+static void OfferTopK(std::vector<OrderRow>& heap, const size_t limit, const Better& better, const Int128 event_time,
+                      const std::string_view phrase, const size_t ordinal) {
+    const auto worst_on_top = [&](const OrderRow& lhs, const OrderRow& rhs) {
+        return better(detail::ViewOf(lhs), detail::ViewOf(rhs));
+    };
+
+    if (heap.size() < limit) {
+        heap.push_back(OrderRow{event_time, std::string(phrase), ordinal});
+        std::push_heap(heap.begin(), heap.end(), worst_on_top);
+        return;
+    }
+
+    if (better(OrderRowView{event_time, phrase, ordinal}, detail::ViewOf(heap.front()))) {
+        std::pop_heap(heap.begin(), heap.end(), worst_on_top);
+        heap.back() = OrderRow{event_time, std::string(phrase), ordinal};
+        std::push_heap(heap.begin(), heap.end(), worst_on_top);
+    }
+}
+
+template <typename Better>
+static void SortTopK(std::vector<OrderRow>& heap, const Better& better) {
+    std::ranges::sort(heap, [&](const OrderRow& lhs, const OrderRow& rhs) {
+        return better(detail::ViewOf(lhs), detail::ViewOf(rhs));
+    });
+}
+
 static ExecuteExpected CountAll(const std::filesystem::path& path) {
     const ColumnarBatchReader reader(path);
     uint64_t rows = 0;
@@ -336,21 +396,25 @@ static ExecuteExpected SearchPhraseGroupByTitleGoogle(const std::filesystem::pat
 
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
             const std::string_view title_value = arena.Store(title.ValueAsString(row));
+
             if (!Contains(title_value, "Google")) {
                 continue;
             }
 
             const std::string_view url_value = arena.Store(url.ValueAsString(row));
+
             if (Contains(url_value, ".google.")) {
                 continue;
             }
 
             const std::string_view key = arena.Store(search_phrase.ValueAsString(row));
+
             if (key.empty()) {
                 continue;
             }
 
             auto& group = groups[key];
+
             if (group.count == 0) {
                 group.key = key;
                 group.ordinal = ordinal++;
@@ -430,6 +494,10 @@ static ExecuteExpected GroupByIntPairWithMetrics(const std::filesystem::path& pa
     std::unordered_map<std::pair<Int128, Int128>, IntGroupStats, Int128PairHash> groups;
     size_t ordinal = 0;
 
+    if (!filter_search_phrase) {
+        groups.reserve(std::min<uint64_t>(TotalRowCount(reader), max_group_reserve));
+    }
+
     while (const auto batch = scan->Next()) {
         const Column& key1 = batch->ColumnAt(0);
         const Column& key2 = batch->ColumnAt(1);
@@ -443,8 +511,8 @@ static ExecuteExpected GroupByIntPairWithMetrics(const std::filesystem::path& pa
             }
 
             const std::pair<Int128, Int128> key{key1.ValueAsInt128(row), key2.ValueAsInt128(row)};
-
             auto& group = groups[key];
+
             if (group.count == 0) {
                 group.key1 = key.first;
                 group.key2 = key.second;
@@ -484,10 +552,14 @@ static ExecuteExpected GroupByURLCount(const std::filesystem::path& path, const 
     std::unordered_map<std::string_view, SearchPhraseStats, StringViewHash, StringViewEqual> groups;
     size_t ordinal = 0;
 
+    groups.reserve(std::min<uint64_t>(TotalRowCount(reader), max_group_reserve));
+
+    std::string scratch;
+
     while (const auto batch = scan->Next()) {
         const Column& url = batch->ColumnAt(0);
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
-            const std::string_view key = arena.Store(url.ValueAsString(row));
+            const std::string_view key = arena.Store(url.ValueAsStringView(row, scratch));
             auto& group = groups[key];
             if (group.count == 0) {
                 group.key = key;
@@ -525,6 +597,8 @@ static ExecuteExpected GroupByClientIPDerived(const std::filesystem::path& path)
     std::unordered_map<Int128, IntGroupStats, Int128Hash> groups;
     size_t ordinal = 0;
 
+    groups.reserve(std::min<uint64_t>(TotalRowCount(reader), max_group_reserve));
+
     while (const auto batch = scan->Next()) {
         const Column& client_ip = batch->ColumnAt(0);
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
@@ -557,12 +631,21 @@ static ExecuteExpected GroupByClientIPDerived(const std::filesystem::path& path)
     return result;
 }
 
-static std::vector<SearchPhraseOrderRow> CollectSearchPhraseOrderRows(const std::filesystem::path& path) {
+constexpr size_t order_by_limit = 10;
+
+static ExecuteExpected SelectSearchPhraseOrderByEventTime(const std::filesystem::path& path) {
     const ColumnarBatchReader reader(path);
     const auto scan = ScanColumns(path, reader.GetSchema(), {"EventTime", "SearchPhrase"});
 
-    StringArena arena;
-    std::vector<SearchPhraseOrderRow> rows;
+    const auto better = [](const OrderRowView& lhs, const OrderRowView& rhs) {
+        if (lhs.event_time != rhs.event_time) {
+            return lhs.event_time < rhs.event_time;
+        }
+        return lhs.ordinal < rhs.ordinal;
+    };
+
+    std::vector<OrderRow> heap;
+    std::string scratch;
     size_t ordinal = 0;
 
     while (const auto batch = scan->Next()) {
@@ -570,38 +653,24 @@ static std::vector<SearchPhraseOrderRow> CollectSearchPhraseOrderRows(const std:
         const Column& search_phrase = batch->ColumnAt(1);
 
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
-            const std::string_view phrase = arena.Store(search_phrase.ValueAsString(row));
+            const std::string_view phrase = search_phrase.ValueAsStringView(row, scratch);
+
             if (phrase.empty()) {
                 continue;
             }
-            rows.push_back(SearchPhraseOrderRow{
-                .event_time = event_time.ValueAsInt128(row), .search_phrase = phrase, .ordinal = ordinal++});
+
+            OfferTopK(heap, order_by_limit, better, event_time.ValueAsInt128(row), phrase, ordinal++);
         }
     }
 
-    return rows;
-}
-
-static ExecuteExpected SelectSearchPhraseOrderByEventTime(const std::filesystem::path& path) {
-    auto rows = CollectSearchPhraseOrderRows(path);
-
-    std::ranges::sort(rows, [](const SearchPhraseOrderRow& lhs, const SearchPhraseOrderRow& rhs) {
-        if (lhs.event_time != rhs.event_time) {
-            return lhs.event_time < rhs.event_time;
-        }
-        return lhs.ordinal < rhs.ordinal;
-    });
-
-    if (rows.size() > 10) {
-        rows.resize(10);
-    }
+    SortTopK(heap, better);
 
     Batch result(
         Schema{{ColumnSchema("SearchPhrase", ColumnType::String), ColumnSchema("EventTime", ColumnType::Timestamp)}},
-        rows.size());
+        heap.size());
 
-    for (const auto& row : rows) {
-        result.AppendValueFromString(0, row.search_phrase);
+    for (const auto& row : heap) {
+        result.AppendValueFromString(0, row.phrase);
         result.AppendValueFromString(1, TimestampToString(static_cast<int64_t>(row.event_time)));
     }
 
@@ -612,57 +681,79 @@ static ExecuteExpected SelectSearchPhraseOrderByPhrase(const std::filesystem::pa
     const ColumnarBatchReader reader(path);
     const auto scan = ScanColumns(path, reader.GetSchema(), {"SearchPhrase"});
 
-    StringArena arena;
-    std::vector<std::string_view> rows;
+    const auto better = [](const OrderRowView& lhs, const OrderRowView& rhs) {
+        if (lhs.phrase != rhs.phrase) {
+            return lhs.phrase < rhs.phrase;
+        }
+        return lhs.ordinal < rhs.ordinal;
+    };
+
+    std::vector<OrderRow> heap;
+    std::string scratch;
+    size_t ordinal = 0;
 
     while (const auto batch = scan->Next()) {
         const Column& search_phrase = batch->ColumnAt(0);
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
-            const std::string_view phrase = arena.Store(search_phrase.ValueAsString(row));
+            const std::string_view phrase = search_phrase.ValueAsStringView(row, scratch);
             if (phrase.empty()) {
                 continue;
             }
-            rows.push_back(phrase);
+            OfferTopK(heap, order_by_limit, better, 0, phrase, ordinal++);
         }
     }
 
-    std::ranges::sort(rows);
+    SortTopK(heap, better);
 
-    if (rows.size() > 10) {
-        rows.resize(10);
-    }
-
-    Batch result(Schema{{ColumnSchema("SearchPhrase", ColumnType::String)}}, rows.size());
-    for (const std::string_view row : rows) {
-        result.AppendValueFromString(0, row);
+    Batch result(Schema{{ColumnSchema("SearchPhrase", ColumnType::String)}}, heap.size());
+    for (const auto& row : heap) {
+        result.AppendValueFromString(0, row.phrase);
     }
 
     return result;
 }
 
 static ExecuteExpected SelectSearchPhraseOrderByEventTimeThenPhrase(const std::filesystem::path& path) {
-    auto rows = CollectSearchPhraseOrderRows(path);
+    const ColumnarBatchReader reader(path);
+    const auto scan = ScanColumns(path, reader.GetSchema(), {"EventTime", "SearchPhrase"});
 
-    std::ranges::sort(rows, [](const SearchPhraseOrderRow& lhs, const SearchPhraseOrderRow& rhs) {
+    const auto better = [](const OrderRowView& lhs, const OrderRowView& rhs) {
         if (lhs.event_time != rhs.event_time) {
             return lhs.event_time < rhs.event_time;
         }
-        if (lhs.search_phrase != rhs.search_phrase) {
-            return lhs.search_phrase < rhs.search_phrase;
+        if (lhs.phrase != rhs.phrase) {
+            return lhs.phrase < rhs.phrase;
         }
         return lhs.ordinal < rhs.ordinal;
-    });
+    };
 
-    if (rows.size() > 10) {
-        rows.resize(10);
+    std::vector<OrderRow> heap;
+    std::string scratch;
+    size_t ordinal = 0;
+
+    while (const auto batch = scan->Next()) {
+        const Column& event_time = batch->ColumnAt(0);
+        const Column& search_phrase = batch->ColumnAt(1);
+
+        for (size_t row = 0; row < batch->RowsCount(); ++row) {
+            const std::string_view phrase = search_phrase.ValueAsStringView(row, scratch);
+
+            if (phrase.empty()) {
+                continue;
+            }
+
+            OfferTopK(heap, order_by_limit, better, event_time.ValueAsInt128(row), phrase, ordinal++);
+        }
     }
+
+    SortTopK(heap, better);
 
     Batch result(
         Schema{{ColumnSchema("SearchPhrase", ColumnType::String), ColumnSchema("EventTime", ColumnType::Timestamp)}},
-        rows.size());
+        heap.size());
 
-    for (const auto& row : rows) {
-        result.AppendValueFromString(0, row.search_phrase);
+    for (const auto& row : heap) {
+        result.AppendValueFromString(0, row.phrase);
         result.AppendValueFromString(1, TimestampToString(static_cast<int64_t>(row.event_time)));
     }
 

@@ -18,9 +18,11 @@ static constexpr std::string_view ColumnarMagic = "CLMN";
 
 static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out) {
     const auto pos = out.tellp();
+
     if (pos == -1) {
         throw Error::PathIo("io", path, "tell file");
     }
+
     return pos;
 }
 
@@ -33,6 +35,14 @@ static void FlushWrite(const std::filesystem::path& path, std::ofstream& out) {
 
 static bool SupportsChunkMinMax(const ColumnType type) { return type != ColumnType::String; }
 
+static size_t CheckedChunkSize(const std::filesystem::path& path, const uint64_t size) {
+    if (size > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        throw Error::Overflow("io", "column chunk exceeds addressable size", path.string());
+    }
+
+    return size;
+}
+
 static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk) {
     if (!SupportsChunkMinMax(column.Type()) || column.Size() == 0) {
         return;
@@ -43,9 +53,11 @@ static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk
 
     for (size_t row = 1; row < column.Size(); ++row) {
         const Int128 value = column.ValueAsInt128(row);
+
         if (value < min_value) {
             min_value = value;
         }
+
         if (value > max_value) {
             max_value = value;
         }
@@ -59,7 +71,9 @@ static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk
 static std::vector<uint8_t> SerializeColumn(const Column& column) {
     std::ostringstream buffer(std::ios::binary);
     column.WriteTo(buffer);
+
     const std::string bytes = std::move(buffer).str();
+
     return std::vector<uint8_t>(bytes.begin(), bytes.end());
 }
 
@@ -145,7 +159,7 @@ std::optional<Batch> ColumnarBatchReader::ReadNext() {
 
     for (size_t col = 0; col < batch.ColumnsCount(); ++col) {
         const auto& chunk = row_group_columns[col];
-        ReadBatchColumnChunk(path_, input_, chunk, row_count, batch, col);
+        ReadBatchColumnChunk(path_, input_, chunk, row_count, batch, col, read_buffer_, decompression_buffer_);
     }
 
     return batch;
@@ -166,6 +180,7 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     }
 
     batch.Validate();
+
     if (batch.GetSchema() != metadata_.schema) {
         throw Error::InconsistentData("io", "batch schema mismatch", path_.string());
     }
@@ -216,23 +231,44 @@ void ColumnarBatchWriter::Finalize() && {
 
 std::vector<uint8_t> ReadColumnChunk(const std::filesystem::path& path, InputFile& input,
                                      const ColumnChunkMetadata& chunk) {
-    const std::string raw = input.ReadStringAt(chunk.offset, chunk.compressed_size);
-    const std::span<const uint8_t> raw_bytes(reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
+    std::vector<uint8_t> read_buffer;
+    std::vector<uint8_t> decompression_buffer;
+
+    read_buffer.resize(CheckedChunkSize(path, chunk.compressed_size));
+    input.ReadAt(reinterpret_cast<char*>(read_buffer.data()), read_buffer.size(), chunk.offset);
+
+    const std::span<const uint8_t> raw_bytes(read_buffer);
 
     if (chunk.compression == Compression::None) {
         if (chunk.compressed_size != chunk.uncompressed_size) {
             throw Error::MalformedData("io", "uncompressed chunk size mismatch", path.string());
         }
-        return std::vector<uint8_t>(raw_bytes.begin(), raw_bytes.end());
+
+        return read_buffer;
     }
 
-    return Decompress(raw_bytes, chunk.compression, chunk.uncompressed_size);
+    DecompressInto(raw_bytes, chunk.compression, chunk.uncompressed_size, decompression_buffer);
+
+    return decompression_buffer;
 }
 
 void ReadBatchColumnChunk(const std::filesystem::path& path, InputFile& input, const ColumnChunkMetadata& chunk,
-                          const uint32_t row_count, const Batch& batch, const size_t column_index) {
-    const std::vector<uint8_t> payload = ReadColumnChunk(path, input, chunk);
-    const std::string bytes(payload.begin(), payload.end());
-    std::istringstream stream(bytes, std::ios::binary);
-    batch.ReadColumnFrom(column_index, stream, row_count, chunk.uncompressed_size);
+                          const uint32_t row_count, const Batch& batch, const size_t column_index,
+                          std::vector<uint8_t>& read_buffer, std::vector<uint8_t>& decompression_buffer) {
+    read_buffer.resize(CheckedChunkSize(path, chunk.compressed_size));
+    input.ReadAt(reinterpret_cast<char*>(read_buffer.data()), read_buffer.size(), chunk.offset);
+
+    std::span<const uint8_t> payload(read_buffer);
+
+    if (chunk.compression == Compression::None) {
+        if (chunk.compressed_size != chunk.uncompressed_size) {
+            throw Error::MalformedData("io", "uncompressed chunk size mismatch", path.string());
+        }
+    } else {
+        DecompressInto(payload, chunk.compression, chunk.uncompressed_size, decompression_buffer);
+        payload = std::span<const uint8_t>(decompression_buffer);
+    }
+
+    batch.ReadColumnFrom(column_index, {reinterpret_cast<const char*>(payload.data()), (payload.size())}, row_count,
+                         chunk.uncompressed_size);
 }

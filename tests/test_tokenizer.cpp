@@ -21,17 +21,17 @@ TEST(sql_tokenizer, tokenizes_select_query) {
         TokenizeSql("SELECT DISTINCT name, COUNT(*), LENGTH(city) FROM sales GROUP BY name ORDER BY name LIMIT 10;");
 
     ASSERT_TRUE(result.has_value());
+
     const auto& tokens = result.value();
 
-    EXPECT_EQ(
-        CollectTypes(tokens),
-        (std::vector{
-            Tokens::Select,      Tokens::Distinct,  Tokens::NameToken,      Tokens::Comma,     Tokens::Count,
-            Tokens::OpenBracket, Tokens::Asterisk,  Tokens::CloseBracket,   Tokens::Comma,     Tokens::Length,
-            Tokens::OpenBracket, Tokens::NameToken, Tokens::CloseBracket,   Tokens::From,      Tokens::NameToken,
-            Tokens::Group,       Tokens::By,        Tokens::NameToken,      Tokens::Order,     Tokens::By,
-            Tokens::NameToken,   Tokens::Limit,     Tokens::NumericLiteral, Tokens::Semicolon, Tokens::EndOfInput,
-        }));
+    EXPECT_EQ(CollectTypes(tokens),
+              (std::vector{
+                  Tokens::Select,      Tokens::Distinct,  Tokens::NameToken,      Tokens::Comma,     Tokens::Count,
+                  Tokens::OpenBracket, Tokens::Asterisk,  Tokens::CloseBracket,   Tokens::Comma,     Tokens::Length,
+                  Tokens::OpenBracket, Tokens::NameToken, Tokens::CloseBracket,   Tokens::From,      Tokens::NameToken,
+                  Tokens::Group,       Tokens::By,        Tokens::NameToken,      Tokens::Order,     Tokens::By,
+                  Tokens::NameToken,   Tokens::Limit,     Tokens::NumericLiteral, Tokens::Semicolon, Tokens::EndOfInput,
+              }));
 
     ASSERT_EQ(tokens.size(), 25U);
     EXPECT_NE(std::dynamic_pointer_cast<TSelectToken>(tokens[0]), nullptr);
@@ -49,6 +49,7 @@ TEST(sql_tokenizer, tokenizes_create_with_literals_and_case_insensitive_keywords
     const auto result = TokenizeSql("create report as SeLeCt 'abc''def', total_sum - 10.5 FROM source_table");
 
     ASSERT_TRUE(result.has_value());
+
     const auto& tokens = result.value();
 
     EXPECT_EQ(CollectTypes(tokens), (std::vector{
@@ -81,7 +82,9 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
     std::vector<Tokens> types;
     while (true) {
         auto token = tokenizer.GetNext();
+
         ASSERT_TRUE(token.has_value());
+
         types.push_back(token.value()->GetType());
 
         if (token.value()->GetType() == Tokens::EndOfInput) {
@@ -108,10 +111,12 @@ TEST(sql_tokenizer, tokenizer_returns_tokens_one_by_one) {
 
 TEST(sql_tokenizer, rejects_invalid_input) {
     const auto unterminated = TokenizeSql("SELECT 'oops");
+
     ASSERT_FALSE(unterminated.has_value());
     EXPECT_EQ(unterminated.error().GetCode(), Error::Code::MalformedData);
 
     const auto invalid_character = TokenizeSql("SELECT @oops");
+
     ASSERT_FALSE(invalid_character.has_value());
     EXPECT_EQ(invalid_character.error().GetCode(), Error::Code::MalformedData);
 }

@@ -132,6 +132,7 @@ bool MayMatchRowGroup(const PredicatePtr& predicate, const RowGroupMetadata& row
                 predicate->metadata_typed_column_index >= row_group.columns.size()) {
                 return true;
             }
+
             return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_column_index],
                                              predicate->metadata_typed_literal_value,
                                              predicate->metadata_typed_comparison);
@@ -200,7 +201,8 @@ class ScanOperator final : public Operator {
             const size_t source_index = projection_indexes_[projected_index];
             const auto& chunk = row_group->columns[source_index];
 
-            ReadBatchColumnChunk(path_, input_, chunk, row_group->row_count, batch, projected_index);
+            ReadBatchColumnChunk(path_, input_, chunk, row_group->row_count, batch, projected_index, read_buffer_,
+                                 decompression_buffer_);
         }
 
         return batch;
@@ -217,6 +219,9 @@ class ScanOperator final : public Operator {
     PredicatePtr filter_;
 
     size_t next_group_ = 0;
+
+    std::vector<uint8_t> read_buffer_;
+    std::vector<uint8_t> decompression_buffer_;
 };
 
 std::unique_ptr<Operator> CreateMetadataCountOperator(std::filesystem::path path, std::string output_name) {

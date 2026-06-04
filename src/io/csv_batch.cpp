@@ -12,6 +12,7 @@ static uint64_t AddChecked(const uint64_t current, const uint64_t add) {
     if (add > std::numeric_limits<uint64_t>::max() - current) {
         throw Error::Overflow("io", "batch byte size overflow");
     }
+
     return current + add;
 }
 
@@ -34,14 +35,17 @@ static uint64_t EstimateValueBytes(const ColumnType type, const std::string_view
         case ColumnType::String:
             return value.size();
     }
+
     throw Error::Unsupported("io", "unsupported column type");
 }
 
 static uint64_t EstimateRowBytes(const Schema& schema, const std::vector<std::string>& row) {
     uint64_t bytes = 0;
+
     for (size_t i = 0; i < schema.columns.size(); ++i) {
         bytes = AddChecked(bytes, EstimateValueBytes(schema.columns[i].type, row[i]));
     }
+
     return bytes;
 }
 
@@ -145,6 +149,7 @@ CsvBatchWriter::CsvBatchWriter(const std::filesystem::path& path, Schema schema)
 
 void CsvBatchWriter::Write(const Batch& batch) {
     batch.Validate();
+
     if (batch.GetSchema() != schema_) {
         throw Error::InconsistentData("io", "batch schema mismatch");
     }

@@ -144,11 +144,13 @@ bool SameExpr(const ExprPtr& lhs, const ExprPtr& rhs) {
                 lhs->arguments.size() != rhs->arguments.size()) {
                 return false;
             }
+
             for (size_t i = 0; i < lhs->arguments.size(); ++i) {
                 if (!SameExpr(lhs->arguments[i], rhs->arguments[i])) {
                     return false;
                 }
             }
+
             return true;
         case ExprKind::Case:
             return lhs->output_name == rhs->output_name;
@@ -189,5 +191,6 @@ std::optional<size_t> TryFindBatchColumn(const Schema& schema, const std::string
             return i;
         }
     }
+
     return std::nullopt;
 }

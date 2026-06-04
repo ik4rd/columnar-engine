@@ -157,6 +157,7 @@ static SelectItemSpec Agg(std::string function, ExprPtr argument, const bool dis
     aggregate.argument_kind = argument->kind == ExprKind::Star ? AggArgumentKind::Star : AggArgumentKind::Column;
 
     const std::string argument_name = argument->output_name;
+
     if (aggregate.argument_kind == AggArgumentKind::Column) {
         aggregate.argument = std::move(argument);
         if (aggregate.argument->kind == ExprKind::Column) {

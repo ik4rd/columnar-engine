@@ -2,6 +2,7 @@
 #include <chrono>
 #include <compare>
 #include <cstddef>
+#include <optional>
 #include <regex>
 #include <span>
 #include <utility>
@@ -37,19 +38,18 @@ bool IsAggregateLookupFunction(const std::string_view name) {
 
 std::string FormatAggregateExprName(const ExprSpec& expr) {
     const std::string name = ToUpperAscii(expr.function_name);
+
     if (name == "COUNT" && !expr.arguments.empty() && expr.arguments.front()->kind == ExprKind::Star) {
         return std::string(CountStarName);
     }
 
     std::string out = name + "(";
-
     for (size_t i = 0; i < expr.arguments.size(); ++i) {
         if (i > 0) {
             out += ", ";
         }
         out += expr.arguments[i]->output_name;
     }
-
     out += ")";
 
     return out;
@@ -57,6 +57,7 @@ std::string FormatAggregateExprName(const ExprSpec& expr) {
 
 std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const Batch& batch, const size_t row) {
     const std::string name = ToUpperAscii(expr.function_name);
+
     if (!IsAggregateLookupFunction(name)) {
         return std::nullopt;
     }
@@ -72,6 +73,27 @@ std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const 
     return std::nullopt;
 }
 
+std::optional<int64_t> TryReadTimestampMicros(const ExprPtr& expr, const Batch& batch, const size_t row) {
+    if (expr && expr->kind == ExprKind::Column && expr->column_index_bound &&
+        expr->column_index < batch.ColumnsCount()) {
+        const Column& column = batch.ColumnAt(expr->column_index);
+
+        if (column.Type() == ColumnType::Timestamp) {
+            return static_cast<int64_t>(column.ValueAsInt128(row));
+        }
+    }
+
+    return std::nullopt;
+}
+
+int64_t EvalTimestampMicros(const ExprPtr& expr, const Batch& batch, const size_t row) {
+    if (const auto micros = TryReadTimestampMicros(expr, batch, row); micros.has_value()) {
+        return *micros;
+    }
+
+    return ParseTimestamp(EvalExpr(expr, batch, row));
+}
+
 std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t row) {
     if (const auto aggregate_value = TryResolveAggregateValue(expr, batch, row); aggregate_value.has_value()) {
         return *aggregate_value;
@@ -85,7 +107,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
     if (name == "EXTRACT") {
         const std::string part = ToUpperAscii(EvalExpr(expr.arguments.at(0), batch, row));
-        const int64_t ts = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
+        const int64_t ts = EvalTimestampMicros(expr.arguments.at(1), batch, row);
 
         const std::chrono::sys_time<std::chrono::microseconds> time{std::chrono::microseconds{ts}};
         const auto day = std::chrono::floor<std::chrono::days>(time);
@@ -104,7 +126,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
     if (name == "DATE_TRUNC") {
         const std::string part = ToUpperAscii(EvalExpr(expr.arguments.at(0), batch, row));
-        int64_t micros = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
+        int64_t micros = EvalTimestampMicros(expr.arguments.at(1), batch, row);
 
         if (part == ExtractMinutePart) {
             micros = micros / MinuteMicros * MinuteMicros;
@@ -121,6 +143,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
         if (pattern_text == R"(^https?://(?:www\.)?([^/]+)/.*$)" && replacement == R"(\1)") {
             std::string_view rest = source;
+
             if (rest.starts_with(HttpScheme)) {
                 rest.remove_prefix(HttpScheme.size());
             } else if (rest.starts_with(HttpsScheme)) {
@@ -134,11 +157,13 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
             }
 
             const size_t slash = rest.find('/');
+
             if (slash == std::string_view::npos || slash == 0) {
                 return source;
             }
 
             const std::string_view suffix = rest.substr(slash + 1);
+
             if (suffix.find('\n') != std::string_view::npos || suffix.find('\r') != std::string_view::npos) {
                 return source;
             }
@@ -215,16 +240,19 @@ std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPt
     }
 
     const auto column_index = TryFindBatchColumn(batch.GetSchema(), left->column.name);
+
     if (!column_index.has_value()) {
         return std::nullopt;
     }
 
     const Column& column = batch.ColumnAt(*column_index);
+
     if (column.Type() == ColumnType::String) {
         return std::nullopt;
     }
 
     const std::optional<Int128> rhs = TryParseLiteralValueAsInt128(right->literal, column.Type());
+
     if (!rhs.has_value()) {
         return std::nullopt;
     }
@@ -257,16 +285,20 @@ struct RowRef {
 
 std::strong_ordering CompareColumnRows(const Column& lhs_column, const size_t lhs_row, const Column& rhs_column,
                                        const size_t rhs_row, const ColumnType type) {
-    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String && rhs_column.Type() == ColumnType::String) {
-        return ParseColumnValueAsInt128(type, lhs_column.ValueAsString(lhs_row)) <=>
-               ParseColumnValueAsInt128(type, rhs_column.ValueAsString(rhs_row));
+    std::string lhs_scratch;
+    std::string rhs_scratch;
+
+    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String &&
+        rhs_column.Type() == ColumnType::String) {
+        return ParseColumnValueAsInt128(type, lhs_column.ValueAsStringView(lhs_row, lhs_scratch)) <=>
+               ParseColumnValueAsInt128(type, rhs_column.ValueAsStringView(rhs_row, rhs_scratch));
     }
 
     if (type != ColumnType::String) {
         return lhs_column.ValueAsInt128(lhs_row) <=> rhs_column.ValueAsInt128(rhs_row);
     }
 
-    return lhs_column.ValueAsString(lhs_row) <=> rhs_column.ValueAsString(rhs_row);
+    return lhs_column.ValueAsStringView(lhs_row, lhs_scratch) <=> rhs_column.ValueAsStringView(rhs_row, rhs_scratch);
 }
 
 class RowOrdering {
@@ -617,6 +649,7 @@ std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) 
             }
 
             const auto column = TryFindBatchColumn(batch.GetSchema(), expr->column.name);
+
             if (!column.has_value()) {
                 throw Error::InvalidArgument("executor", "unknown column '" + expr->column.name + "'");
             }
@@ -639,6 +672,7 @@ std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) 
         case ExprKind::Star:
             return "*";
     }
+
     return {};
 }
 

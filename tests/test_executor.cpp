@@ -45,6 +45,7 @@ static Batch BuildHitsTable(const std::string_view query) {
     executor.RegisterTable("hits", columnar_file.Path());
 
     auto result = executor.Execute(query);
+
     if (!result.has_value()) {
         throw result.error();
     }
@@ -54,6 +55,7 @@ static Batch BuildHitsTable(const std::string_view query) {
 
 TEST(executor, usage_example_register_table_and_execute_query) {
     const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits;");
+
     EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
     EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"5"});
 }
@@ -63,14 +65,17 @@ TEST(executor, groups_rows_and_orders_by_aggregate_descending) {
         "SELECT AdvEngineID, COUNT(*) FROM hits WHERE AdvEngineID <> 0 GROUP BY AdvEngineID ORDER BY COUNT(*) DESC;");
 
     EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"7", "2"},
         {"1", "1"},
         {"3", "1"},
     };
+
     std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
     std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -97,17 +102,21 @@ TEST(executor, encodes_multicolumn_group_keys_with_length_prefix) {
     executor.RegisterTable("events", columnar_file.Path());
 
     auto result = executor.Execute("SELECT KeyLeft, KeyRight, COUNT(*) FROM events GROUP BY KeyLeft, KeyRight;");
+
     ASSERT_TRUE(result.has_value()) << result.error().what();
 
     EXPECT_EQ(BatchColumnNames(result.value()), (std::vector<std::string>{"KeyLeft", "KeyRight", "COUNT(*)"}));
+
     auto actual_rows = BatchRows(result.value());
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"a", "bc", "1"},
         {"a|", "bc", "2"},
         {"ab", "c", "2"},
     };
+
     std::ranges::sort(actual_rows);
     std::ranges::sort(expected_rows);
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -117,14 +126,17 @@ TEST(executor, supports_from_with_as_alias_and_qualified_columns) {
         "COUNT(*) DESC;");
 
     EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"7", "2"},
         {"1", "1"},
         {"3", "1"},
     };
+
     std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
     std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -134,14 +146,17 @@ TEST(executor, supports_from_with_bare_alias) {
         "COUNT(*) DESC;");
 
     EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"AdvEngineID", "COUNT(*)"}));
+
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"7", "2"},
         {"1", "1"},
         {"3", "1"},
     };
+
     std::ranges::sort(actual_rows.begin() + 1, actual_rows.end());
     std::ranges::sort(expected_rows.begin() + 1, expected_rows.end());
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -157,13 +172,16 @@ TEST(executor, supports_select_alias_order_by_alias_and_limit) {
         "SELECT RegionID, COUNT(DISTINCT UserID) AS u FROM hits GROUP BY RegionID ORDER BY u DESC LIMIT 2;");
 
     EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"RegionID", "u"}));
+
     auto actual_rows = BatchRows(batch);
     auto expected_rows = std::vector<std::vector<std::string>>{
         {"10", "2"},
         {"20", "2"},
     };
+
     std::ranges::sort(actual_rows);
     std::ranges::sort(expected_rows);
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -227,10 +245,10 @@ TEST(executor, supports_clickbench_star_order_by_projected_column) {
     executor.RegisterTable("hits", columnar_file.Path());
 
     auto result = executor.Execute("SELECT * FROM hits WHERE URL LIKE '%google%' ORDER BY EventTime ASC LIMIT 2;");
+
     ASSERT_TRUE(result.has_value()) << result.error().what();
 
-    EXPECT_EQ(BatchColumnNames(result.value()),
-              (std::vector<std::string>{"WatchID", "EventTime", "URL", "Title"}));
+    EXPECT_EQ(BatchColumnNames(result.value()), (std::vector<std::string>{"WatchID", "EventTime", "URL", "Title"}));
     EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
                                              {"3", "2024-01-01 00:00:00", "https://google.com/b", "second"},
                                              {"2", "2024-01-03 00:00:00", "http://google.com/a", "first"},
@@ -249,8 +267,10 @@ TEST(executor, supports_multiple_aggregates_with_alias_and_limit) {
         {"10", "3", "2", "200", "2"},
         {"20", "14", "2", "350", "2"},
     };
+
     std::ranges::sort(actual_rows);
     std::ranges::sort(expected_rows);
+
     EXPECT_EQ(actual_rows, expected_rows);
 }
 
@@ -281,6 +301,7 @@ TEST(executor, supports_top_k_group_by_multiple_numeric_keys_with_compact_aggreg
     auto result = executor.Execute(
         "SELECT WatchID, ClientIP, COUNT(*) AS c, SUM(IsRefresh), AVG(ResolutionWidth) FROM hits GROUP BY WatchID, "
         "ClientIP ORDER BY c DESC LIMIT 2;");
+
     ASSERT_TRUE(result.has_value()) << result.error().what();
 
     EXPECT_EQ(BatchColumnNames(result.value()),
@@ -294,12 +315,14 @@ TEST(executor, supports_top_k_group_by_multiple_numeric_keys_with_compact_aggreg
 TEST(executor, executes_basic_aggregate_queries) {
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(*) FROM hits WHERE AdvEngineID <> 0;");
+
         EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(*)"});
         EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT SUM(AdvEngineID), COUNT(*), AVG(ResolutionWidth) FROM hits;");
+
         EXPECT_EQ(BatchColumnNames(batch),
                   (std::vector<std::string>{"SUM(AdvEngineID)", "COUNT(*)", "AVG(ResolutionWidth)"}));
         EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"18", "5", "300"}));
@@ -307,30 +330,35 @@ TEST(executor, executes_basic_aggregate_queries) {
 
     {
         const Batch batch = BuildHitsTable("SELECT AVG(UserID) FROM hits;");
+
         EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"AVG(UserID)"});
         EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(DISTINCT UserID) FROM hits;");
+
         EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(DISTINCT UserID)"});
         EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT COUNT(DISTINCT SearchPhrase) FROM hits;");
+
         EXPECT_EQ(BatchColumnNames(batch), std::vector<std::string>{"COUNT(DISTINCT SearchPhrase)"});
         EXPECT_EQ(SingleRowValues(batch), std::vector<std::string>{"4"});
     }
 
     {
         const Batch batch = BuildHitsTable("SELECT MIN(EventDate), MAX(EventDate) FROM hits;");
+
         EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"MIN(EventDate)", "MAX(EventDate)"}));
         EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"2024-01-01", "2024-01-09"}));
     }
 
     {
         const Batch batch = BuildHitsTable("select sum(AdvEngineID), count(*) from hits where SearchPhrase = 'alpha';");
+
         EXPECT_EQ(BatchColumnNames(batch), (std::vector<std::string>{"SUM(AdvEngineID)", "COUNT(*)"}));
         EXPECT_EQ(SingleRowValues(batch), (std::vector<std::string>{"3", "2"}));
     }
@@ -353,6 +381,7 @@ TEST(executor, rejects_unknown_aggregate_functions) {
     executor.RegisterTable("hits", columnar_file.Path());
 
     const ExecuteExpected result = executor.Execute("SELECT median(Value) FROM hits;");
+
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().GetCode(), Error::Code::Unsupported);
 }
@@ -380,6 +409,7 @@ TEST(executor, supports_group_by_computed_numeric_and_timestamp_keys) {
     {
         auto result = executor.Execute(
             "SELECT ClientIP - 1, COUNT(*) AS c FROM hits GROUP BY ClientIP - 1 ORDER BY c DESC, ClientIP - 1 ASC;");
+
         ASSERT_TRUE(result.has_value()) << result.error().what();
         EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
                                                  {"9", "2"},
@@ -390,6 +420,7 @@ TEST(executor, supports_group_by_computed_numeric_and_timestamp_keys) {
     {
         auto result = executor.Execute(
             "SELECT extract(minute FROM EventTime) AS m, COUNT(*) AS c FROM hits GROUP BY m ORDER BY m ASC;");
+
         ASSERT_TRUE(result.has_value()) << result.error().what();
         EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
                                                  {"3", "2"},
@@ -400,6 +431,7 @@ TEST(executor, supports_group_by_computed_numeric_and_timestamp_keys) {
     {
         auto result = executor.Execute(
             "SELECT DATE_TRUNC('minute', EventTime) AS m, COUNT(*) AS c FROM hits GROUP BY m ORDER BY m ASC;");
+
         ASSERT_TRUE(result.has_value()) << result.error().what();
         EXPECT_EQ(BatchRows(result.value()), (std::vector<std::vector<std::string>>{
                                                  {"2024-01-01 12:03:00", "2"},
@@ -428,10 +460,12 @@ TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) 
 
     ColumnarBatchReader reader(columnar_file.Path());
     ColumnarMetadata metadata = reader.GetMetadata();
+
     ASSERT_EQ(metadata.row_groups.size(), 2u);
     ASSERT_EQ(metadata.row_groups[1].columns.size(), 2u);
 
     const auto file_info = GetFileMetadata(columnar_file.Path());
+
     ASSERT_TRUE(file_info.has_value());
 
     metadata.row_groups[1].columns[0].offset = file_info->size + 1024;
@@ -441,6 +475,7 @@ TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) 
     const std::string metadata_blob = metadata_stream.str();
 
     std::vector<uint8_t> bytes = ReadFileBytes(columnar_file.Path());
+
     ASSERT_GE(bytes.size(), sizeof(uint64_t) + 4u);
 
     const size_t footer_offset = bytes.size() - sizeof(uint64_t) - 4u;
@@ -463,6 +498,7 @@ TEST(executor, prunes_row_groups_for_typed_where_filters_before_reading_chunks) 
     executor.RegisterTable("hits", columnar_file.Path());
 
     auto result = executor.Execute("SELECT COUNT(*) FROM hits WHERE EventDate = '2024-01-01';");
+
     ASSERT_TRUE(result.has_value()) << result.error().what();
     EXPECT_EQ(SingleRowValues(result.value()), std::vector<std::string>{"2"});
 }

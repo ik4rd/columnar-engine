@@ -29,6 +29,7 @@ class TempFile {
             path_ = std::move(other.path_);
             other.path_.clear();
         }
+
         return *this;
     }
     ~TempFile() { Remove(); }
@@ -40,6 +41,7 @@ class TempFile {
         if (path_.empty()) {
             return;
         }
+
         std::error_code ec;
         std::filesystem::remove(path_, ec);
     }

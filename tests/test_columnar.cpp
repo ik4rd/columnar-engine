@@ -45,13 +45,16 @@ TEST(columnar, csv_to_columnar_and_back) {
     ConvertColumnarToCsv(columnar_file.Path(), schema_out.Path(), data_out.Path());
 
     const auto [columns] = ReadSchemaCsv(schema_out.Path());
+
     ASSERT_EQ(columns.size(), schema_rows.size());
+
     for (size_t i = 0; i < schema_rows.size(); ++i) {
         EXPECT_EQ(columns[i].name, schema_rows[i][0]);
         EXPECT_EQ(ColumnTypeToString(columns[i].type), schema_rows[i][1]);
     }
 
     const auto data_roundtrip = ReadRows(data_out.Path());
+
     EXPECT_EQ(data_roundtrip, data_rows);
 }
 
@@ -78,6 +81,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
 
     ColumnarBatchReader reader(columnar_file.Path());
     const auto& [schema, row_groups] = reader.GetMetadata();
+
     ASSERT_EQ(schema.columns.size(), 2u);
     EXPECT_EQ(schema.columns[0].name, "id");
     EXPECT_EQ(schema.columns[0].type, ColumnType::Int64);
@@ -93,10 +97,12 @@ TEST(columnar, metadata_offsets_and_sizes) {
 
     auto string_chunk_size = [&data_rows](const size_t start, const size_t count) -> uint64_t {
         uint64_t total = 0;
+
         for (size_t i = 0; i < count; ++i) {
             total += sizeof(uint32_t);
             total += data_rows[start + i][1].size();
         }
+
         return total;
     };
 
@@ -122,6 +128,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
     EXPECT_FALSE(row_groups[1].columns[1].has_min_max);
 
     uint64_t expected_offset = 0;
+
     for (const auto& row_group : row_groups) {
         for (const auto& column : row_group.columns) {
             EXPECT_EQ(column.offset, expected_offset);
@@ -130,6 +137,7 @@ TEST(columnar, metadata_offsets_and_sizes) {
     }
 
     const auto file_info = GetFileMetadata(columnar_file.Path());
+
     ASSERT_TRUE(file_info.has_value());
     EXPECT_TRUE(file_info->is_regular);
     EXPECT_LT(expected_offset, file_info->size);
@@ -232,6 +240,7 @@ TEST(columnar, metadata_records_minmax_stats_for_date_columns) {
 
     ColumnarBatchReader reader(columnar_file.Path());
     const auto& row_groups = reader.GetMetadata().row_groups;
+
     ASSERT_EQ(row_groups.size(), 2u);
     ASSERT_EQ(row_groups[0].columns.size(), 1u);
     ASSERT_EQ(row_groups[1].columns.size(), 1u);
@@ -255,9 +264,11 @@ TEST(columnar, lz4_compressed_roundtrip) {
     WriteRows(schema_in.Path(), {{"id", "int64"}, {"payload", "string"}});
 
     std::vector<std::vector<std::string>> data_rows;
+
     for (int i = 0; i < 256; ++i) {
         data_rows.push_back({std::to_string(i), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"});
     }
+
     WriteRows(data_in.Path(), data_rows);
 
     ConvertCsvToColumnar(schema_in.Path(), data_in.Path(), columnar_file.Path(), 256, Compression::Lz4);
@@ -265,6 +276,7 @@ TEST(columnar, lz4_compressed_roundtrip) {
 
     ColumnarBatchReader reader(columnar_file.Path());
     const auto& row_group = reader.GetMetadata().row_groups.at(0);
+
     ASSERT_EQ(row_group.columns.size(), 2u);
     EXPECT_EQ(ReadRows(data_out.Path()), data_rows);
     EXPECT_EQ(ReadRows(schema_out.Path()),
@@ -285,6 +297,7 @@ TEST(columnar, lz4_falls_back_to_none_when_chunk_does_not_shrink) {
 
     const ColumnarBatchReader reader(columnar_file.Path());
     const auto& chunk = reader.GetMetadata().row_groups.at(0).columns.at(0);
+
     EXPECT_EQ(chunk.compression, Compression::None);
     EXPECT_EQ(chunk.compressed_size, sizeof(int64_t));
     EXPECT_EQ(chunk.uncompressed_size, sizeof(int64_t));
@@ -311,7 +324,9 @@ TEST(columnar, read_legacy_metadata_without_compression_fields) {
 
     ASSERT_EQ(metadata.schema.columns.size(), 1u);
     ASSERT_EQ(metadata.row_groups.size(), 1u);
+
     const auto& chunk = metadata.row_groups[0].columns[0];
+
     EXPECT_EQ(chunk.offset, 10u);
     EXPECT_EQ(chunk.compressed_size, 24u);
     EXPECT_EQ(chunk.uncompressed_size, 24u);

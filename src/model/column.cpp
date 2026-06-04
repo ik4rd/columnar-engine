@@ -2,6 +2,8 @@
 
 #include <memory>
 
+#include "common/error.h"
+#include "common/parsing.h"
 #include "model/column_boolean.h"
 #include "model/column_character.h"
 #include "model/column_date.h"
@@ -11,8 +13,6 @@
 #include "model/column_int64.h"
 #include "model/column_string.h"
 #include "model/column_timestamp.h"
-#include "common/error.h"
-#include "common/parsing.h"
 
 std::unique_ptr<MutableColumn> CreateColumn(const ColumnType type) {
     switch (type) {
@@ -42,6 +42,12 @@ std::unique_ptr<MutableColumn> CreateColumn(const ColumnType type) {
 Column::Column(const ColumnType type) : type_(type) {}
 
 Int128 Column::ValueAsInt128(const size_t row) const { return ParseInt128(ValueAsString(row)); }
+
+std::string_view Column::ValueAsStringView(const size_t row, std::string& scratch) const {
+    scratch = ValueAsString(row);
+
+    return scratch;
+}
 
 static bool MatchesValueComparison(const Int128 lhs, const Int128 rhs, const ValueComparison comparison) {
     switch (comparison) {

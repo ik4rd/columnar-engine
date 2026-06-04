@@ -1,5 +1,6 @@
 ninja-build
 cmake
+liblz4-dev
 libgtest-dev
 clang-18
 libclang-rt-18-dev

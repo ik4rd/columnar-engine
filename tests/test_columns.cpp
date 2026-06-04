@@ -2,16 +2,17 @@
 #include <string>
 #include <vector>
 
+#include "common/error.h"
+#include "common/parsing.h"
+#include "gtest/gtest.h"
 #include "model/column.h"
 #include "model/column_int64.h"
 #include "model/column_string.h"
-#include "common/error.h"
-#include "gtest/gtest.h"
-#include "common/parsing.h"
 
 static void ExpectColumnRoundtrip(const ColumnType type, const std::vector<std::string>& values,
                                   const std::vector<std::string>& expected_values = {}) {
     auto column = CreateColumn(type);
+
     for (const auto& value : values) {
         column->AppendFromString(value);
     }
@@ -21,12 +22,14 @@ static void ExpectColumnRoundtrip(const ColumnType type, const std::vector<std::
     const std::string bytes = buffer.str();
 
     auto read_back = CreateColumn(type);
-    std::stringstream in(bytes);
-    read_back->ReadFrom(in, values.size(), bytes.size());
+    read_back->ReadFrom({bytes.data(), bytes.size()}, values.size(), bytes.size());
 
     ASSERT_EQ(read_back->Size(), values.size());
+
     const auto& expected = expected_values.empty() ? values : expected_values;
+
     ASSERT_EQ(expected.size(), values.size());
+
     for (size_t i = 0; i < expected.size(); ++i) {
         EXPECT_EQ(read_back->ValueAsString(i), expected[i]);
     }
@@ -42,8 +45,7 @@ TEST(columns, int64_roundtrip) {
     const std::string bytes = buffer.str();
 
     Int64Column read_back;
-    std::stringstream in(bytes);
-    read_back.ReadFrom(in, 2, bytes.size());
+    read_back.ReadFrom({bytes.data(), bytes.size()}, 2, bytes.size());
 
     EXPECT_EQ(read_back.Size(), 2u);
     EXPECT_EQ(read_back.ValueAsString(0), "10");
@@ -61,8 +63,7 @@ TEST(columns, string_roundtrip) {
     const std::string bytes = buffer.str();
 
     StringColumn read_back;
-    std::stringstream in(bytes);
-    read_back.ReadFrom(in, 3, bytes.size());
+    read_back.ReadFrom({bytes.data(), bytes.size()}, 3, bytes.size());
 
     EXPECT_EQ(read_back.Size(), 3u);
     EXPECT_EQ(read_back.ValueAsString(0), "alpha");
@@ -72,12 +73,14 @@ TEST(columns, string_roundtrip) {
 
 TEST(columns, int64_invalid_value_throws) {
     Int64Column values;
+
     EXPECT_THROW(values.AppendFromString("not_a_number"), Error);
 }
 
 TEST(columns, string_out_of_range_throws) {
     StringColumn values;
     values.AppendFromString("alpha");
+
     EXPECT_THROW(values.ValueAsString(1), Error);
 }
 
@@ -85,14 +88,12 @@ TEST(columns, supported_scalar_types_roundtrip) {
     ExpectColumnRoundtrip(ColumnType::Boolean, {"true", "false", "1"}, {"true", "false", "true"});
     ExpectColumnRoundtrip(ColumnType::Int16, {"-32768", "0", "32767"});
     ExpectColumnRoundtrip(ColumnType::Int32, {"-2147483648", "7", "2147483647"});
-    ExpectColumnRoundtrip(
-        ColumnType::Int128,
-        {"-170141183460469231731687303715884105728", "0", "170141183460469231731687303715884105727"});
+    ExpectColumnRoundtrip(ColumnType::Int128,
+                          {"-170141183460469231731687303715884105728", "0", "170141183460469231731687303715884105727"});
     ExpectColumnRoundtrip(ColumnType::Date, {"1970-01-01", "2024-02-29", "2030-12-31"});
-    ExpectColumnRoundtrip(
-        ColumnType::Timestamp,
-        {"1970-01-01 00:00:00", "2024-02-29 12:34:56.123456", "2030-12-31T23:59:59.5"},
-        {"1970-01-01 00:00:00", "2024-02-29 12:34:56.123456", "2030-12-31 23:59:59.5"});
+    ExpectColumnRoundtrip(ColumnType::Timestamp,
+                          {"1970-01-01 00:00:00", "2024-02-29 12:34:56.123456", "2030-12-31T23:59:59.5"},
+                          {"1970-01-01 00:00:00", "2024-02-29 12:34:56.123456", "2030-12-31 23:59:59.5"});
     ExpectColumnRoundtrip(ColumnType::Character, {"A", ",", "\n"});
 }
 
@@ -121,18 +122,48 @@ TEST(columns, scalar_invalid_values_throw) {
 
 TEST(columns, type_names_roundtrip) {
     const std::vector<ColumnType> types = {
-        ColumnType::Boolean,
-        ColumnType::Int16,
-        ColumnType::Int32,
-        ColumnType::Int64,
-        ColumnType::Int128,
-        ColumnType::String,
-        ColumnType::Date,
-        ColumnType::Timestamp,
-        ColumnType::Character,
+        ColumnType::Boolean, ColumnType::Int16, ColumnType::Int32,     ColumnType::Int64,     ColumnType::Int128,
+        ColumnType::String,  ColumnType::Date,  ColumnType::Timestamp, ColumnType::Character,
     };
 
     for (const auto type : types) {
         EXPECT_EQ(ParseColumnType(ColumnTypeToString(type)), type);
+    }
+}
+
+TEST(columns, string_self_append_does_not_dangle) {
+    StringColumn column;
+    column.AppendFromString("alpha");
+    column.AppendFromString("beta");
+    column.AppendFromString("gamma");
+
+    column.AppendFromColumn(column, 0);
+    column.AppendRangeFromColumn(column, 1, 2);
+    const std::vector<size_t> rows = {2, 0};
+    column.AppendSelectedFromColumn(column, rows);
+
+    const std::vector<std::string> expected = {"alpha", "beta", "gamma", "alpha", "beta", "gamma", "gamma", "alpha"};
+
+    ASSERT_EQ(column.Size(), expected.size());
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(column.ValueAsString(i), expected[i]);
+    }
+}
+
+TEST(columns, fixed_self_append_range_does_not_dangle) {
+    Int64Column column;
+    for (int i = 0; i < 4; ++i) {
+        column.AppendFromString(std::to_string(i));
+    }
+
+    column.AppendRangeFromColumn(column, 1, 3);
+
+    const std::vector<int64_t> expected = {0, 1, 2, 3, 1, 2, 3};
+
+    ASSERT_EQ(column.Size(), expected.size());
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(column.ValueAsInt128(i), static_cast<Int128>(expected[i]));
     }
 }

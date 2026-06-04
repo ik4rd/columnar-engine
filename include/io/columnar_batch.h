@@ -32,6 +32,9 @@ class ColumnarBatchReader final : public BatchReader {
 
     ColumnarMetadata metadata_;
     size_t next_group_ = 0;
+
+    std::vector<uint8_t> read_buffer_;
+    std::vector<uint8_t> decompression_buffer_;
 };
 
 class ColumnarBatchWriter final : public BatchWriter {
@@ -63,4 +66,5 @@ class ColumnarBatchWriter final : public BatchWriter {
 std::vector<uint8_t> ReadColumnChunk(const std::filesystem::path& path, InputFile& input,
                                      const ColumnChunkMetadata& chunk);
 void ReadBatchColumnChunk(const std::filesystem::path& path, InputFile& input, const ColumnChunkMetadata& chunk,
-                          uint32_t row_count, const Batch& batch, size_t column_index);
+                          uint32_t row_count, const Batch& batch, size_t column_index,
+                          std::vector<uint8_t>& read_buffer, std::vector<uint8_t>& decompression_buffer);

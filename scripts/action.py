@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-action.py — starts Docker (if not running) and then runs act
-for a GitHub Actions workflow.
 
-Examples:
-  python3 scripts/action.py
-  python3 scripts/action.py --workflow .github/workflows/cmake-single-platform.yml
-  python3 scripts/action.py -- --verbose
-"""
 
 from __future__ import annotations
 
@@ -19,8 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
-
+from typing import List
 
 DEFAULT_WORKFLOW = ".github/workflows/cmake-single-platform.yml"
 DEFAULT_PLATFORM_MAP = "ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest"
@@ -40,7 +31,6 @@ SUDO_EXE = "sudo"
 OPEN_EXE_MAC = "open"
 
 APT_PACKAGES_FILE = ".github/apt-packages.txt"
-
 
 ERR_DOCKER_NOT_FOUND = (
     "Docker executable not found in PATH. Install Docker Desktop (macOS/Windows) "
@@ -75,7 +65,7 @@ INFO_AUTO_DETECT_REPO_ROOT_FAILED = (
 
 
 def run(
-    cmd: List[str], check: bool = False, capture: bool = False
+        cmd: List[str], check: bool = False, capture: bool = False
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
@@ -102,13 +92,16 @@ def detect_repo_root() -> Path:
             return Path(p.stdout.strip()).resolve()
 
     print(INFO_AUTO_DETECT_REPO_ROOT_FAILED, flush=True)
+
     return Path(__file__).resolve().parent.parent
 
 
 def docker_daemon_ready() -> bool:
     if not have_exe(DOCKER_EXE):
         return False
+
     p = run([DOCKER_EXE, "info"], check=False, capture=True)
+
     return p.returncode == 0
 
 
@@ -138,7 +131,7 @@ def start_docker_linux() -> None:
 
 
 def ensure_docker_running(
-    timeout_seconds: int = DEFAULT_DOCKER_TIMEOUT_SECONDS,
+        timeout_seconds: int = DEFAULT_DOCKER_TIMEOUT_SECONDS,
 ) -> None:
     if not have_exe(DOCKER_EXE):
         raise RuntimeError(ERR_DOCKER_NOT_FOUND)
@@ -185,6 +178,7 @@ def run_act(workflow: str, arch: str, platform_map: str, extra_args: List[str]) 
 
     print(f"\n{INFO_RUNNING_ACT} {' '.join(cmd)}\n", flush=True)
     p = subprocess.run(cmd)
+
     return p.returncode
 
 
@@ -221,6 +215,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         nargs=argparse.REMAINDER,
         help="Extra args passed to act (prefix with --), e.g. -- -v",
     )
+
     return parser
 
 

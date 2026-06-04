@@ -63,6 +63,7 @@ static ColumnarMetadata ReadLegacyMetadata(std::istream& in) {
         group.row_count = ReadStream<uint32_t>(in);
 
         const uint32_t columns_in_group = ReadStream<uint32_t>(in);
+
         if (columns_in_group != column_count) {
             throw Error::InconsistentData("model", "row group column count mismatch");
         }
@@ -89,6 +90,7 @@ static ColumnarMetadata ReadLegacyMetadata(std::istream& in) {
     for (auto& row_group : metadata.row_groups) {
         for (auto& column : row_group.columns) {
             column.has_min_max = ReadStream<uint8_t>(in) != 0;
+
             if (!column.has_min_max) {
                 continue;
             }
@@ -105,6 +107,7 @@ static ColumnarMetadata ReadV2Metadata(std::istream& in) {
     ColumnarMetadata metadata;
 
     const uint32_t version = ReadStream<uint32_t>(in);
+
     if (version != 2) {
         throw Error::MalformedData("model", "unsupported metadata version");
     }
@@ -132,6 +135,7 @@ static ColumnarMetadata ReadV2Metadata(std::istream& in) {
         group.row_count = ReadStream<uint32_t>(in);
 
         const uint32_t columns_in_group = ReadStream<uint32_t>(in);
+
         if (columns_in_group != column_count) {
             throw Error::InconsistentData("model", "row group column count mismatch");
         }
@@ -154,6 +158,7 @@ static ColumnarMetadata ReadV2Metadata(std::istream& in) {
     for (auto& row_group : metadata.row_groups) {
         for (auto& column : row_group.columns) {
             column.has_min_max = ReadStream<uint8_t>(in) != 0;
+
             if (!column.has_min_max) {
                 continue;
             }
@@ -172,11 +177,14 @@ static ColumnarMetadata ReadV2Metadata(std::istream& in) {
 
 ColumnarMetadata ReadMetadata(std::istream& in) {
     const std::streampos start = in.tellg();
+
     if (start != std::streampos(-1)) {
         char magic[MetadataMagic.size()];
         in.read(magic, sizeof(magic));
+
         if (in.gcount() == static_cast<std::streamsize>(MetadataMagic.size()) &&
             std::equal(std::begin(magic), std::end(magic), MetadataMagic.begin())) {
+
             return ReadV2Metadata(in);
         }
 
@@ -227,6 +235,7 @@ void WriteMetadata(std::ostream& out, const ColumnarMetadata& metadata) {
     for (const auto& row_group : metadata.row_groups) {
         for (const auto& column : row_group.columns) {
             WriteStream<uint8_t>(out, column.has_min_max ? 1 : 0);
+
             if (!column.has_min_max) {
                 continue;
             }

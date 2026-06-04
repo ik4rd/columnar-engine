@@ -45,6 +45,7 @@ size_t Batch::RowsCount() const {
     if (columns_.empty()) {
         return 0;
     }
+
     return columns_.front()->Size();
 }
 
@@ -102,18 +103,19 @@ void Batch::AppendRowsSelectedFromBatch(const Batch& source, const std::span<con
     }
 }
 
-void Batch::ReadColumnFrom(const size_t column_index, std::istream& in, const uint32_t row_count,
+void Batch::ReadColumnFrom(const size_t column_index, const std::span<const char> data, const uint32_t row_count,
                            const uint64_t size) const {
     if (column_index >= columns_.size()) {
         throw Error::OutOfRange("model", "column index out of range");
     }
-    columns_[column_index]->ReadFrom(in, row_count, size);
+    columns_[column_index]->ReadFrom(data, row_count, size);
 }
 
 const Column& Batch::ColumnAt(const size_t i) const {
     if (i >= columns_.size()) {
         throw Error::OutOfRange("model", "column index out of range");
     }
+
     return *columns_[i];
 }
 

@@ -43,6 +43,7 @@ std::vector<uint8_t> Compress(const std::span<const uint8_t> input, const Compre
     }
 
     const int upper_bound = LZ4_compressBound(static_cast<int>(input.size()));
+
     if (upper_bound <= 0) {
         throw Error::InvalidState("compression", "lz4 upper bound failed");
     }
@@ -63,12 +64,22 @@ std::vector<uint8_t> Compress(const std::span<const uint8_t> input, const Compre
 
 std::vector<uint8_t> Decompress(const std::span<const uint8_t> input, const Compression compression,
                                 const uint64_t uncompressed_size) {
+    std::vector<uint8_t> output;
+
+    DecompressInto(input, compression, uncompressed_size, output);
+
+    return output;
+}
+
+void DecompressInto(const std::span<const uint8_t> input, const Compression compression,
+                    const uint64_t uncompressed_size, std::vector<uint8_t>& output) {
     switch (compression) {
         case Compression::None:
             if (input.size() != uncompressed_size) {
                 throw Error::MalformedData("compression", "uncompressed chunk size mismatch");
             }
-            return std::vector<uint8_t>(input.begin(), input.end());
+            output.assign(input.begin(), input.end());
+            return;
         case Compression::Lz4:
             break;
     }
@@ -80,7 +91,8 @@ std::vector<uint8_t> Decompress(const std::span<const uint8_t> input, const Comp
         throw Error::Overflow("compression", "uncompressed output too large for lz4");
     }
 
-    std::vector<uint8_t> output(uncompressed_size);
+    output.resize(uncompressed_size);
+
     const int decompressed_size =
         LZ4_decompress_safe(reinterpret_cast<const char*>(input.data()), reinterpret_cast<char*>(output.data()),
                             static_cast<int>(input.size()), static_cast<int>(uncompressed_size));
@@ -92,6 +104,4 @@ std::vector<uint8_t> Decompress(const std::span<const uint8_t> input, const Comp
     if (static_cast<uint64_t>(decompressed_size) != uncompressed_size) {
         throw Error::MalformedData("compression", "lz4 decompressed size mismatch");
     }
-
-    return output;
 }

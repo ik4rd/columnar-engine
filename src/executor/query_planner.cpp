@@ -17,6 +17,7 @@ static ColumnType ColumnTypeOf(const Query& query, const Schema& schema, const E
 
 static ColumnType ColumnTypeOfColumn(const Query& query, const Schema& schema, const ColumnRef& column) {
     ValidateColumnQualifier(query, column);
+
     return schema.columns[FindColumnIndex(schema, column.name)].type;
 }
 
@@ -34,6 +35,7 @@ static ColumnType ColumnTypeOf(const Query& query, const Schema& schema, const E
             return ColumnType::Int64;
         case ExprKind::Function: {
             const std::string name = ToUpperAscii(expr->function_name);
+
             if (name == "STRLEN" || name == "LENGTH" || name == "EXTRACT") {
                 return ColumnType::Int64;
             }
@@ -52,6 +54,7 @@ static ColumnType ColumnTypeOf(const Query& query, const Schema& schema, const E
             if ((name == "MIN" || name == "MAX") && !expr->arguments.empty()) {
                 return ColumnTypeOf(query, schema, expr->arguments.front());
             }
+
             return ColumnType::String;
         }
         case ExprKind::Case:
@@ -71,9 +74,11 @@ static bool HasAggregate(const std::vector<SelectItemSpec>& items) {
 static std::optional<size_t> FindSelectItem(const Query& query_ast, const SelectItemSpec& item) {
     for (size_t i = 0; i < query_ast.select_items.size(); ++i) {
         const SelectItemSpec& candidate = query_ast.select_items[i];
+
         if (SameOutputName(candidate, item)) {
             return i;
         }
+
         if (candidate.kind == item.kind) {
             if (candidate.kind == SelectItemKind::Aggregate &&
                 SameColumnName(candidate.aggregate.output_name, item.aggregate.output_name)) {
@@ -102,6 +107,7 @@ static ExprPtr ResolveGroupByExpression(const Query& query_ast, const ExprPtr& e
     if (expr->kind == ExprKind::Literal && expr->literal.kind == LiteralKind::Numeric) {
         try {
             const size_t ordinal = std::stoull(expr->literal.text);
+
             if (ordinal >= SqlOrdinalBase && ordinal <= query_ast.select_items.size()) {
                 return query_ast.select_items[ordinal - SqlOrdinalBase].expression;
             }
@@ -210,6 +216,7 @@ static std::optional<size_t> ProjectedIndexOf(const std::vector<size_t>& project
             return i;
         }
     }
+
     return std::nullopt;
 }
 
@@ -263,12 +270,15 @@ static void BindExprColumnIndexes(const Query& query_ast, const Schema& schema,
     switch (expr->kind) {
         case ExprKind::Column: {
             ValidateColumnQualifier(query_ast, expr->column);
+
             const size_t source_index = FindColumnIndex(schema, expr->column.name);
             const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+
             if (projected_index.has_value()) {
                 expr->column_index_bound = true;
                 expr->column_index = *projected_index;
             }
+
             return;
         }
         case ExprKind::Literal:
@@ -282,7 +292,9 @@ static void BindExprColumnIndexes(const Query& query_ast, const Schema& schema,
             for (const ExprPtr& argument : expr->arguments) {
                 BindExprColumnIndexes(query_ast, schema, projection_indexes, argument);
             }
+
             BindRegexReplace(expr);
+
             return;
         case ExprKind::Case:
             BindPredicateColumnIndexes(query_ast, schema, projection_indexes, expr->case_spec.condition);
@@ -302,6 +314,7 @@ static bool IsSimpleCountStar(const Query& query_ast, const PlannedQuery& planne
     }
 
     const PlannedAgg& aggregate = planned.aggregates.front();
+
     return aggregate.function != nullptr && SameColumnName(aggregate.function->canonical_name, "COUNT") &&
            aggregate.argument_kind == AggArgumentKind::Star && !aggregate.distinct;
 }
@@ -344,8 +357,10 @@ static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
     }
 
     ValidateColumnQualifier(query_ast, predicate->left->column);
+
     const size_t source_index = FindColumnIndex(schema, predicate->left->column.name);
     const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+
     if (!projected_index.has_value()) {
         return;
     }
@@ -374,9 +389,11 @@ static void BindLiteralInSet(const Query& query_ast, const Schema& schema,
     for (const ExprPtr& value : predicate->values) {
         const std::optional<Int128> typed_value =
             TryParseLiteralValueAsInt128(value->literal, schema.columns[source_index].type);
+
         if (!typed_value.has_value()) {
             return;
         }
+
         typed_values.push_back(*typed_value);
     }
 
@@ -395,11 +412,13 @@ static void BindLiteralLikePattern(const Query& query_ast, const Schema& schema,
 
     ValidateColumnQualifier(query_ast, predicate->left->column);
     const size_t source_index = FindColumnIndex(schema, predicate->left->column.name);
+
     if (schema.columns[source_index].type != ColumnType::String) {
         return;
     }
 
     const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+
     if (!projected_index.has_value()) {
         return;
     }
@@ -434,12 +453,14 @@ static void BindTypedLiteralComparison(const Query& query_ast, const Schema& sch
     ValidateColumnQualifier(query_ast, (*column_expr)->column);
     const size_t source_index = FindColumnIndex(schema, (*column_expr)->column.name);
     const std::optional<size_t> projected_index = ProjectedIndexOf(projection_indexes, source_index);
+
     if (!projected_index.has_value()) {
         return;
     }
 
     const ColumnType type = schema.columns[source_index].type;
     const std::optional<Int128> literal = TryParseLiteralValueAsInt128((*literal_expr)->literal, type);
+
     if (!literal.has_value()) {
         return;
     }
@@ -469,6 +490,7 @@ static std::optional<std::pair<ColumnRef, Int128>> TryLinearColumnExpr(const Exp
     }
 
     const std::optional<Int128> literal = TryNumericLiteralValue(expr->right);
+
     if (!literal.has_value()) {
         return std::nullopt;
     }
@@ -482,7 +504,9 @@ static bool SupportsDirectTypedAggInput(const AggFuncDefinition& function, const
     if (IsNumericColumnType(type)) {
         return true;
     }
+
     const std::string name = ToUpperAscii(function.canonical_name);
+
     return (name == "MIN" || name == "MAX") && (type == ColumnType::Date || type == ColumnType::Timestamp);
 }
 
@@ -494,6 +518,7 @@ static bool IsSimpleMetadataExtrema(const Query& query, const PlannedQuery& plan
 
     for (const PlannedAgg& aggregate : planned.aggregates) {
         const std::string name = ToUpperAscii(aggregate.function->canonical_name);
+
         if ((name != "MIN" && name != "MAX") || aggregate.distinct ||
             aggregate.argument_kind != AggArgumentKind::Column || !aggregate.direct_numeric_argument ||
             aggregate.direct_numeric_offset != 0) {
@@ -551,8 +576,10 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
 
     if (planned.plain_select) {
         planned.plain_select_items = query.select_items;
+
         for (const auto& item : query.select_items) {
             CollectColumnsFromExpr(query, schema, item.expression, projection_indexes);
+
             if (item.expression && item.expression->kind == ExprKind::Star) {
                 for (const auto& column : schema.columns) {
                     planned.select_items.push_back(PlannedSelectItem{
@@ -564,6 +591,7 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
                 }
                 continue;
             }
+
             planned.select_items.push_back(PlannedSelectItem{
                 .kind = SelectItemKind::GroupKey,
                 .index = planned.select_items.size(),
@@ -695,6 +723,7 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
         }
 
         const Schema output_schema = ProjectionOutputSchema(planned.plain_select_items, planned.table_schema);
+
         for (size_t i = 0; i < query.order_by.size(); ++i) {
             const auto selected = FindSelectItem(query, query.order_by[i].item);
             const ExprPtr order_expression =
@@ -711,6 +740,7 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
     } else {
         for (const auto& order_item : query.order_by) {
             const std::optional<size_t> result_column = FindSelectItem(query, order_item.item);
+
             if (!result_column.has_value()) {
                 throw Error::InvalidArgument("executor", "ORDER BY expression must appear in SELECT");
             }
@@ -743,6 +773,7 @@ PlannedQuery PlanQuery(const Query& query, const std::unordered_map<std::string,
 
         const std::optional<size_t> projected_index =
             ProjectedIndexOf(planned.projection_indexes, aggregate.column_index);
+
         if (projected_index.has_value()) {
             aggregate.column_index = *projected_index;
         } else {

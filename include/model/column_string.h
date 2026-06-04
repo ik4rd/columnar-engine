@@ -28,6 +28,7 @@ class StringColumn final : public MutableColumn {
     void AppendRangeFromColumn(const Column& source, size_t begin, size_t count) override;
     void AppendSelectedFromColumn(const Column& source, std::span<const size_t> rows) override;
     std::string ValueAsString(size_t row) const override;
+    std::string_view ValueAsStringView(size_t row, std::string& scratch) const override;
     void SelectRowsByStringSet(const std::unordered_set<std::string>& values, std::vector<size_t>& rows) const override;
     void SelectRowsByLikePattern(std::string_view pattern, bool negated, std::vector<size_t>& rows) const override;
     void AppendEncodedValue(size_t row, std::string& out) const override;
@@ -36,8 +37,13 @@ class StringColumn final : public MutableColumn {
     std::unique_ptr<MutableColumn> CloneMutable() const override;
 
     void WriteTo(std::ostream& out) const override;
-    void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) override;
+    void ReadFrom(std::span<const char> data, uint32_t row_count, uint64_t size) override;
 
    private:
-    std::vector<std::string> values_;
+    std::string_view StringAt(size_t row) const;
+    void AppendValue(std::string_view value);
+    void CheckAppendSize(size_t value_size) const;
+
+    std::vector<char> blob_;
+    std::vector<uint32_t> offsets_;
 };
