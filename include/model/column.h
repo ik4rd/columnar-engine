@@ -67,7 +67,7 @@ class MutableColumn : public Column {
     virtual void AppendRangeFromColumn(const Column& source, size_t begin, size_t count) = 0;
     virtual void AppendSelectedFromColumn(const Column& source, std::span<const size_t> rows) = 0;
 
-    virtual void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) = 0;
+    virtual void ReadFrom(std::span<const char> data, uint32_t row_count, uint64_t size) = 0;
 
     virtual std::unique_ptr<MutableColumn> CloneMutable() const = 0;
 };

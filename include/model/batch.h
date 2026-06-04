@@ -34,7 +34,7 @@ class Batch {
     void AppendColumnSelected(size_t column_index, const Column& source, std::span<const size_t> rows) const;
     void AppendRowsRangeFromBatch(const Batch& source, size_t begin, size_t count) const;
     void AppendRowsSelectedFromBatch(const Batch& source, std::span<const size_t> rows) const;
-    void ReadColumnFrom(size_t column_index, std::istream& in, uint32_t row_count, uint64_t size) const;
+    void ReadColumnFrom(size_t column_index, std::span<const char> data, uint32_t row_count, uint64_t size) const;
 
     const Column& ColumnAt(size_t i) const;
 

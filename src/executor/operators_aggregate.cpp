@@ -407,26 +407,32 @@ size_t HashInt128(const Int128 value) {
     return HashCombine(std::hash<uint64_t>{}(high), std::hash<uint64_t>{}(low));
 }
 
+size_t ComputeGroupKeyHash(const std::span<const GroupKeyComponent> values) {
+    size_t hash = 0;
+
+    for (const GroupKeyComponent& value : values) {
+        hash = HashCombine(hash, std::hash<int>{}(static_cast<int>(value.type)));
+        hash = HashCombine(hash, value.type == ColumnType::String ? StringViewHash{}(value.string_value)
+                                                                  : HashInt128(value.int_value));
+    }
+
+    return hash;
+}
+
 struct TypedGroupKey {
     std::vector<GroupKeyComponent> values;
+    size_t precomputed_hash = 0;
 };
 
 struct TypedGroupKeyHash {
-    size_t operator()(const TypedGroupKey& key) const {
-        size_t hash = 0;
-
-        for (const GroupKeyComponent& value : key.values) {
-            hash = HashCombine(hash, std::hash<int>{}(static_cast<int>(value.type)));
-            hash = HashCombine(hash, value.type == ColumnType::String ? StringViewHash{}(value.string_value)
-                                                                      : HashInt128(value.int_value));
-        }
-
-        return hash;
-    }
+    size_t operator()(const TypedGroupKey& key) const { return key.precomputed_hash; }
 };
 
 struct TypedGroupKeyEqual {
     bool operator()(const TypedGroupKey& lhs, const TypedGroupKey& rhs) const {
+        if (lhs.precomputed_hash != rhs.precomputed_hash) {
+            return false;
+        }
         if (lhs.values.size() != rhs.values.size()) {
             return false;
         }
@@ -443,11 +449,14 @@ struct TypedGroupKeyEqual {
 
 class GroupKeyMaterializer {
    public:
-    explicit GroupKeyMaterializer(std::vector<PlannedGroupKey> group_keys) : group_keys_(std::move(group_keys)) {}
+    explicit GroupKeyMaterializer(std::vector<PlannedGroupKey> group_keys) : group_keys_(std::move(group_keys)) {
+        scratch_.values.reserve(group_keys_.size());
+        scratch_strings_.reserve(group_keys_.size());
+    }
 
-    TypedGroupKey Materialize(const Batch& batch, const size_t row, StringArena& arena) const {
-        TypedGroupKey key;
-        key.values.reserve(group_keys_.size());
+    const TypedGroupKey& MaterializeScratch(const Batch& batch, const size_t row) const {
+        scratch_.values.clear();
+        scratch_strings_.clear();
 
         std::string scratch;
 
@@ -455,7 +464,7 @@ class GroupKeyMaterializer {
             if (group_key.column_type != ColumnType::String) {
                 if (const auto typed_value = TryEvalTypedGroupKeyInt(group_key.expression, batch, row);
                     typed_value.has_value()) {
-                    key.values.push_back(GroupKeyComponent{
+                    scratch_.values.push_back(GroupKeyComponent{
                         .type = group_key.column_type,
                         .int_value = *typed_value,
                         .string_value = {},
@@ -465,24 +474,25 @@ class GroupKeyMaterializer {
             } else if (group_key.expression && group_key.expression->kind == ExprKind::Column &&
                        group_key.expression->column_index_bound &&
                        group_key.expression->column_index < batch.ColumnsCount()) {
-                key.values.push_back(GroupKeyComponent{
+                scratch_.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = 0,
-                    .string_value =
-                        arena.Store(batch.ColumnAt(group_key.expression->column_index).ValueAsStringView(row, scratch)),
+                    .string_value = batch.ColumnAt(group_key.expression->column_index).ValueAsStringView(row, scratch),
                 });
                 continue;
             }
 
             std::string value = EvalExpr(group_key.expression, batch, row);
+
             if (group_key.column_type == ColumnType::String) {
-                key.values.push_back(GroupKeyComponent{
+                scratch_strings_.push_back(std::move(value));
+                scratch_.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = 0,
-                    .string_value = arena.Store(value),
+                    .string_value = scratch_strings_.back(),
                 });
             } else {
-                key.values.push_back(GroupKeyComponent{
+                scratch_.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = ParseColumnValueAsInt128(group_key.column_type, value),
                     .string_value = {},
@@ -490,11 +500,31 @@ class GroupKeyMaterializer {
             }
         }
 
-        return key;
+        scratch_.precomputed_hash = ComputeGroupKeyHash(scratch_.values);
+
+        return scratch_;
+    }
+
+    static TypedGroupKey CopyToArena(const TypedGroupKey& key, StringArena& arena) {
+        TypedGroupKey owned;
+        owned.values.reserve(key.values.size());
+        owned.precomputed_hash = key.precomputed_hash;
+
+        for (const GroupKeyComponent& value : key.values) {
+            owned.values.push_back(GroupKeyComponent{
+                .type = value.type,
+                .int_value = value.int_value,
+                .string_value = value.type == ColumnType::String ? arena.Store(value.string_value) : std::string_view{},
+            });
+        }
+
+        return owned;
     }
 
    private:
     std::vector<PlannedGroupKey> group_keys_;
+    mutable TypedGroupKey scratch_;
+    mutable std::vector<std::string> scratch_strings_;
 };
 
 class AggOperator final : public Operator {
@@ -583,16 +613,17 @@ class GroupAggOperator final : public Operator {
                     continue;
                 }
 
-                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
+                const TypedGroupKey& key = group_key_materializer_.MaterializeScratch(*batch, row);
 
                 auto it = groups_.find(key);
                 if (it == groups_.end()) {
+                    TypedGroupKey owned_key = group_key_materializer_.CopyToArena(key, string_arena_);
                     GroupState group{
                         .states = CreateStates(),
                         .finalized_aggregates = nullptr,
                         .ordinal = next_group_ordinal_++,
                     };
-                    it = groups_.emplace(std::move(key), std::move(group)).first;
+                    it = groups_.emplace(std::move(owned_key), std::move(group)).first;
                 }
 
                 GroupState& group = it->second;
@@ -787,16 +818,17 @@ class GroupAggTopKOperator final : public Operator {
                     continue;
                 }
 
-                TypedGroupKey key = group_key_materializer_.Materialize(*batch, row, string_arena_);
+                const TypedGroupKey& key = group_key_materializer_.MaterializeScratch(*batch, row);
 
                 auto it = groups_.find(key);
                 if (it == groups_.end()) {
+                    TypedGroupKey owned_key = group_key_materializer_.CopyToArena(key, string_arena_);
                     GroupState group{
                         .states = CreateStates(),
                         .finalized_aggregates = nullptr,
                         .ordinal = next_group_ordinal_++,
                     };
-                    it = groups_.emplace(std::move(key), std::move(group)).first;
+                    it = groups_.emplace(std::move(owned_key), std::move(group)).first;
                 }
 
                 GroupState& group = it->second;

@@ -37,8 +37,13 @@ class StringColumn final : public MutableColumn {
     std::unique_ptr<MutableColumn> CloneMutable() const override;
 
     void WriteTo(std::ostream& out) const override;
-    void ReadFrom(std::istream& in, uint32_t row_count, uint64_t size) override;
+    void ReadFrom(std::span<const char> data, uint32_t row_count, uint64_t size) override;
 
    private:
-    std::vector<std::string> values_;
+    std::string_view StringAt(size_t row) const;
+    void AppendValue(std::string_view value);
+    void CheckAppendSize(size_t value_size) const;
+
+    std::vector<char> blob_;
+    std::vector<uint32_t> offsets_;
 };

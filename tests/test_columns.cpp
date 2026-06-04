@@ -21,8 +21,7 @@ static void ExpectColumnRoundtrip(const ColumnType type, const std::vector<std::
     const std::string bytes = buffer.str();
 
     auto read_back = CreateColumn(type);
-    std::stringstream in(bytes);
-    read_back->ReadFrom(in, values.size(), bytes.size());
+    read_back->ReadFrom({bytes.data(), bytes.size()}, values.size(), bytes.size());
 
     ASSERT_EQ(read_back->Size(), values.size());
     const auto& expected = expected_values.empty() ? values : expected_values;
@@ -42,8 +41,7 @@ TEST(columns, int64_roundtrip) {
     const std::string bytes = buffer.str();
 
     Int64Column read_back;
-    std::stringstream in(bytes);
-    read_back.ReadFrom(in, 2, bytes.size());
+    read_back.ReadFrom({bytes.data(), bytes.size()}, 2, bytes.size());
 
     EXPECT_EQ(read_back.Size(), 2u);
     EXPECT_EQ(read_back.ValueAsString(0), "10");
@@ -61,8 +59,7 @@ TEST(columns, string_roundtrip) {
     const std::string bytes = buffer.str();
 
     StringColumn read_back;
-    std::stringstream in(bytes);
-    read_back.ReadFrom(in, 3, bytes.size());
+    read_back.ReadFrom({bytes.data(), bytes.size()}, 3, bytes.size());
 
     EXPECT_EQ(read_back.Size(), 3u);
     EXPECT_EQ(read_back.ValueAsString(0), "alpha");

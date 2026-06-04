@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <span>
 #include <vector>
 
@@ -89,13 +90,15 @@ class FixedColumn : public MutableColumn {
         WriteBytes(out, {reinterpret_cast<const char*>(values_.data()), values_.size() * sizeof(T)});
     }
 
-    void ReadFrom(std::istream& in, const uint32_t row_count, const uint64_t size) override {
+    void ReadFrom(const std::span<const char> data, const uint32_t row_count, const uint64_t size) override {
         const uint64_t expected = static_cast<uint64_t>(row_count) * sizeof(T);
-        if (size != expected) {
+        if (size != expected || data.size() != expected) {
             throw Error::InconsistentData(ColumnImpl::ModuleName(), "column chunk size mismatch");
         }
         values_.resize(row_count);
-        ReadBytes(in, reinterpret_cast<char*>(values_.data()), values_.size() * sizeof(T));
+        if (!values_.empty()) {
+            std::memcpy(values_.data(), data.data(), values_.size() * sizeof(T));
+        }
     }
 
    protected:
