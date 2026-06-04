@@ -58,6 +58,11 @@ std::string StringColumn::ValueAsString(const size_t row) const {
     return values_[row];
 }
 
+std::string_view StringColumn::ValueAsStringView(const size_t row, std::string& /*scratch*/) const {
+    CheckRowIndex(ModuleName(), row, values_.size());
+    return values_[row];
+}
+
 void StringColumn::SelectRowsByStringSet(const std::unordered_set<std::string>& values,
                                          std::vector<size_t>& rows) const {
     for (size_t row = 0; row < values_.size(); ++row) {

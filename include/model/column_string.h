@@ -28,6 +28,7 @@ class StringColumn final : public MutableColumn {
     void AppendRangeFromColumn(const Column& source, size_t begin, size_t count) override;
     void AppendSelectedFromColumn(const Column& source, std::span<const size_t> rows) override;
     std::string ValueAsString(size_t row) const override;
+    std::string_view ValueAsStringView(size_t row, std::string& scratch) const override;
     void SelectRowsByStringSet(const std::unordered_set<std::string>& values, std::vector<size_t>& rows) const override;
     void SelectRowsByLikePattern(std::string_view pattern, bool negated, std::vector<size_t>& rows) const override;
     void AppendEncodedValue(size_t row, std::string& out) const override;

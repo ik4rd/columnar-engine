@@ -20,6 +20,7 @@
 constexpr std::string_view ExtractMinutePart = "MINUTE";
 constexpr std::string_view ExtractHourPart = "HOUR";
 constexpr int64_t MinuteMicros = 60'000'000;
+constexpr size_t InitialGroupReserve = 1U << 14;
 
 template <typename Binding>
 Schema BuildAggregateOutputSchema(const std::vector<Binding>& bindings) {
@@ -448,6 +449,8 @@ class GroupKeyMaterializer {
         TypedGroupKey key;
         key.values.reserve(group_keys_.size());
 
+        std::string scratch;
+
         for (const auto& group_key : group_keys_) {
             if (group_key.column_type != ColumnType::String) {
                 if (const auto typed_value = TryEvalTypedGroupKeyInt(group_key.expression, batch, row);
@@ -465,7 +468,8 @@ class GroupKeyMaterializer {
                 key.values.push_back(GroupKeyComponent{
                     .type = group_key.column_type,
                     .int_value = 0,
-                    .string_value = arena.Store(batch.ColumnAt(group_key.expression->column_index).ValueAsString(row)),
+                    .string_value =
+                        arena.Store(batch.ColumnAt(group_key.expression->column_index).ValueAsStringView(row, scratch)),
                 });
                 continue;
             }
@@ -562,6 +566,8 @@ class GroupAggOperator final : public Operator {
                 .aggregate = aggregate,
             });
         }
+
+        groups_.reserve(InitialGroupReserve);
     }
 
     std::optional<Batch> Next() override {
@@ -764,6 +770,8 @@ class GroupAggTopKOperator final : public Operator {
                 .aggregate = aggregate,
             });
         }
+
+        groups_.reserve(InitialGroupReserve);
     }
 
     std::optional<Batch> Next() override {

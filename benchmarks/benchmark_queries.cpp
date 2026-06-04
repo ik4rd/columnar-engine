@@ -117,12 +117,16 @@ QueryRunStatus RunQuery(const Executor& executor, const std::filesystem::path& p
         std::cout << "query_" << query_id << ": rows=" << result_batch.RowsCount() << ", time=" << duration_ms
                   << "ms, status=" << status << std::endl;
         return QueryRunStatus::Recorded;
-    } else if (!check_reference) {
+    }
+
+    if (!check_reference) {
         status = "executed";
         std::cout << "query_" << query_id << ": rows=" << result_batch.RowsCount() << ", time=" << duration_ms
                   << "ms, status=" << status << std::endl;
         return QueryRunStatus::Executed;
-    } else if (std::filesystem::exists(ref_path)) {
+    }
+
+    if (std::filesystem::exists(ref_path)) {
         const std::string expected_result = ReadTextFile(ref_path);
         if (actual_result == expected_result ||
             EqualWithLimitTies(query_sql, result_batch.GetSchema(), actual_result, expected_result) ||
@@ -223,11 +227,10 @@ int main(const int argc, char** argv) {
         const std::filesystem::path queries_dir = COLUMNAR_BENCHMARK_QUERIES_DIR;
         const std::filesystem::path data_path =
             input_path.empty() ? queries_dir.parent_path() / "hits_sample.columnar" : input_path;
-        const bool check_reference = reference_check_mode == ReferenceCheckMode::Always
-                                         ? true
-                                         : reference_check_mode == ReferenceCheckMode::Never
-                                               ? false
-                                               : LooksLikeSampleInput(data_path, queries_dir);
+        const bool check_reference = reference_check_mode == ReferenceCheckMode::Always ? true
+                                     : reference_check_mode == ReferenceCheckMode::Never
+                                         ? false
+                                         : LooksLikeSampleInput(data_path, queries_dir);
 
         Executor executor;
         executor.SetUnsupportedFallbackEnabled(true);

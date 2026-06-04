@@ -43,6 +43,11 @@ Column::Column(const ColumnType type) : type_(type) {}
 
 Int128 Column::ValueAsInt128(const size_t row) const { return ParseInt128(ValueAsString(row)); }
 
+std::string_view Column::ValueAsStringView(const size_t row, std::string& scratch) const {
+    scratch = ValueAsString(row);
+    return scratch;
+}
+
 static bool MatchesValueComparison(const Int128 lhs, const Int128 rhs, const ValueComparison comparison) {
     switch (comparison) {
         case ValueComparison::Equal:

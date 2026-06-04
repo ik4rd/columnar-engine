@@ -29,6 +29,14 @@ std::unique_ptr<Operator> BuildPlan(const PlannedQuery& planned) {
 
     bool limit_applied_by_top_k = false;
 
+    if (!planned.group_keys.empty() && !planned.order_by.empty() && planned.limit.has_value() && planned.offset == 0 &&
+        !planned.having) {
+        root = CreateGroupAggTopKOperator(std::move(root), planned.group_keys, planned.aggregates, planned.select_items,
+                                          planned.filter, planned.order_by, *planned.limit);
+        root = CreateEnsureSchemaOperator(std::move(root), BuildSelectOutputSchema(planned.select_items));
+        return root;
+    }
+
     if (!planned.group_keys.empty()) {
         root = CreateGroupAggOperator(std::move(root), planned.group_keys, planned.aggregates, planned.select_items,
                                       planned.filter, planned.having, planned.order_by.empty());

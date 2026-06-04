@@ -35,6 +35,7 @@ class Column {
     virtual size_t Size() const = 0;
 
     virtual std::string ValueAsString(size_t row) const = 0;
+    virtual std::string_view ValueAsStringView(size_t row, std::string& scratch) const;
     virtual Int128 ValueAsInt128(size_t row) const;
 
     virtual void SelectRowsByInt128Comparison(Int128 rhs, ValueComparison comparison, std::vector<size_t>& rows) const;

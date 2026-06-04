@@ -2,6 +2,7 @@
 #include <chrono>
 #include <compare>
 #include <cstddef>
+#include <optional>
 #include <regex>
 #include <span>
 #include <utility>
@@ -72,6 +73,26 @@ std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const 
     return std::nullopt;
 }
 
+std::optional<int64_t> TryReadTimestampMicros(const ExprPtr& expr, const Batch& batch, const size_t row) {
+    if (expr && expr->kind == ExprKind::Column && expr->column_index_bound &&
+        expr->column_index < batch.ColumnsCount()) {
+        const Column& column = batch.ColumnAt(expr->column_index);
+        if (column.Type() == ColumnType::Timestamp) {
+            return static_cast<int64_t>(column.ValueAsInt128(row));
+        }
+    }
+
+    return std::nullopt;
+}
+
+int64_t EvalTimestampMicros(const ExprPtr& expr, const Batch& batch, const size_t row) {
+    if (const auto micros = TryReadTimestampMicros(expr, batch, row); micros.has_value()) {
+        return *micros;
+    }
+
+    return ParseTimestamp(EvalExpr(expr, batch, row));
+}
+
 std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t row) {
     if (const auto aggregate_value = TryResolveAggregateValue(expr, batch, row); aggregate_value.has_value()) {
         return *aggregate_value;
@@ -85,7 +106,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
     if (name == "EXTRACT") {
         const std::string part = ToUpperAscii(EvalExpr(expr.arguments.at(0), batch, row));
-        const int64_t ts = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
+        const int64_t ts = EvalTimestampMicros(expr.arguments.at(1), batch, row);
 
         const std::chrono::sys_time<std::chrono::microseconds> time{std::chrono::microseconds{ts}};
         const auto day = std::chrono::floor<std::chrono::days>(time);
@@ -104,7 +125,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
     if (name == "DATE_TRUNC") {
         const std::string part = ToUpperAscii(EvalExpr(expr.arguments.at(0), batch, row));
-        int64_t micros = ParseTimestamp(EvalExpr(expr.arguments.at(1), batch, row));
+        int64_t micros = EvalTimestampMicros(expr.arguments.at(1), batch, row);
 
         if (part == ExtractMinutePart) {
             micros = micros / MinuteMicros * MinuteMicros;
@@ -257,16 +278,20 @@ struct RowRef {
 
 std::strong_ordering CompareColumnRows(const Column& lhs_column, const size_t lhs_row, const Column& rhs_column,
                                        const size_t rhs_row, const ColumnType type) {
-    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String && rhs_column.Type() == ColumnType::String) {
-        return ParseColumnValueAsInt128(type, lhs_column.ValueAsString(lhs_row)) <=>
-               ParseColumnValueAsInt128(type, rhs_column.ValueAsString(rhs_row));
+    std::string lhs_scratch;
+    std::string rhs_scratch;
+
+    if (type != ColumnType::String && lhs_column.Type() == ColumnType::String &&
+        rhs_column.Type() == ColumnType::String) {
+        return ParseColumnValueAsInt128(type, lhs_column.ValueAsStringView(lhs_row, lhs_scratch)) <=>
+               ParseColumnValueAsInt128(type, rhs_column.ValueAsStringView(rhs_row, rhs_scratch));
     }
 
     if (type != ColumnType::String) {
         return lhs_column.ValueAsInt128(lhs_row) <=> rhs_column.ValueAsInt128(rhs_row);
     }
 
-    return lhs_column.ValueAsString(lhs_row) <=> rhs_column.ValueAsString(rhs_row);
+    return lhs_column.ValueAsStringView(lhs_row, lhs_scratch) <=> rhs_column.ValueAsStringView(rhs_row, rhs_scratch);
 }
 
 class RowOrdering {
