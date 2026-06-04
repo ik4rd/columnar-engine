@@ -28,7 +28,6 @@
 #define COLUMNAR_BENCHMARK_DEFAULT_ROUNDTRIP_SCHEMA "benchmarks/schema_sample_new.csv"
 #endif
 
-static constexpr size_t RowsPerGroup = 1 << 17;
 static constexpr auto DefaultCompression = Compression::Lz4;
 
 struct CsvCompareResult {
