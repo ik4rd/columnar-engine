@@ -107,12 +107,14 @@ static std::optional<ParsedOrderBy> ParseSingleOrderBy(const std::string_view sq
 
     std::string item = TrimCopy(sql.substr(order_pos + std::string_view("ORDER BY").size(),
                                            limit_pos - order_pos - std::string_view("ORDER BY").size()));
+
     if (const size_t comma = item.find(','); comma != std::string::npos) {
         item = TrimCopy(std::string_view(item).substr(0, comma));
     }
 
     bool descending = false;
     const std::string upper_item = ToUpperAscii(item);
+
     if (upper_item.ends_with(" DESC")) {
         descending = true;
         item = TrimCopy(std::string_view(item).substr(0, item.size() - std::string_view(" DESC").size()));
@@ -136,16 +138,19 @@ static std::optional<size_t> FindOutputColumn(const Schema& schema, const std::s
             return i;
         }
     }
+
     return std::nullopt;
 }
 
 static std::string EncodeRowForCompare(const std::vector<std::string>& row) {
     std::string encoded;
+
     for (const auto& value : row) {
         encoded += std::to_string(value.size());
         encoded.push_back(':');
         encoded += value;
     }
+
     return encoded;
 }
 
@@ -153,6 +158,7 @@ static bool EqualRowMultisets(const std::vector<std::vector<std::string>>& lhs,
                               const std::vector<std::vector<std::string>>& rhs) {
     std::vector<std::string> lhs_encoded;
     std::vector<std::string> rhs_encoded;
+
     lhs_encoded.reserve(lhs.size());
     rhs_encoded.reserve(rhs.size());
 
@@ -182,6 +188,7 @@ static std::optional<std::string> RawFieldFromRight(const std::string& row, cons
 
     const size_t comma = row.rfind(',', end == 0 ? 0 : end - 1);
     const size_t begin = comma == std::string::npos ? 0 : comma + 1;
+
     return row.substr(begin, end - begin);
 }
 
@@ -195,12 +202,14 @@ static bool EqualWithLimitTiesRawFallback(const Schema& schema, const ParsedOrde
                                           const std::string_view expected) {
     const std::vector<std::string> actual_rows = SplitRows(actual);
     const std::vector<std::string> expected_rows = SplitRows(expected);
+
     if (actual_rows.size() != expected_rows.size() || expected_rows.empty() || order_column >= schema.columns.size()) {
         return false;
     }
 
     const size_t offset_from_right = schema.columns.size() - 1 - order_column;
     const std::optional<std::string> cutoff = RawFieldFromRight(expected_rows.back(), offset_from_right);
+
     if (!cutoff.has_value()) {
         return false;
     }
@@ -249,11 +258,13 @@ static bool EqualWithLimitTiesRawFallback(const Schema& schema, const ParsedOrde
 bool EqualWithLimitTies(const std::string_view sql, const Schema& schema, const std::string_view actual,
                         const std::string_view expected) {
     const std::optional<ParsedOrderBy> order_by = ParseSingleOrderBy(sql);
+
     if (!order_by.has_value()) {
         return false;
     }
 
     const std::optional<size_t> order_column = FindOutputColumn(schema, order_by->output_name);
+
     if (!order_column.has_value()) {
         return false;
     }

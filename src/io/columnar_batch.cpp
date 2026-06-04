@@ -18,9 +18,11 @@ static constexpr std::string_view ColumnarMagic = "CLMN";
 
 static uint64_t TellWrite(const std::filesystem::path& path, std::ofstream& out) {
     const auto pos = out.tellp();
+
     if (pos == -1) {
         throw Error::PathIo("io", path, "tell file");
     }
+
     return pos;
 }
 
@@ -37,6 +39,7 @@ static size_t CheckedChunkSize(const std::filesystem::path& path, const uint64_t
     if (size > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         throw Error::Overflow("io", "column chunk exceeds addressable size", path.string());
     }
+
     return size;
 }
 
@@ -50,9 +53,11 @@ static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk
 
     for (size_t row = 1; row < column.Size(); ++row) {
         const Int128 value = column.ValueAsInt128(row);
+
         if (value < min_value) {
             min_value = value;
         }
+
         if (value > max_value) {
             max_value = value;
         }
@@ -66,7 +71,9 @@ static void PopulateChunkMinMax(const Column& column, ColumnChunkMetadata& chunk
 static std::vector<uint8_t> SerializeColumn(const Column& column) {
     std::ostringstream buffer(std::ios::binary);
     column.WriteTo(buffer);
+
     const std::string bytes = std::move(buffer).str();
+
     return std::vector<uint8_t>(bytes.begin(), bytes.end());
 }
 
@@ -173,6 +180,7 @@ void ColumnarBatchWriter::Write(const Batch& batch) {
     }
 
     batch.Validate();
+
     if (batch.GetSchema() != metadata_.schema) {
         throw Error::InconsistentData("io", "batch schema mismatch", path_.string());
     }
@@ -235,6 +243,7 @@ std::vector<uint8_t> ReadColumnChunk(const std::filesystem::path& path, InputFil
         if (chunk.compressed_size != chunk.uncompressed_size) {
             throw Error::MalformedData("io", "uncompressed chunk size mismatch", path.string());
         }
+
         return read_buffer;
     }
 

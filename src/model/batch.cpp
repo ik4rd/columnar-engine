@@ -45,6 +45,7 @@ size_t Batch::RowsCount() const {
     if (columns_.empty()) {
         return 0;
     }
+
     return columns_.front()->Size();
 }
 
@@ -114,6 +115,7 @@ const Column& Batch::ColumnAt(const size_t i) const {
     if (i >= columns_.size()) {
         throw Error::OutOfRange("model", "column index out of range");
     }
+
     return *columns_[i];
 }
 

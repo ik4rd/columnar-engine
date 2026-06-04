@@ -55,7 +55,9 @@ void ConsumeAggRow(const PlannedAgg& aggregate, const Batch& batch, const size_t
                 return;
             }
         }
+
         state.ConsumeValue(EvalExpr(aggregate.argument, batch, row));
+
         return;
     }
 
@@ -89,6 +91,7 @@ class CompactAggState {
         }
 
         const std::string name = ToUpperAscii(aggregate.function->canonical_name);
+
         if (name == "COUNT") {
             kind_ = Kind::Count;
         } else if (name == "SUM") {
@@ -267,7 +270,9 @@ void ConsumeCompactAggRow(const PlannedAgg& aggregate, const Batch& batch, const
                 return;
             }
         }
+
         state.ConsumeValue(EvalExpr(aggregate.argument, batch, row));
+
         return;
     }
 
@@ -319,6 +324,7 @@ std::optional<Int128> TryEvalTypedGroupKeyInt(const ExprPtr& expr, const Batch& 
             if (name == "EXTRACT" && expr->arguments.size() == 2 && expr->arguments[0] &&
                 expr->arguments[0]->kind == ExprKind::Literal) {
                 const auto ts = TryEvalTypedGroupKeyInt(expr->arguments[1], batch, row);
+
                 if (!ts.has_value()) {
                     return std::nullopt;
                 }
@@ -340,11 +346,13 @@ std::optional<Int128> TryEvalTypedGroupKeyInt(const ExprPtr& expr, const Batch& 
             if (name == "DATE_TRUNC" && expr->arguments.size() == 2 && expr->arguments[0] &&
                 expr->arguments[0]->kind == ExprKind::Literal) {
                 const auto ts = TryEvalTypedGroupKeyInt(expr->arguments[1], batch, row);
+
                 if (!ts.has_value()) {
                     return std::nullopt;
                 }
 
                 const std::string part = ToUpperAscii(NormalizeLiteralForEval(expr->arguments[0]->literal));
+
                 if (part == ExtractMinutePart) {
                     const int64_t micros = static_cast<int64_t>(*ts);
                     return micros / MinuteMicros * MinuteMicros;
@@ -616,6 +624,7 @@ class GroupAggOperator final : public Operator {
                 const TypedGroupKey& key = group_key_materializer_.MaterializeScratch(*batch, row);
 
                 auto it = groups_.find(key);
+
                 if (it == groups_.end()) {
                     TypedGroupKey owned_key = group_key_materializer_.CopyToArena(key, string_arena_);
                     GroupState group{
@@ -684,6 +693,7 @@ class GroupAggOperator final : public Operator {
 
         for (size_t i = 0; i < group.states.size(); ++i) {
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
+
             if (type == ColumnType::String) {
                 finalized->int_values.push_back(0);
                 finalized->values.push_back(group.states[i].Finalize());
@@ -696,6 +706,7 @@ class GroupAggOperator final : public Operator {
         }
 
         group.finalized_aggregates = std::move(finalized);
+
         return *group.finalized_aggregates;
     }
 
@@ -821,6 +832,7 @@ class GroupAggTopKOperator final : public Operator {
                 const TypedGroupKey& key = group_key_materializer_.MaterializeScratch(*batch, row);
 
                 auto it = groups_.find(key);
+
                 if (it == groups_.end()) {
                     TypedGroupKey owned_key = group_key_materializer_.CopyToArena(key, string_arena_);
                     GroupState group{
@@ -886,6 +898,7 @@ class GroupAggTopKOperator final : public Operator {
 
         for (size_t i = 0; i < group.states.size(); ++i) {
             const ColumnType type = AggregateOutputType(bindings_[i].aggregate);
+
             if (type == ColumnType::String) {
                 finalized->int_values.push_back(0);
                 finalized->values.push_back(group.states[i].Finalize());
@@ -898,6 +911,7 @@ class GroupAggTopKOperator final : public Operator {
         }
 
         group.finalized_aggregates = std::move(finalized);
+
         return *group.finalized_aggregates;
     }
 

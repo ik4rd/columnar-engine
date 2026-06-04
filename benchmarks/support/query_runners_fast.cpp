@@ -396,21 +396,25 @@ static ExecuteExpected SearchPhraseGroupByTitleGoogle(const std::filesystem::pat
 
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
             const std::string_view title_value = arena.Store(title.ValueAsString(row));
+
             if (!Contains(title_value, "Google")) {
                 continue;
             }
 
             const std::string_view url_value = arena.Store(url.ValueAsString(row));
+
             if (Contains(url_value, ".google.")) {
                 continue;
             }
 
             const std::string_view key = arena.Store(search_phrase.ValueAsString(row));
+
             if (key.empty()) {
                 continue;
             }
 
             auto& group = groups[key];
+
             if (group.count == 0) {
                 group.key = key;
                 group.ordinal = ordinal++;
@@ -507,8 +511,8 @@ static ExecuteExpected GroupByIntPairWithMetrics(const std::filesystem::path& pa
             }
 
             const std::pair<Int128, Int128> key{key1.ValueAsInt128(row), key2.ValueAsInt128(row)};
-
             auto& group = groups[key];
+
             if (group.count == 0) {
                 group.key1 = key.first;
                 group.key2 = key.second;
@@ -650,9 +654,11 @@ static ExecuteExpected SelectSearchPhraseOrderByEventTime(const std::filesystem:
 
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
             const std::string_view phrase = search_phrase.ValueAsStringView(row, scratch);
+
             if (phrase.empty()) {
                 continue;
             }
+
             OfferTopK(heap, order_by_limit, better, event_time.ValueAsInt128(row), phrase, ordinal++);
         }
     }
@@ -731,9 +737,11 @@ static ExecuteExpected SelectSearchPhraseOrderByEventTimeThenPhrase(const std::f
 
         for (size_t row = 0; row < batch->RowsCount(); ++row) {
             const std::string_view phrase = search_phrase.ValueAsStringView(row, scratch);
+
             if (phrase.empty()) {
                 continue;
             }
+
             OfferTopK(heap, order_by_limit, better, event_time.ValueAsInt128(row), phrase, ordinal++);
         }
     }

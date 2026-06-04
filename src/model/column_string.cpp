@@ -38,7 +38,9 @@ void StringColumn::AppendRangeFromColumn(const Column& source, const size_t begi
     if (source.Type() != ColumnType::String) {
         throw Error::InconsistentData(ModuleName(), "column type mismatch");
     }
+
     const auto& typed_source = static_cast<const StringColumn&>(source);
+
     if (begin > typed_source.Size() || count > typed_source.Size() - begin) {
         throw Error::OutOfRange(ModuleName(), "row range out of range");
     }
@@ -75,6 +77,7 @@ void StringColumn::AppendSelectedFromColumn(const Column& source, const std::spa
 
 std::string StringColumn::ValueAsString(const size_t row) const {
     const std::string_view value = StringAt(row);
+
     return {value.data(), value.size()};
 }
 
@@ -122,9 +125,11 @@ std::unique_ptr<MutableColumn> StringColumn::CloneMutable() const { return std::
 void StringColumn::WriteTo(std::ostream& out) const {
     for (size_t row = 0; row < Size(); ++row) {
         const std::string_view value = StringAt(row);
+
         if (value.size() > std::numeric_limits<uint32_t>::max()) {
             throw Error::Overflow(ModuleName(), "value exceeds supported size");
         }
+
         WriteStream<uint32_t>(out, static_cast<uint32_t>(value.size()));
         WriteBytes(out, value);
     }
@@ -171,6 +176,7 @@ std::string_view StringColumn::StringAt(const size_t row) const {
     CheckRowIndex(ModuleName(), row, Size());
     const uint32_t begin = offsets_[row];
     const uint32_t end = offsets_[row + 1];
+
     return {begin == end ? "" : blob_.data() + begin, end - begin};
 }
 
@@ -182,6 +188,7 @@ void StringColumn::AppendValue(const std::string_view value) {
 
 void StringColumn::CheckAppendSize(const size_t value_size) const {
     constexpr size_t MaxBlobSize = std::numeric_limits<uint32_t>::max();
+
     if (value_size > MaxBlobSize || blob_.size() > MaxBlobSize - value_size) {
         throw Error::Overflow(ModuleName(), "string column blob exceeds supported size");
     }

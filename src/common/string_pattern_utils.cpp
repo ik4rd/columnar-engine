@@ -42,9 +42,11 @@ static bool LikeMatchesPercentOnly(const std::string_view value, const std::stri
     for (; segment_index < segments.size(); ++segment_index) {
         const std::string_view segment = segments[segment_index];
         const size_t found = value.find(segment, value_pos);
+
         if (found == std::string_view::npos) {
             return false;
         }
+
         value_pos = found + segment.size();
     }
 

@@ -55,6 +55,7 @@ ExecuteExpected Executor::ExecutePlanned(const PlannedQuery& planned) {
     const std::unique_ptr<Operator> root = BuildPlan(planned);
 
     auto batch = root->Next();
+
     if (!batch.has_value()) {
         return Batch{};
     }

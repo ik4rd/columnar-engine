@@ -132,6 +132,7 @@ bool MayMatchRowGroup(const PredicatePtr& predicate, const RowGroupMetadata& row
                 predicate->metadata_typed_column_index >= row_group.columns.size()) {
                 return true;
             }
+
             return MatchesRowGroupComparison(row_group.columns[predicate->metadata_typed_column_index],
                                              predicate->metadata_typed_literal_value,
                                              predicate->metadata_typed_comparison);

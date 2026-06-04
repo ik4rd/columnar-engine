@@ -43,6 +43,7 @@ std::vector<uint8_t> Compress(const std::span<const uint8_t> input, const Compre
     }
 
     const int upper_bound = LZ4_compressBound(static_cast<int>(input.size()));
+
     if (upper_bound <= 0) {
         throw Error::InvalidState("compression", "lz4 upper bound failed");
     }
@@ -64,7 +65,9 @@ std::vector<uint8_t> Compress(const std::span<const uint8_t> input, const Compre
 std::vector<uint8_t> Decompress(const std::span<const uint8_t> input, const Compression compression,
                                 const uint64_t uncompressed_size) {
     std::vector<uint8_t> output;
+
     DecompressInto(input, compression, uncompressed_size, output);
+
     return output;
 }
 
@@ -89,6 +92,7 @@ void DecompressInto(const std::span<const uint8_t> input, const Compression comp
     }
 
     output.resize(uncompressed_size);
+
     const int decompressed_size =
         LZ4_decompress_safe(reinterpret_cast<const char*>(input.data()), reinterpret_cast<char*>(output.data()),
                             static_cast<int>(input.size()), static_cast<int>(uncompressed_size));

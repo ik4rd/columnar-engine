@@ -118,6 +118,7 @@ def parse_args() -> argparse.Namespace:
         "--cache-drop-command",
         help="Override the OS-specific cache drop command, for example: 'sudo purge'.",
     )
+
     return parser.parse_args()
 
 
@@ -146,8 +147,10 @@ def render_ms(value: float) -> str:
 
 def render_ms_text(value: str) -> str:
     parsed = parse_ms(value)
+
     if parsed is None:
         return value or "—"
+
     return render_ms(parsed)
 
 
@@ -179,8 +182,10 @@ def format_size(num_bytes: int) -> str:
 
 def compact_sql(sql: str, max_len: int = 88) -> str:
     normalized = " ".join(sql.split())
+
     if len(normalized) <= max_len:
         return normalized
+
     return normalized[: max_len - 1] + "…"
 
 
@@ -204,11 +209,13 @@ def render_html_metric_table(title: str, rows: list[tuple[str, str]]) -> list[st
         '<thead><tr><th align="left">Metric</th><th align="right">Value</th></tr></thead>',
         "<tbody>",
     ]
+
     for metric, value in rows:
         lines.append(
             f"<tr><td>{html_escape(str(metric))}</td><td align=\"right\">{html_escape(str(value))}</td></tr>"
         )
     lines.extend(["</tbody>", "</table>"])
+
     return lines
 
 
@@ -235,6 +242,7 @@ def percentile(values: list[float], ratio: float) -> float:
     lower_value = ordered[lower_index]
     upper_value = ordered[upper_index]
     fraction = position - lower_index
+
     return lower_value + (upper_value - lower_value) * fraction
 
 
@@ -329,6 +337,7 @@ def collect_conversion_stats(
 
 def default_cache_drop_command() -> list[str] | None:
     system = platform.system()
+
     if system == "Darwin":
         purge = shutil.which("purge")
         return [purge] if purge else None
@@ -374,6 +383,7 @@ def run_cache_drop_command(command: list[str]) -> None:
 
 def drop_file_system_cache(cache_drop_command: str | None) -> None:
     command = shlex.split(cache_drop_command) if cache_drop_command else default_cache_drop_command()
+
     if command is None:
         raise RuntimeError(
             "cache drop is not supported on this OS; pass --cache-drop-mode none or --cache-drop-command"
@@ -628,6 +638,7 @@ def collect_hardcoded_rows(
 
         warm_values = row["warm_values"]
         assert isinstance(warm_values, list)
+
         for _ in range(warm_runs):
             try:
                 warm_run_result = run_hardcoded_benchmark(benchmark_binary, input_path, query_id, query_id)
@@ -694,6 +705,7 @@ def query_metric(row: dict[str, str]) -> float:
         return warm_median
 
     first_run = parse_ms(row["first_run_ms"])
+
     return first_run or 0.0
 
 
@@ -756,7 +768,8 @@ def render_markdown(
     median_value = statistics.median(warm_values) if warm_values else 0.0
     avg_value = statistics.fmean(warm_values) if warm_values else 0.0
     p95_value = percentile(warm_values, 0.95) if warm_values else 0.0
-    cold_penalty = ((statistics.fmean(first_run_values) / avg_value) - 1.0) * 100.0 if avg_value and first_run_values else 0.0
+    cold_penalty = ((statistics.fmean(
+        first_run_values) / avg_value) - 1.0) * 100.0 if avg_value and first_run_values else 0.0
     fastest = min(ok_rows, key=query_metric) if ok_rows else None
     slowest = max(ok_rows, key=query_metric) if ok_rows else None
     summary_rows = [
@@ -974,7 +987,9 @@ def main() -> int:
             conversion_stats,
         )
         update_readme(readme_path, markdown_block)
+
     print(f"updated {display_path(readme_path, root)} from {display_path(csv_path, root)} with {len(rows)} row(s)")
+
     return 0
 
 

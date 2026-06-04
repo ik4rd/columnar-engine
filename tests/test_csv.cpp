@@ -3,8 +3,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "io/csv.h"
 #include "gtest/gtest.h"
+#include "io/csv.h"
 
 static_assert(!std::is_copy_constructible_v<CsvReader>);
 static_assert(!std::is_copy_assignable_v<CsvReader>);
@@ -24,6 +24,7 @@ TEST(csv, read_write_roundtrip_with_quotes) {
     writer.WriteRow({"", "plain"});
 
     std::vector<std::string> row;
+
     ASSERT_TRUE(reader.ReadRow(row));
     EXPECT_EQ(row, (std::vector<std::string>{"1", "2,3", "he\"llo", "line1\nline2"}));
 
@@ -51,6 +52,7 @@ TEST(csv, moved_reader_and_writer_remain_usable) {
     std::stringstream buffer;
     CsvWriter writer(buffer);
     CsvWriter moved_writer(std::move(writer));
+
     moved_writer.WriteRow({"1", "value"});
     moved_writer.Flush();
 
@@ -59,6 +61,7 @@ TEST(csv, moved_reader_and_writer_remain_usable) {
     CsvReader moved_reader(std::move(reader));
 
     std::vector<std::string> row;
+
     ASSERT_TRUE(moved_reader.ReadRow(row));
     EXPECT_EQ(row, (std::vector<std::string>{"1", "value"}));
     EXPECT_FALSE(moved_reader.ReadRow(row));

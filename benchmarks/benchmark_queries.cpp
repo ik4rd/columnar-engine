@@ -56,6 +56,7 @@ static std::string_view ReferenceCheckModeName(const ReferenceCheckMode mode) {
 static bool LooksLikeSampleInput(const std::filesystem::path& data_path, const std::filesystem::path& queries_dir) {
     const std::filesystem::path sample_path = queries_dir.parent_path() / "hits_sample.columnar";
     std::error_code error;
+
     if (std::filesystem::equivalent(data_path, sample_path, error)) {
         return true;
     }
@@ -100,6 +101,7 @@ QueryRunStatus RunQuery(const Executor& executor, const std::filesystem::path& p
     }
 
     Batch result_batch = std::move(*result);
+
     if (output_csv.has_value()) {
         WriteBatchCsv(*output_csv, result_batch);
     }
@@ -237,6 +239,7 @@ int main(const int argc, char** argv) {
         executor.RegisterTable("hits", data_path);
 
         std::vector<std::optional<PlannedQuery>> hardcoded_plans(LastQueryId + 1);
+
         if (mode == QueryExecutionMode::Hardcoded) {
             for (int query_id = FirstQueryId; query_id <= LastQueryId; ++query_id) {
                 if (HasHardcodedClickBenchQuery(query_id)) {

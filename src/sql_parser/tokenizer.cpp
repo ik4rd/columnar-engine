@@ -8,11 +8,13 @@
 
 static bool IsIdentifierStart(const char ch) {
     const auto uch = static_cast<unsigned char>(ch);
+
     return std::isalpha(uch) != 0 || ch == '_';
 }
 
 static bool IsIdentifierPart(const char ch) {
     const auto uch = static_cast<unsigned char>(ch);
+
     return std::isalnum(uch) != 0 || ch == '_';
 }
 
@@ -28,6 +30,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
     }
 
     const char ch = query_[pos_];
+
     if (IsIdentifierStart(ch)) {
         const size_t start = pos_;
         ++pos_;
@@ -125,6 +128,7 @@ Expected<TokenPtr> Tokenizer::GetNext() {
             return MakeToken(Tokens::Equal, "=", start);
         case '<':
             ++pos_;
+
             if (pos_ < query_.size() && query_[pos_] == '=') {
                 ++pos_;
                 return MakeToken(Tokens::LessOrEqual, "<=", start);
@@ -165,6 +169,7 @@ Expected<std::vector<TokenPtr>> TokenizeSql(const std::string_view input) {
 
     while (true) {
         auto token = tokenizer.GetNext();
+
         if (!token.has_value()) {
             return tl::unexpected(token.error());
         }

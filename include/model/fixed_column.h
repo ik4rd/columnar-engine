@@ -31,7 +31,9 @@ class FixedColumn : public MutableColumn {
         if (source.Type() != TypeValue) {
             throw Error::InconsistentData(ColumnImpl::ModuleName(), "column type mismatch");
         }
+
         const auto& typed_source = static_cast<const FixedColumn&>(source);
+
         AppendValue(typed_source.ValueAt(row));
     }
 
@@ -39,10 +41,13 @@ class FixedColumn : public MutableColumn {
         if (source.Type() != TypeValue) {
             throw Error::InconsistentData(ColumnImpl::ModuleName(), "column type mismatch");
         }
+
         const auto& typed_source = static_cast<const FixedColumn&>(source);
+
         if (begin > typed_source.values_.size() || count > typed_source.values_.size() - begin) {
             throw Error::OutOfRange(ColumnImpl::ModuleName(), "row range out of range");
         }
+
         values_.insert(values_.end(), typed_source.values_.begin() + static_cast<std::ptrdiff_t>(begin),
                        typed_source.values_.begin() + static_cast<std::ptrdiff_t>(begin + count));
     }
@@ -51,8 +56,10 @@ class FixedColumn : public MutableColumn {
         if (source.Type() != TypeValue) {
             throw Error::InconsistentData(ColumnImpl::ModuleName(), "column type mismatch");
         }
+
         const auto& typed_source = static_cast<const FixedColumn&>(source);
         values_.reserve(values_.size() + rows.size());
+
         for (const size_t row : rows) {
             values_.push_back(typed_source.ValueAt(row));
         }
@@ -92,10 +99,13 @@ class FixedColumn : public MutableColumn {
 
     void ReadFrom(const std::span<const char> data, const uint32_t row_count, const uint64_t size) override {
         const uint64_t expected = static_cast<uint64_t>(row_count) * sizeof(T);
+
         if (size != expected || data.size() != expected) {
             throw Error::InconsistentData(ColumnImpl::ModuleName(), "column chunk size mismatch");
         }
+
         values_.resize(row_count);
+
         if (!values_.empty()) {
             std::memcpy(values_.data(), data.data(), values_.size() * sizeof(T));
         }

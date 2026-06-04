@@ -3,11 +3,11 @@
 #include <utility>
 #include <vector>
 
+#include "common/error.h"
 #include "gtest/gtest.h"
 #include "io/columnar_batch.h"
 #include "io/csv.h"
 #include "io/csv_batch.h"
-#include "common/error.h"
 #include "testing/temp_file.h"
 
 static_assert(std::is_copy_constructible_v<Batch>);
@@ -24,6 +24,7 @@ TEST(batch, usage_example_csv_to_columnar_roundtrip) {
 
     const TempFile csv_file("batch_usage_csv");
     const TempFile columnar_file("batch_usage_columnar");
+
     WriteRows(csv_file.Path(), {
                                    {"1", "alpha"},
                                    {"2", "beta"},
@@ -39,6 +40,7 @@ TEST(batch, usage_example_csv_to_columnar_roundtrip) {
 
     ColumnarBatchReader columnar_reader(columnar_file.Path());
     auto batch = columnar_reader.ReadNext();
+
     ASSERT_TRUE(batch.has_value());
     EXPECT_EQ(batch->RowsCount(), 2u);
     EXPECT_EQ(batch->ColumnAt(0).ValueAsString(0), "1");
@@ -67,12 +69,14 @@ TEST(batch, csv_reader_respects_max_rows) {
     CsvBatchReader reader(data_in.Path(), schema, sizing);
 
     auto first = reader.ReadNext();
+
     ASSERT_TRUE(first.has_value());
     EXPECT_EQ(first->RowsCount(), 2u);
     EXPECT_EQ(first->ColumnAt(0).ValueAsString(0), "1");
     EXPECT_EQ(first->ColumnAt(1).ValueAsString(1), "be,ta");
 
     auto second = reader.ReadNext();
+
     ASSERT_TRUE(second.has_value());
     EXPECT_EQ(second->RowsCount(), 1u);
     EXPECT_EQ(second->ColumnAt(0).ValueAsString(0), "3");
@@ -88,7 +92,7 @@ TEST(batch, write_batch_csv_writes_single_batch) {
         {"name", ColumnType::String},
     };
 
-    Batch batch(schema);
+    const Batch batch(schema);
     batch.AppendValueFromString(0, "1");
     batch.AppendValueFromString(1, "alpha");
     batch.AppendValueFromString(0, "2");
@@ -132,6 +136,7 @@ TEST(batch, columnar_roundtrip) {
     std::move(columnar_writer).Finalize();
 
     ColumnarBatchReader columnar_reader(columnar_file.Path());
+
     EXPECT_EQ(columnar_reader.GetMetadata().row_groups.size(), 2u);
 
     std::vector<std::vector<std::string>> roundtrip_rows;
@@ -164,11 +169,11 @@ TEST(batch, copy_is_deep) {
         {"name", ColumnType::String},
     };
 
-    Batch original(schema);
+    const Batch original(schema);
     original.AppendValueFromString(0, "1");
     original.AppendValueFromString(1, "alpha");
 
-    Batch copied = original;
+    const Batch copied = original;
     copied.AppendValueFromString(0, "2");
     copied.AppendValueFromString(1, "beta");
 
@@ -203,6 +208,7 @@ TEST(batch, csv_reader_respects_max_values) {
 
     for (size_t i = 0; i < data_rows.size(); ++i) {
         auto batch = reader.ReadNext();
+
         ASSERT_TRUE(batch.has_value());
         EXPECT_EQ(batch->RowsCount(), 1u);
         EXPECT_EQ(batch->ColumnAt(0).ValueAsString(0), data_rows[i][0]);
@@ -234,6 +240,7 @@ TEST(batch, csv_reader_respects_max_bytes) {
 
     for (size_t i = 0; i < data_rows.size(); ++i) {
         auto batch = reader.ReadNext();
+
         ASSERT_TRUE(batch.has_value());
         EXPECT_EQ(batch->RowsCount(), 1u);
         EXPECT_EQ(batch->ColumnAt(0).ValueAsString(0), data_rows[i][0]);
@@ -272,6 +279,7 @@ TEST(batch, columnar_writer_rejects_after_finalize) {
     std::move(writer).Finalize();
 
     Batch batch(schema);
+
     EXPECT_THROW(writer.Write(batch), Error);
     EXPECT_THROW(std::move(writer).Finalize(), Error);
 }

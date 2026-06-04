@@ -66,6 +66,7 @@ static CsvCompareResult CompareCsvFiles(const std::filesystem::path& lhs_path, c
 int main(const int argc, char** argv) {
     try {
         size_t rows_per_group = RowsPerGroup;
+
         if (argc == 2) {
             rows_per_group = std::stoull(argv[1]);
         }

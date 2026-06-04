@@ -5,10 +5,10 @@
 
 #include "io/compression.h"
 
-inline constexpr size_t DefaultMaxRowsPerGroup = 1 << 17;
+inline constexpr size_t RowsPerGroup = 1 << 17;
 
 void ConvertCsvToColumnar(const std::filesystem::path& schema_path, const std::filesystem::path& data_path,
-                          const std::filesystem::path& output_path, size_t max_rows_per_group = DefaultMaxRowsPerGroup,
+                          const std::filesystem::path& output_path, size_t max_rows_per_group = RowsPerGroup,
                           Compression compression = Compression::None);
 void ConvertColumnarToCsv(const std::filesystem::path& columnar_path, const std::filesystem::path& schema_path,
                           const std::filesystem::path& data_path);

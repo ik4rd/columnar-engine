@@ -38,19 +38,18 @@ bool IsAggregateLookupFunction(const std::string_view name) {
 
 std::string FormatAggregateExprName(const ExprSpec& expr) {
     const std::string name = ToUpperAscii(expr.function_name);
+
     if (name == "COUNT" && !expr.arguments.empty() && expr.arguments.front()->kind == ExprKind::Star) {
         return std::string(CountStarName);
     }
 
     std::string out = name + "(";
-
     for (size_t i = 0; i < expr.arguments.size(); ++i) {
         if (i > 0) {
             out += ", ";
         }
         out += expr.arguments[i]->output_name;
     }
-
     out += ")";
 
     return out;
@@ -58,6 +57,7 @@ std::string FormatAggregateExprName(const ExprSpec& expr) {
 
 std::optional<std::string> TryResolveAggregateValue(const ExprSpec& expr, const Batch& batch, const size_t row) {
     const std::string name = ToUpperAscii(expr.function_name);
+
     if (!IsAggregateLookupFunction(name)) {
         return std::nullopt;
     }
@@ -77,6 +77,7 @@ std::optional<int64_t> TryReadTimestampMicros(const ExprPtr& expr, const Batch& 
     if (expr && expr->kind == ExprKind::Column && expr->column_index_bound &&
         expr->column_index < batch.ColumnsCount()) {
         const Column& column = batch.ColumnAt(expr->column_index);
+
         if (column.Type() == ColumnType::Timestamp) {
             return static_cast<int64_t>(column.ValueAsInt128(row));
         }
@@ -142,6 +143,7 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
 
         if (pattern_text == R"(^https?://(?:www\.)?([^/]+)/.*$)" && replacement == R"(\1)") {
             std::string_view rest = source;
+
             if (rest.starts_with(HttpScheme)) {
                 rest.remove_prefix(HttpScheme.size());
             } else if (rest.starts_with(HttpsScheme)) {
@@ -155,11 +157,13 @@ std::string EvalFunction(const ExprSpec& expr, const Batch& batch, const size_t 
             }
 
             const size_t slash = rest.find('/');
+
             if (slash == std::string_view::npos || slash == 0) {
                 return source;
             }
 
             const std::string_view suffix = rest.substr(slash + 1);
+
             if (suffix.find('\n') != std::string_view::npos || suffix.find('\r') != std::string_view::npos) {
                 return source;
             }
@@ -236,16 +240,19 @@ std::optional<bool> TryEvaluateTypedComparison(const ExprPtr& left, const ExprPt
     }
 
     const auto column_index = TryFindBatchColumn(batch.GetSchema(), left->column.name);
+
     if (!column_index.has_value()) {
         return std::nullopt;
     }
 
     const Column& column = batch.ColumnAt(*column_index);
+
     if (column.Type() == ColumnType::String) {
         return std::nullopt;
     }
 
     const std::optional<Int128> rhs = TryParseLiteralValueAsInt128(right->literal, column.Type());
+
     if (!rhs.has_value()) {
         return std::nullopt;
     }
@@ -642,6 +649,7 @@ std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) 
             }
 
             const auto column = TryFindBatchColumn(batch.GetSchema(), expr->column.name);
+
             if (!column.has_value()) {
                 throw Error::InvalidArgument("executor", "unknown column '" + expr->column.name + "'");
             }
@@ -664,6 +672,7 @@ std::string EvalExpr(const ExprPtr& expr, const Batch& batch, const size_t row) 
         case ExprKind::Star:
             return "*";
     }
+
     return {};
 }
 

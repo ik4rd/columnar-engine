@@ -15,6 +15,7 @@ std::string_view StringArena::Store(const std::string_view value) {
     const size_t offset = chunk.used;
     std::memcpy(chunk.data.get() + static_cast<std::ptrdiff_t>(offset), value.data(), value.size());
     chunk.used = offset + value.size();
+
     return {chunk.data.get() + static_cast<std::ptrdiff_t>(offset), value.size()};
 }
 

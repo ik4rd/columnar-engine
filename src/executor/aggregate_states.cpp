@@ -36,6 +36,7 @@ static std::string FormatAverage(const Int128 sum, const uint64_t count) {
     if (count == 0) {
         return "0";
     }
+
     return Int128ToString(sum / static_cast<Int128>(count));
 }
 
@@ -120,6 +121,7 @@ class ExtremumAS final : public AggState {
         if (typed_extremum_.has_value()) {
             return FormatInt128Value(type_, *typed_extremum_);
         }
+
         return extremum_.value_or("");
     }
 
@@ -181,9 +183,11 @@ void AggRegistry::Register(const AggFuncDefinition& def) { registry_[ToUpperAsci
 
 const AggFuncDefinition* AggRegistry::Find(const std::string_view name) const {
     const auto it = registry_.find(ToUpperAscii(name));
+
     if (it == registry_.end()) {
         return nullptr;
     }
+
     return &it->second;
 }
 
@@ -222,9 +226,11 @@ AggRegistrar::AggRegistrar(const AggFuncDefinition& def) { AggRegistry::Instance
 
 const AggFuncDefinition& ResolveAggFunc(const std::string_view name) {
     const AggFuncDefinition* definition = AggRegistry::Instance().Find(name);
+
     if (definition == nullptr) {
         throw Error::Unsupported("executor", "aggregate '" + std::string(name) + "' is not registered");
     }
+
     return *definition;
 }
 
@@ -232,6 +238,7 @@ bool AggSupportsInputType(const AggFuncDefinition& definition, const ColumnType 
     if (definition.supports_type == nullptr) {
         return false;
     }
+
     return definition.supports_type(type);
 }
 
@@ -252,6 +259,7 @@ std::unique_ptr<AggState> CreateAggState(const PlannedAgg& aggregate) {
     }
 
     std::unique_ptr<AggState> state = aggregate.function->factory(aggregate);
+
     if (aggregate.distinct) {
         state = std::make_unique<DistinctAS>(std::move(state));
     }

@@ -16,6 +16,7 @@ class TokenCursor {
         if (pos_ + lookahead >= tokens_.size()) {
             throw Error::InvalidArgument("executor", "unexpected end of query");
         }
+
         return *tokens_[pos_ + lookahead];
     }
 
@@ -27,6 +28,7 @@ class TokenCursor {
         if (!Match(type)) {
             throw Error::InvalidArgument("executor", std::string(message));
         }
+
         return *tokens_[pos_++];
     }
 
@@ -34,7 +36,9 @@ class TokenCursor {
         if (!Match(type)) {
             return false;
         }
+
         ++pos_;
+
         return true;
     }
 
@@ -44,6 +48,7 @@ class TokenCursor {
         }
 
         const Tokens type = tokens_[pos_]->GetType();
+
         switch (type) {
             case Tokens::NumericLiteral:
             case Tokens::StringLiteral:
@@ -74,6 +79,7 @@ class TokenCursor {
 
 static bool IsAggregateName(const std::string_view name) {
     const std::string upper = ToUpperAscii(name);
+
     return upper == "COUNT" || upper == "SUM" || upper == "AVG" || upper == "MIN" || upper == "MAX";
 }
 
@@ -100,6 +106,7 @@ static std::string FormatColumnRef(const ColumnRef& column) {
     if (column.qualifier.empty()) {
         return column.name;
     }
+
     return column.qualifier + "." + column.name;
 }
 
@@ -207,6 +214,7 @@ static ExprPtr ParsePrimary(TokenCursor& cursor) {
         expr->left = std::move(zero);
         expr->right = ParsePrimary(cursor);
         expr->output_name = FormatExpression(*expr);
+
         return expr;
     }
 
@@ -224,8 +232,10 @@ static ExprPtr ParsePrimary(TokenCursor& cursor) {
         if (cursor.Match(Tokens::Select)) {
             throw Error::Unsupported("executor", "subqueries are not supported");
         }
+
         auto expr = ParseExpression(cursor);
         cursor.Consume(Tokens::CloseBracket, "expected ')' after expression");
+
         return expr;
     }
 
@@ -235,6 +245,7 @@ static ExprPtr ParsePrimary(TokenCursor& cursor) {
             QueryLiteral{std::string(cursor.Consume(Tokens::NumericLiteral, "expected numeric literal").GetText()),
                          LiteralKind::Numeric};
         expr->output_name = expr->literal.text;
+
         return expr;
     }
 
@@ -244,6 +255,7 @@ static ExprPtr ParsePrimary(TokenCursor& cursor) {
             QueryLiteral{std::string(cursor.Consume(Tokens::StringLiteral, "expected string literal").GetText()),
                          LiteralKind::String};
         expr->output_name = expr->literal.text;
+
         return expr;
     }
 
@@ -279,6 +291,7 @@ static ExprPtr ParseExpression(TokenCursor& cursor) {
 
     while (cursor.Match(Tokens::Plus) || cursor.Match(Tokens::Minus)) {
         const bool add = cursor.TryConsume(Tokens::Plus);
+
         if (!add) {
             cursor.Consume(Tokens::Minus, "expected '-'");
         }
@@ -288,6 +301,7 @@ static ExprPtr ParseExpression(TokenCursor& cursor) {
         binary->left = std::move(expr);
         binary->right = ParsePrimary(cursor);
         binary->output_name = FormatExpression(*binary);
+
         expr = std::move(binary);
     }
 
@@ -323,6 +337,7 @@ static PredicatePtr ParsePredicateAtom(TokenCursor& cursor) {
         auto predicate = MakePredicate(PredicateKind::Like);
         predicate->left = std::move(left);
         predicate->right = ParseExpression(cursor);
+
         return predicate;
     }
 
@@ -376,6 +391,7 @@ static std::optional<size_t> ParseOptionalSize(TokenCursor& cursor, const Tokens
 
     const char* begin = text.data();
     const char* end = begin + text.size();
+
     if (const auto [ptr, ec] = std::from_chars(begin, end, value); ec != std::errc() || ptr != end) {
         throw Error::InvalidArgument("executor", "invalid " + std::string(name) + " value");
     }
@@ -498,6 +514,7 @@ static OrderBySpec ParseOrderByItem(TokenCursor& cursor) {
 
 Query ParseQuery(const std::string_view query) {
     auto tokenized = TokenizeSql(query);
+
     if (!tokenized.has_value()) {
         throw tokenized.error();
     }
@@ -546,6 +563,7 @@ Query ParseQuery(const std::string_view query) {
     }
 
     query_ast.limit = ParseOptionalSize(cursor, Tokens::Limit, "LIMIT");
+
     if (const auto offset = ParseOptionalSize(cursor, Tokens::Offset, "OFFSET"); offset.has_value()) {
         query_ast.offset = *offset;
     }
