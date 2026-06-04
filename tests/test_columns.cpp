@@ -130,3 +130,40 @@ TEST(columns, type_names_roundtrip) {
         EXPECT_EQ(ParseColumnType(ColumnTypeToString(type)), type);
     }
 }
+
+TEST(columns, string_self_append_does_not_dangle) {
+    StringColumn column;
+    column.AppendFromString("alpha");
+    column.AppendFromString("beta");
+    column.AppendFromString("gamma");
+
+    column.AppendFromColumn(column, 0);
+    column.AppendRangeFromColumn(column, 1, 2);
+    const std::vector<size_t> rows = {2, 0};
+    column.AppendSelectedFromColumn(column, rows);
+
+    const std::vector<std::string> expected = {"alpha", "beta", "gamma", "alpha", "beta", "gamma", "gamma", "alpha"};
+
+    ASSERT_EQ(column.Size(), expected.size());
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(column.ValueAsString(i), expected[i]);
+    }
+}
+
+TEST(columns, fixed_self_append_range_does_not_dangle) {
+    Int64Column column;
+    for (int i = 0; i < 4; ++i) {
+        column.AppendFromString(std::to_string(i));
+    }
+
+    column.AppendRangeFromColumn(column, 1, 3);
+
+    const std::vector<int64_t> expected = {0, 1, 2, 3, 1, 2, 3};
+
+    ASSERT_EQ(column.Size(), expected.size());
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(column.ValueAsInt128(i), static_cast<Int128>(expected[i]));
+    }
+}

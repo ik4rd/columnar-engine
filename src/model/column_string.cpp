@@ -30,6 +30,14 @@ void StringColumn::AppendFromColumn(const Column& source, const size_t row) {
     if (source.Type() != ColumnType::String) {
         throw Error::InconsistentData(ModuleName(), "column type mismatch");
     }
+
+    if (&source == this) {
+        const std::string copy{StringAt(row)};
+        AppendValue(copy);
+
+        return;
+    }
+
     std::string scratch;
     AppendValue(source.ValueAsStringView(row, scratch));
 }
@@ -53,6 +61,22 @@ void StringColumn::AppendRangeFromColumn(const Column& source, const size_t begi
     const size_t bytes_to_copy = source_end - source_begin;
     CheckAppendSize(bytes_to_copy);
 
+    if (&typed_source == this) {
+        const std::vector<char> blob_slice(blob_.begin() + source_begin, blob_.begin() + source_end);
+        const std::vector<uint32_t> offset_slice(offsets_.begin() + static_cast<std::ptrdiff_t>(begin),
+                                                 offsets_.begin() + static_cast<std::ptrdiff_t>(begin + count + 1));
+
+        const uint32_t base = static_cast<uint32_t>(blob_.size());
+        blob_.insert(blob_.end(), blob_slice.begin(), blob_slice.end());
+        offsets_.reserve(offsets_.size() + count);
+
+        for (size_t i = 1; i <= count; ++i) {
+            offsets_.push_back(base + offset_slice[i] - source_begin);
+        }
+
+        return;
+    }
+
     const uint32_t base = static_cast<uint32_t>(blob_.size());
     blob_.insert(blob_.end(), typed_source.blob_.begin() + source_begin, typed_source.blob_.begin() + source_end);
     offsets_.reserve(offsets_.size() + count);
@@ -69,6 +93,21 @@ void StringColumn::AppendSelectedFromColumn(const Column& source, const std::spa
 
     const auto& typed_source = static_cast<const StringColumn&>(source);
     offsets_.reserve(offsets_.size() + rows.size());
+
+    if (&typed_source == this) {
+        std::vector<std::string> snapshot;
+        snapshot.reserve(rows.size());
+
+        for (const size_t row : rows) {
+            snapshot.emplace_back(StringAt(row));
+        }
+
+        for (const std::string& value : snapshot) {
+            AppendValue(value);
+        }
+
+        return;
+    }
 
     for (const size_t row : rows) {
         AppendValue(typed_source.StringAt(row));

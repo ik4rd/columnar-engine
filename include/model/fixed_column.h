@@ -48,6 +48,14 @@ class FixedColumn : public MutableColumn {
             throw Error::OutOfRange(ColumnImpl::ModuleName(), "row range out of range");
         }
 
+        if (&typed_source == this) {
+            const std::vector<T> slice(values_.begin() + static_cast<std::ptrdiff_t>(begin),
+                                       values_.begin() + static_cast<std::ptrdiff_t>(begin + count));
+            values_.insert(values_.end(), slice.begin(), slice.end());
+
+            return;
+        }
+
         values_.insert(values_.end(), typed_source.values_.begin() + static_cast<std::ptrdiff_t>(begin),
                        typed_source.values_.begin() + static_cast<std::ptrdiff_t>(begin + count));
     }
