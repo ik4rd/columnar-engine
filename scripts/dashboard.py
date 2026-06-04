@@ -619,7 +619,7 @@ def collect_hardcoded_rows(
             row["status"] = "failed"
             row["error"] = "missing benchmark result"
             continue
-        if result["status"] != "passed":
+        if result["status"] not in {"passed", "executed"}:
             row["status"] = "failed"
             row["error"] = f"benchmark status={result['status']}"
             continue
@@ -641,7 +641,7 @@ def collect_hardcoded_rows(
                 row["status"] = "failed"
                 row["error"] = "missing benchmark result"
                 break
-            if result["status"] != "passed":
+            if result["status"] not in {"passed", "executed"}:
                 row["status"] = "failed"
                 row["error"] = f"benchmark status={result['status']}"
                 break
