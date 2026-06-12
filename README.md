@@ -8,14 +8,14 @@
 **Аналитический колоночный движок, написанный с нуля на C++23.**
 
 Собственный колоночный формат хранения с LZ4-сжатием, конвертер CSV ⇄ columnar, SQL-парсер и векторизованный исполнитель
-запросов. Производительность проверяется на наборе запросов [ClickBench](https://github.com/ClickHouse/ClickBench) (
+запросов.
+
+Производительность проверяется на наборе запросов [ClickBench](https://github.com/ClickHouse/ClickBench) (
 датасет `hits`).
 
 ---
 
 ## Архитектура
-
-Код разбит на независимые библиотеки (см. `src/CMakeLists.txt`):
 
 | Модуль        | Библиотека                                    | Назначение                                                    |
 |---------------|-----------------------------------------------|---------------------------------------------------------------|
@@ -118,10 +118,8 @@ cmake --build build --target test_sanitizers
 Бенчмарки гоняют запросы ClickBench (`benchmarks/queries/query_*.sql`) на сэмпле датасета `hits`:
 
 ```bash
-# конвертация данных и измерение compression ratio / throughput
 build/benchmarks/benchmark_csv_to_columnar
 
-# прогон запросов
 build/benchmarks/benchmark_queries --input benchmarks/hits_sample.columnar
 ```
 
